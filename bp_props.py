@@ -260,10 +260,11 @@ def write_top_by_market(rows, date, n=10):
     head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Kelly | Injury |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
-        t = list(head)
+        # mark the column this list is ranked by in the header (no ** in cells: Google Docs shows them literally)
+        cols = {"gap": "Gap %", "score": "Score", "balanced": "Balanced"}
+        t = [head[0].replace(f"| {cols[bold]} |", f"| {cols[bold]} ▼ |"), head[1]]
         for i, r in enumerate(group[:n], 1):
             vals = {"gap": cell(r["pct_gap"]), "score": cell(r["score"]), "balanced": cell(r["balanced"])}
-            vals[bold] = f"**{vals[bold]}**"
             form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
             kelly = "" if r.get("kelly_u") is None else f"{fmt(r['kelly_u'])}u"
             t.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]),

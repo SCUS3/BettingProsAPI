@@ -36,7 +36,16 @@ Read `bp_top10_<date>.md`, which the script writes. It has:
 
 Every row also shows Form (recent hit rate vs. the line), Signals (how many of six factors lean the same way) and Kelly (quarter-Kelly stake, 1u = 1% of bankroll). For anything else (a player or team filter, extra columns such as `s_edge`, `s_ev`, `s_dvp`, `s_form`, `s_market`, `nv_edge`, `streak`), read `bp_props_<date>.csv` with a short Python snippet; don't print the whole file.
 
-## 3. Report
+## 3. Send to Google Drive (for the claude.ai "Daily NBA Bets" Project)
+
+Skip this step if `.drive_folder_id` doesn't exist or the Google Drive tools aren't available. If so, mention it in one line.
+
+1. Read `.drive_folder_id` to get the Drive folder ID ("NBA Bets Daily").
+2. Search that folder for an existing doc titled `NBA Props <date>` (`parentId = '<folder id>' and title = 'NBA Props <date>'`). Trash any match so there's only one doc per day.
+3. Get the note's hash with `shasum -a 256 bp_top10_<date>.md`, then create the doc with `create_file`: title `NBA Props <date>`, `parentId` = folder ID, `contentMimeType` `text/markdown`, and `base64Content` = `sha256:<hash>:<absolute path to bp_top10_<date>.md>`.
+4. Include the doc's link in the report.
+
+## 4. Report
 
 Show the three overall top-10 lists as compact tables:
 - **By gap:** player | market | side | line | proj | gap% | FD | score | balanced

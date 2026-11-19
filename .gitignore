@@ -6,3 +6,4 @@ __pycache__/
 bp_props_*.csv
 bp_cache.json
 bp_top10_*.md
+.drive_folder_id

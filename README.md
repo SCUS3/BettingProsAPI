@@ -140,7 +140,11 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 /props Celtics         # filter to a player or team
 ```
 
-Claude runs the script, reads the results, and summarizes the three top-10 lists and the per-category top 10. It is blocked from reading `.env`, so the API key never appears in the chat.
+Claude runs the script, reads the results, and summarizes the three top-10 lists and the per-category top 10.
+
+### Daily feed to a claude.ai Project (optional)
+
+If the Google Drive connector is enabled in Claude, `/props` also uploads each day's note as a Google Doc named `NBA Props <date>`. To turn it on, create a Drive folder and put its ID in a git-ignored `.drive_folder_id` file in the project folder. In a claude.ai Project, add an instruction to open today's `NBA Props <date>` doc from that folder at the start of each chat. It is blocked from reading `.env`, so the API key never appears in the chat.
 
 ## Notes
 
