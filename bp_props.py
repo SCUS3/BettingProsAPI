@@ -51,6 +51,7 @@ def eastern_today():
 
 BASE = "https://api.bettingpros.com/v3"
 REQUESTS_MADE = 0
+MAX_PICK_LOOKUPS = 8   # per slate per run: single game+market lookups for picks the FanDuel pull missed
 
 
 def get(path, params, key, retries=3):
@@ -198,19 +199,24 @@ def implied(american):
     return 100 / (a + 100) if a > 0 else -a / (-a + 100)
 
 
-def pull_props(key, date, book_id, market_ids, page_limit):
+def pull_props(key, date, book_id, market_ids, page_limit, event_id=None):
+    """Props for a date (or one game with event_id; the API rejects both). book_id=None = any book."""
     props, page = [], 1
     while True:
         params = {
             "sport": "NBA",
-            "date": date,
-            "book_id": book_id,
             "limit": page_limit,
             "page": page,
             "include_injured": "true",
             "ev_threshold": "false",   # return everything, not just the default EV band
             "sort": "diff",
         }
+        if event_id:
+            params["event_id"] = event_id
+        else:
+            params["date"] = date
+        if book_id is not None:
+            params["book_id"] = book_id
         if market_ids:
             params["market_id"] = market_ids
         data = get("/props", params, key)
@@ -554,8 +560,22 @@ def main():
 
     # Grade finished slates (yesterday's picks etc.), then re-learn from every graded prop.
     to_grade = [args.grade] if args.grade else ([] if args.no_grade else bp_learn.pending_dates(args.date)[-3:])
+    tag_ids = {tag: mid for mid, (tag, _) in markets.items() if tag}
     for d in to_grade:
-        n_props, n_picks, pend = bp_learn.grade_date(d, pull_props(key, d, fd, market_ids, args.page_limit), labels)
+        finals = bp_learn.known_finals(d)
+        if bp_learn.events_without_finals(d, finals):   # first grade of the slate (or a game had no finals yet)
+            finals.update(bp_learn.finals_from(pull_props(key, d, fd, market_ids, args.page_limit), labels))
+        # FanDuel can pull a line before the game ends, which drops it from the FanDuel-filtered pull:
+        # look up each still-missing pick's game and market with no book filter (1 request each).
+        scored = set()
+        for ev, mk in bp_learn.missing_pick_markets(d, finals)[:MAX_PICK_LOOKUPS]:
+            if mk not in tag_ids or not ev:
+                continue
+            got = bp_learn.finals_from(pull_props(key, d, None, str(tag_ids[mk]), args.page_limit, event_id=ev), labels)
+            if got:
+                scored.add((ev, mk))
+            finals.update(got)
+        n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored)
         print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))
     if to_grade or not os.path.exists(bp_learn.MODEL):
         m = bp_learn.fit_model()

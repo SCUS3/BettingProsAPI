@@ -163,7 +163,7 @@ Every live run stamps its props with the pull time and each game's tip time (fro
 - **Lineups and injuries (Rotowire)**: each live run reads Rotowire's public [NBA lineups page](https://www.rotowire.com/basketball/nba-lineups.php) once (allowed by its robots.txt; no API request) for projected starters, injury status (Out, Ques, GTD) and play probability, saved in `history/` so re-scores and learning use the pre-tip view. Rotowire Out sets the player's own injury to OUT.
 - **Teammates out**: a rotation regular (points props in recent slates, average line 9.5+) counts as out when Rotowire lists him Out, or he has no props and Rotowire doesn't list him as playing. A regular Rotowire shows starting is not counted. Long-term injuries drop out of the regulars, so this flags new absences. Without Rotowire data it falls back to missing props.
 
-Grading costs about 18 requests per slate (at most 3 per run), and each live run adds 1 request for tip times. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
+Grading costs about 18 requests the first time a slate is graded (at most 3 slates per run), and each live run adds 1 request for tip times. Final stats already saved are reused, so a regrade only looks up what is still missing: FanDuel often takes a line down before the game ends, which drops that prop from the FanDuel-filtered pull, so each pick still missing a final stat is looked up by game and market with no book filter (1 request each, at most 8 per slate). A pick whose game and market are final but whose player has no stat (did not play) is graded **V** (void, no action) and left out of the record. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
 
 ### Dashboard
 
@@ -173,7 +173,7 @@ Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single inter
 - a "strongest tonight" strip of props in the top 20 on gap, score, and balanced
 - a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA) with ranking by Gap, Score, or Balanced
 - tap-to-expand score breakdowns
-- a **Copy for Claude** button that copies the full slate as compact text for any Claude chat
+- a **Copy for Claude** button that copies the full slate as compact text for any Claude chat, led by a record summary: each strategy's W-L-P, units and ROI, the combined each-prop-once row, the last graded slate's picks with results and final stats, the model's sample count vs. the 60 it needs, and model vs. market Brier score
 
 `/props` publishes it as a private claude.ai artifact and updates the same link every day (stored in git-ignored `.dashboard_url`).
 

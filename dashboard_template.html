@@ -437,8 +437,40 @@ footer b { color: var(--ink); font-weight: 600; }
       (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
       " | " + (r.kelly || 0) + "u" + (r.inj ? " | " + r.inj : "");
   }
+  function signed(v, suffix) { return v == null ? "–" : (v > 0 ? "+" : "") + v + suffix; }
+  function recordText() {
+    var R = DATA.record; if (!R) return [];
+    var out = ["RECORD (" + R.slates + " graded slate" + (R.slates === 1 ? "" : "s") + ", pre-tip picks only, flat 1u" +
+      (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
+    R.strategies.concat(R.combined ? [R.combined] : []).forEach(function (x) {
+      out.push(x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") + " | ROI " + signed(x.roi, "%") +
+        (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, " pts") : ""));
+    });
+    var C = R.calibration || {};
+    out.push("Model: " + R.model_n + " of " + R.min_train + " graded player-games needed to train" +
+      (C.model ? " | Brier, all graded props (" + C.n + "): model " + C.model.brier + " vs market " + C.market.brier +
+        (C.learned ? ", learned " + C.learned.brier : "") : ""));
+    var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
+    if (last) {
+      out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
+      ["bal", "score", "gap", "learned"].forEach(function (st) {
+        var g = R.recent.concat(R.pending).filter(function (r) { return r.date === last && r.strategy === st; })
+          .sort(function (a, b) { return a.rank - b.rank; });
+        if (!g.length) return;
+        out.push(STRAT_LABEL[st] + ":");
+        g.forEach(function (r) {
+          out.push("  " + r.rank + ". " + r.player + " " + r.market + " " + (r.side === "over" ? "o" : "u") + r.line + " " + odds(Number(r.odds)) +
+            " → " + (r.result || "pending") + (r.actual !== "" && r.actual != null ? " (final " + r.actual + ")" : "") +
+            (r.profit_u !== "" && r.profit_u != null ? " " + signed(Number(r.profit_u), "u") : ""));
+        });
+      });
+    }
+    out.push("");
+    return out;
+  }
   function slateText() {
     var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", ""];
+    out = out.concat(recordText());
     [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
       out.push("ALL: top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
     });

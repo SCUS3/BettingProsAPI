@@ -436,23 +436,61 @@ def pending_dates(today):
     return out
 
 
-def grade_date(date, fetched, labels):
-    """Grade the slate for `date` against freshly pulled props with final stats.
-    Learning rows come from each game's last pre-tip snapshot. Returns (props graded, picks graded, still pending)."""
-    finals = {}
+def finals_from(fetched, labels):
+    """{prop_key: final stat} from pulled props that are scored."""
+    out = {}
     for p in fetched:
         sc = p.get("scoring") or {}
         if not sc.get("is_scored"):
             continue
         part = p.get("participant") or {}
         mk = labels.get(p.get("market_id"), p.get("market_id"))
-        finals[prop_key(p.get("event_id"), mk, part.get("name"))] = sc.get("actual")
+        out[prop_key(p.get("event_id"), mk, part.get("name"))] = sc.get("actual")
+    return out
 
+
+def known_finals(date):
+    """Final stats already saved for `date` (graded props and graded picks), so regrades skip re-pulling them."""
+    out = {}
+    for path in (GRADED, LEDGER):
+        for r in _read(path):
+            if r["date"] == date and r.get("actual") not in (None, ""):
+                out[prop_key(r.get("event_id"), r.get("market"), r.get("player"))] = r["actual"]
+    return out
+
+
+def _gradable(rows):
+    return [r for r in rows if _truthy(r.get("price_is_fanduel")) and r.get("score")]
+
+
+def events_without_finals(date, finals):
+    """Games on the pre-tip slate with no final stat at all yet (they need the full slate pull)."""
+    have = {k.split("|", 1)[0] for k in finals}
+    return sorted({r.get("event_id") for r in _gradable(pre_tip_rows(date))} - have)
+
+
+def missing_pick_markets(date, finals):
+    """(event_id, market) pairs of ungraded picks whose final stat isn't known yet. The full pull is
+    filtered to FanDuel, and FanDuel often takes a line down before the game ends, so these are looked
+    up one game and market at a time with no book filter."""
+    out = []
+    for r in _read(LEDGER):
+        if r["date"] == date and not r.get("result") and \
+                prop_key(r.get("event_id"), r.get("market"), r.get("player")) not in finals:
+            k = (r.get("event_id"), r.get("market"))
+            if k not in out:
+                out.append(k)
+    return out
+
+
+def grade_date(date, finals, scored_markets=()):
+    """Grade the slate for `date` against final stats ({prop_key: actual}).
+    Learning rows come from each game's last pre-tip snapshot. A pick is void ('V', no action) when its
+    game and market (in `scored_markets`) have final stats but the player has none (did not play).
+    Returns (props graded, picks graded, still pending)."""
     graded = [r for r in _read(GRADED) if r["date"] != date]
     n_props = 0
-    for r in pre_tip_rows(date):
-        if not _truthy(r.get("price_is_fanduel")) or not r.get("score"):
-            continue
+    for r in _gradable(pre_tip_rows(date)):
         actual = finals.get(prop_key(r.get("event_id"), r.get("market"), r.get("player")))
         res = grade(r.get("rec_side"), r.get("line"), actual)
         if res is None:
@@ -471,7 +509,11 @@ def grade_date(date, fetched, labels):
         actual = finals.get(prop_key(r.get("event_id"), r.get("market"), r.get("player")))
         res = grade(r.get("side"), r.get("line"), actual)
         if res is None:
-            pending += 1
+            if actual in (None, "") and (r.get("event_id"), r.get("market")) in scored_markets:
+                r["result"], r["actual"], r["profit_u"], r["profit_kelly"] = "V", "", 0.0, 0.0
+                n_picks += 1
+            else:
+                pending += 1
             continue
         r["result"], r["actual"] = res, actual
         r["profit_u"] = profit(r.get("odds"), res)
@@ -645,7 +687,7 @@ def record():
     ledger = _read(LEDGER)
     counted, clv = counted_flags(ledger)
     live = [(r, v) for r, ok, v in zip(ledger, counted, clv) if ok]
-    graded = [(r, v) for r, v in live if r.get("result")]
+    graded = [(r, v) for r, v in live if r.get("result") in ("W", "L", "P")]   # voids ('V') don't count
     strategies = []
     for strat, label in STRATEGIES:
         sub = [(r, v) for r, v in graded if r["strategy"] == strat]
