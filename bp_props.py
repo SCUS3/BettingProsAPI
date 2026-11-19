@@ -91,6 +91,8 @@ def load_dotenv():
 
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_cache.json")
 
+MKT_CACHE_KEY = "nba_markets_v2"  # bump when classify() changes
+
 # The seven prop types to keep, described by their stat components.
 WANTED = {
     frozenset({"pts"}): "PTS",
@@ -151,6 +153,9 @@ def classify(m):
     text = " ".join([m.get("slug") or "", m.get("stat") or "", meta.get("short_label") or ""]).lower()
     text = text.replace("+", " ").replace("&", " ").replace("_", " ").replace("/", " ")
     toks = set(text.replace("-", " ").split()) | set(text.split())
+    # Threes are often named "3-point field goals made"; let "field"/"points" through for them.
+    if any(TOKEN_MAP.get(t) == "3pm" for t in toks):
+        return None if toks & (BLOCK - {"field"}) else "3PM"
     if toks & BLOCK:
         return None
     comps = frozenset(TOKEN_MAP[t] for t in toks if t in TOKEN_MAP)
@@ -159,8 +164,8 @@ def classify(m):
 
 def nba_markets(key, cache, refresh=False):
     """{market_id: (tag or None, label)} for every NBA player-prop market. Cached."""
-    if "nba_markets" in cache and not refresh:
-        return {int(k): tuple(v) for k, v in cache["nba_markets"].items()}
+    if MKT_CACHE_KEY in cache and not refresh:
+        return {int(k): tuple(v) for k, v in cache[MKT_CACHE_KEY].items()}
     out, page = {}, 1
     while True:
         data = get("/markets", {"sport": "NBA", "limit": 50, "page": page}, key)
@@ -172,7 +177,7 @@ def nba_markets(key, cache, refresh=False):
         if page >= (data.get("_pagination") or {}).get("total_pages", 1):
             break
         page += 1
-    cache["nba_markets"] = {str(k): list(v) for k, v in out.items()}
+    cache[MKT_CACHE_KEY] = {str(k): list(v) for k, v in out.items()}
     return out
 
 
@@ -233,6 +238,37 @@ def pull_offer_metrics(key, event_ids, market_ids, book_id):
                 break
             page += 1
             time.sleep(0.4)
+    return out
+
+
+CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("3PM", "Threes"),
+                  ("P+A", "Points + Assists"), ("P+R", "Points + Rebounds"), ("PRA", "Points + Rebounds + Assists")]
+
+
+def write_top_by_market(rows, date, n=10):
+    """Write a Markdown note with the n biggest projection-vs-line gaps in each of the seven categories."""
+    out = f"bp_top10_{date}.md"
+    def cell(v):
+        return "" if v is None else str(v)
+    lines = [f"# Biggest projection gaps by category: {date}", "",
+             "FanDuel-priced props only, ranked by |projection - line| as a % of the line. "
+             "DvP: 1 = softest matchup.", ""]
+    for tag, name in CATEGORY_ORDER:
+        group = [r for r in rows if r["market"] == tag and r["price_is_fanduel"] and r["pct_gap"] is not None]
+        group.sort(key=lambda r: abs(r["pct_gap"]), reverse=True)
+        lines += [f"## {name} ({tag})", ""]
+        if not group:
+            lines += ["_No FanDuel-priced props found._", ""]
+            continue
+        lines += ["| # | Player | Team | Side | Line | Proj | Gap | Gap % | FD odds | DvP | Injury |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for i, r in enumerate(group[:n], 1):
+            lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["team"]), cell(r["rec_side"]),
+                                            cell(r["line"]), cell(r["bp_proj"]), cell(r["diff"]), cell(r["pct_gap"]),
+                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), cell(r["injury"])]) + " |")
+        lines.append("")
+    with open(out, "w") as f:
+        f.write("\n".join(lines))
     return out
 
 
@@ -330,7 +366,10 @@ def main():
         w.writeheader()
         w.writerows(rows)
 
+    note = write_top_by_market(rows, args.date)
+
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
+    print(f"Top 10 per category -> {note}")
     print(f"{'player':22} {'market':14} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:
         print(f"{(r['player'] or '')[:22]:22} {str(r['market'])[:14]:14} {str(r['rec_side'])[:5]:5} "

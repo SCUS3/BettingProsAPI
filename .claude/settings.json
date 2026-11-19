@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 bp_props.py)",
+      "Bash(python3 bp_props.py *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Bash(cat .env*)"
+    ]
+  }
+}

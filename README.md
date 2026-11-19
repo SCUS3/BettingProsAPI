@@ -4,7 +4,7 @@ This repository contains a Python script that pulls the day's NBA player props f
 
 ## Description
 
-The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. It also prints the top 15 FanDuel-priced props to the terminal.
+The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. It also writes a Markdown note with the 10 biggest discrepancies in each of the seven categories and prints the top 15 FanDuel-priced props to the terminal.
 
 Markets pulled by default (full game only):
 
@@ -14,6 +14,7 @@ Markets pulled by default (full game only):
 ## Features
 
 - **Projection Gap Ranking**: Sorts props by how far the BettingPros projection sits from the line, as a percentage of the line.
+- **Top 10 by Category**: A separate note lists the 10 biggest projection-vs-line gaps for each of the seven prop categories.
 - **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
 - **Fair Odds / Market EV**: Optional `--offers` mode adds FanDuel fair probability and market expected value per prop.
@@ -62,7 +63,11 @@ python3 bp_props.py --refresh          # re-fetch cached book and market IDs
 
 ## Output
 
-Each run writes `bp_props_<date>.csv` with one row per prop, including:
+Each run writes two files.
+
+**`bp_top10_<date>.md`**: the 10 biggest discrepancies in each category (Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pts + Reb + Ast), FanDuel-priced props only, with line, projection, gap, odds, matchup, and injury status.
+
+**`bp_props_<date>.csv`**: every prop, one row each, including:
 
 | Column | Meaning |
 | --- | --- |
@@ -73,6 +78,19 @@ Each run writes `bp_props_<date>.csv` with one row per prop, including:
 | `bp_win_prob`, `bp_ev`, `bp_rating` | BettingPros probability, EV, and rating (Plus/Elite keys only) |
 | `fd_fair_prob`, `fd_market_ev` | FanDuel fair probability and market EV (`--offers` only) |
 | `dvp_softness` | Opponent defense vs. position, 1 = softest |
+
+## Using with Claude Code
+
+The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-code). Open Claude Code in the project folder and type:
+
+```
+/props                 # tonight's slate, summarized
+/props offers          # include FanDuel fair odds / EV
+/props 2026-11-19      # a specific date
+/props Celtics         # filter to a player or team
+```
+
+Claude runs the script, reads the results, and summarizes the top plays and the per-category top 10. It is blocked from reading `.env`, so the API key never appears in the chat.
 
 ## Notes
 
