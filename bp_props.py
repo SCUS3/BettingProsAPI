@@ -182,6 +182,11 @@ def nba_markets(key, cache, refresh=False):
     return out
 
 
+def first(*vals):
+    """First value that isn't None."""
+    return next((v for v in vals if v is not None), None)
+
+
 def implied(american):
     if american is None:
         return None
@@ -247,40 +252,44 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
 
 
 def write_top_by_market(rows, date, n=10):
-    """Write a Markdown note with the n biggest projection-vs-line gaps in each of the seven categories."""
+    """Write the Markdown note: three overall top-10 lists, then the top 10 by gap in each category."""
     out = f"bp_top10_{date}.md"
     def cell(v):
         return "" if v is None else fmt(v)
-    lines = [f"# Biggest projection gaps by category: {date}", "",
-             "FanDuel-priced props only. DvP: 1 = softest matchup. Score (0-100) = "
-             "40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup, "
-             "reduced for injury status.", ""]
-    best = sorted([r for r in rows if r["price_is_fanduel"] and r.get("score") is not None],
-                  key=lambda r: r["score"], reverse=True)[:n]
-    lines += ["## Top 10 overall by score", "",
-              "| # | Score | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Injury |",
-              "|---|---|---|---|---|---|---|---|---|---|---|"]
-    for i, r in enumerate(best, 1):
-        lines.append("| " + " | ".join([str(i), f"**{r['score']}**", cell(r["player"]), cell(r["market"]),
-                                        cell(r["rec_side"]), cell(r["line"]), cell(r["bp_proj"]),
-                                        cell(r["pct_gap"]), cell(r["fd_odds_rec"]), cell(r["dvp_softness"]),
-                                        cell(r["injury"])]) + " |")
-    lines += ["", "Ranked by gap % within each category below.", ""]
-    for tag, name in CATEGORY_ORDER:
-        group = [r for r in rows if r["market"] == tag and r["price_is_fanduel"] and r["pct_gap"] is not None]
-        group.sort(key=lambda r: abs(r["pct_gap"]), reverse=True)
-        lines += [f"## {name} ({tag})", ""]
-        if not group:
-            lines += ["_No FanDuel-priced props found._", ""]
-            continue
-        lines += ["| # | Player | Team | Side | Line | Proj | Gap | Gap % | FD odds | DvP | Injury | Score |",
-                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None]
+    head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Kelly | Injury |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    def table(group, bold):
+        t = list(head)
         for i, r in enumerate(group[:n], 1):
-            lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["team"]), cell(r["rec_side"]),
-                                            cell(r["line"]), cell(r["bp_proj"]), cell(r["diff"]), cell(r["pct_gap"]),
-                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), cell(r["injury"]),
-                                            f"**{cell(r.get('score'))}**"]) + " |")
-        lines.append("")
+            vals = {"gap": cell(r["pct_gap"]), "score": cell(r["score"]), "balanced": cell(r["balanced"])}
+            vals[bold] = f"**{vals[bold]}**"
+            form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
+            kelly = "" if r.get("kelly_u") is None else f"{fmt(r['kelly_u'])}u"
+            t.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]),
+                                        cell(r["line"]), cell(r["bp_proj"]), vals["gap"], cell(r["fd_odds_rec"]),
+                                        cell(r["dvp_softness"]), form, vals["score"], vals["balanced"],
+                                        cell(r.get("signals")), kelly, cell(r["injury"])]) + " |")
+        return t + [""]
+
+    lines = [f"# NBA props: {date}", "",
+             "FanDuel-priced props only. **DvP**: 1 = softest matchup. **Form**: recent hit rate of the "
+             "recommended side vs. this line. **Score**: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
+             "**Balanced**: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
+             "15% BettingPros bet rating. **Signals**: how many of six factors lean the same way. "
+             "**Kelly**: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", ""]
+    lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
+    lines += table(sorted(fd, key=lambda r: abs(r["pct_gap"] or 0), reverse=True), "gap")
+    lines += ["## 2. Top 10 by your score", "", "Edge, FanDuel EV and matchup.", ""]
+    lines += table(sorted(fd, key=lambda r: r["score"], reverse=True), "score")
+    lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
+    lines += table(sorted(fd, key=lambda r: r["balanced"], reverse=True), "balanced")
+    lines += ["---", "", "# Top 10 by projection gap in each category", ""]
+    for tag, name in CATEGORY_ORDER:
+        group = sorted([r for r in fd if r["market"] == tag and r["pct_gap"] is not None],
+                       key=lambda r: abs(r["pct_gap"]), reverse=True)
+        lines += [f"## {name} ({tag})", ""]
+        lines += table(group, "gap") if group else ["_No FanDuel-priced props found._", ""]
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
@@ -349,6 +358,92 @@ def score_row(r):
     score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
     r.update(model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
              s_edge=round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
+    return r
+
+
+# ------------------------------------------------- balancing algorithms
+# Three independent signals that check the main score from other angles, plus a
+# Kelly stake. Missing data scores a neutral 50 so it neither helps nor hurts.
+W_MINE, W_FORM, W_MKT, W_BP = 0.40, 0.25, 0.20, 0.15
+FORM_WEIGHTS = {"form_l5": 0.10, "form_l10": 0.30, "form_l20": 0.25, "form_season": 0.25, "form_h2h": 0.10}
+
+
+def _clamp01(x):
+    return min(max(x, 0.0), 1.0)
+
+
+def form_score(r):
+    """Recent hit rate of the recommended side vs. this line, shrunk toward 50% on small samples."""
+    total = wsum = 0.0
+    for k, w in FORM_WEIGHTS.items():
+        v = r.get(k)
+        if not v:
+            continue
+        hits, n = (int(x) for x in str(v).split("-"))
+        if n:
+            total += w * (hits + 1) / (n + 2)            # +1/+2 = shrink toward 50%
+            wsum += w
+    if not wsum:
+        return None, 50.0
+    rate = total / wsum
+    return round(rate, 3), _clamp01((rate - 0.35) / 0.40) * 100   # 35% -> 0, 75% -> 100
+
+
+def market_score(r):
+    """Market value: model vs. FanDuel's no-vig price, and FanDuel's line vs. the consensus line."""
+    parts, side = [], (r.get("rec_side") or "").lower()
+    p, fair = _num(r.get("model_prob")), no_vig_prob(r)
+    nv_edge = None
+    if p is not None and fair is not None:
+        nv_edge = p - fair
+        parts.append(_clamp01((nv_edge + 0.05) / 0.15))  # -5 pts -> 0, +10 pts -> 1
+    line, cons, proj = _num(r.get("line")), _num(r.get("consensus_line")), _num(r.get("bp_proj"))
+    if line is not None and cons is not None and proj is not None:
+        sd = 1.1 * math.sqrt(max(proj, line, 0.5))
+        better = (cons - line) if side == "over" else (line - cons)    # + = FanDuel line is friendlier
+        parts.append(_clamp01(0.5 + better / sd / 0.6))
+    return (None if nv_edge is None else round(nv_edge, 3)), (sum(parts) / len(parts) * 100 if parts else 50.0)
+
+
+def no_vig_prob(r):
+    """FanDuel's fair (vig-free) probability for the recommended side, if both sides are priced."""
+    o, u = _num(r.get("over_odds")), _num(r.get("under_odds"))
+    if o is None or u is None:
+        return None
+    io, iu = implied(o), implied(u)
+    return (io if (r.get("rec_side") or "").lower() == "over" else iu) / (io + iu)
+
+
+def kelly_units(r):
+    """Quarter-Kelly stake in units (1u = 1% of bankroll), capped at 2.5u.
+    The model's win chance is blended 50/50 with FanDuel's no-vig price so stakes stay realistic."""
+    p, odds = _num(r.get("model_prob")), _num(r.get("fd_odds_rec"))
+    if p is None or odds is None:
+        return None
+    fair = no_vig_prob(r)
+    if fair is not None:
+        p = (p + fair) / 2
+    b = odds / 100 if odds > 0 else 100 / -odds
+    f = (p * (b + 1) - 1) / b
+    return round(min(max(f / 4 * 100, 0.0), 2.5), 1)
+
+
+def balance_row(r):
+    """Add form_rate, s_form, nv_edge, s_market, s_bp, kelly_u and balanced (0-100)."""
+    if r.get("score") is None:
+        r.update(form_rate=None, s_form=None, nv_edge=None, s_market=None, s_bp=None, kelly_u=None,
+                 signals=None, balanced=None)
+        return r
+    rate, s_form = form_score(r)
+    nv, s_mkt = market_score(r)
+    rating = _num(r.get("bp_rating"))
+    s_bp = 50.0 if rating is None else _clamp01((rating - 1) / 4) * 100
+    mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
+    bal = W_MINE * r["score"] + (W_FORM * s_form + W_MKT * s_mkt + W_BP * s_bp) * mult
+    # how many of the independent signals lean the same way (>= 60)
+    agree = sum(x >= 60 for x in (r["s_edge"], r["s_ev"], r["s_dvp"], s_form, s_mkt, s_bp))
+    r.update(form_rate=rate, s_form=round(s_form), nv_edge=nv, s_market=round(s_mkt), s_bp=round(s_bp),
+             kelly_u=kelly_units(r), signals=f"{agree}/6", balanced=round(bal))
     return r
 
 
@@ -429,6 +524,13 @@ def main():
         pct = round(100 * diff / line, 1) if (diff is not None and line) else None
         rank = ((p.get("extra") or {}).get("opposition_rank") or {}).get("rank")
         fair, mev = offer_metrics.get((p.get("event_id"), p.get("market_id"), str(part.get("id")), rec or ""), (None, None))
+        perf = p.get("performance") or {}
+        def form(win):
+            w = perf.get(win) or {}
+            hits, n = w.get(rec or "", 0) or 0, (w.get("over", 0) or 0) + (w.get("under", 0) or 0)
+            return f"{hits}-{n}" if n else None
+        both_fd = over.get("book") == fd and under.get("book") == fd
+        scored = p.get("scoring") or {}
         rows.append({
             "player": part.get("name"),
             "team": pl.get("team"),
@@ -442,9 +544,9 @@ def main():
             "bp_proj": val,
             "diff": diff,
             "pct_gap": pct,
-            "bp_win_prob": proj.get("probability"),          # Plus/Elite only
-            "bp_ev": proj.get("expected_value"),              # Plus/Elite only
-            "bp_rating": proj.get("bet_rating"),              # Plus/Elite only
+            "bp_win_prob": first(proj.get("probability"), side.get("probability")),
+            "bp_ev": first(proj.get("expected_value"), side.get("expected_value")),
+            "bp_rating": first(proj.get("bet_rating"), side.get("bet_rating")),
             "market_prob": proj.get("market_probability"),
             "market_ev": proj.get("market_expected_value"),
             "fd_fair_prob": fair,                             # from /offers (--offers)
@@ -452,6 +554,18 @@ def main():
             "implied_prob": round(implied(side.get("odds")), 4) if side and side.get("odds") is not None else None,
             "opp_rank_raw": rank,                             # BettingPros: 1 = toughest
             "dvp_softness": (31 - rank) if rank else None,    # converted: 1 = softest
+            "over_odds": over.get("odds") if both_fd else None,      # both FanDuel sides -> no-vig fair prob
+            "under_odds": under.get("odds") if both_fd else None,
+            "consensus_line": side.get("consensus_line"),
+            "consensus_odds": side.get("consensus_odds"),
+            "form_l5": form("last_5"),                        # rec-side hits - games vs this line
+            "form_l10": form("last_10"),
+            "form_l20": form("last_20"),
+            "form_season": form("season"),
+            "form_h2h": form("h2h"),
+            "streak": f"{perf.get('streak')} {perf.get('streak_type')}" if perf.get("streak") else None,
+            "is_scored": scored.get("is_scored"),            # for back-testing later
+            "actual": scored.get("actual") if scored.get("is_scored") else None,
             "event_id": p.get("event_id"),
         })
 
@@ -466,6 +580,7 @@ def finish(rows, date):
     """Score, sort, and write the CSV, the top-10 note, and the terminal summary."""
     for r in rows:
         score_row(r)
+        balance_row(r)
     rows.sort(key=lambda r: abs(r["pct_gap"] or 0), reverse=True)
     out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:
@@ -476,12 +591,13 @@ def finish(rows, date):
     note = write_top_by_market(rows, date)
 
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
-    print(f"Top 10 per category + top 10 by score -> {note}")
-    print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5}")
+    print(f"Top 10 lists (gap / score / balanced / per category) -> {note}")
+    print("Top 15 by gap:")
+    print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5} {'bal':>4}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:
         print(f"{(r['player'] or '')[:22]:22} {str(r['market'])[:8]:8} {str(r['rec_side'])[:5]:5} "
               f"{fmt(r['line']):>5} {fmt(r['bp_proj']):>6} {fmt(r['pct_gap']):>6} {fmt(r['fd_odds_rec']):>6} "
-              f"{fmt(r['dvp_softness']):>4} {fmt(r['score']):>5}")
+              f"{fmt(r['dvp_softness']):>4} {fmt(r['score']):>5} {fmt(r['balanced']):>4}")
 
 
 if __name__ == "__main__":

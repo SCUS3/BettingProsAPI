@@ -28,25 +28,26 @@ If the script exits with an error, report the message plainly. These are the com
 
 ## 2. Read the results
 
-Read `bp_props_<date>.csv` with a short Python snippet; don't print the whole file. If the user named a player or team, filter to it.
+Read `bp_top10_<date>.md`, which the script writes. It has:
+1. **Top 10 by projection gap**: |projection - line| as a % of the line, nothing else.
+2. **Top 10 by your score**: the user's rules, `score` = 40% edge (gap in SDs) + 35% EV at FanDuel's price + 25% matchup, cut for injury.
+3. **Top 10 by balanced score**: `balanced` = 40% score + 25% recent form + 20% market value (no-vig price, FanDuel line vs. consensus) + 15% BettingPros bet rating.
+4. The top 10 by gap in each of the seven categories (PTS, REB, AST, 3PM, P+A, P+R, PRA).
 
-Keep only rows where `price_is_fanduel` is True and `injury` is empty or "Probable", and rank them by `abs(pct_gap)` (projection vs. line).
-
-Every row has a `score` column (0-100) made of 40% edge (`s_edge`: gap in standard deviations), 35% EV at FanDuel's price (`s_ev`, from `model_ev`) and 25% matchup (`s_dvp`), multiplied down for DTD/Questionable (x0.85) or Doubtful (x0.5).
-
-Also read `bp_top10_<date>.md`, which the script writes. It starts with the top 10 overall by score, then the 10 biggest gaps in each of the seven categories (PTS, REB, AST, 3PM, P+A, P+R, PRA), each with its score.
+Every row also shows Form (recent hit rate vs. the line), Signals (how many of six factors lean the same way) and Kelly (quarter-Kelly stake, 1u = 1% of bankroll). For anything else (a player or team filter, extra columns such as `s_edge`, `s_ev`, `s_dvp`, `s_form`, `s_market`, `nv_edge`, `streak`), read `bp_props_<date>.csv` with a short Python snippet; don't print the whole file.
 
 ## 3. Report
 
-Give a compact markdown table of the top 10:
-player | market | side | line | proj | gap% | FD odds | DvP softness (1 = softest) | score
+Show the three overall top-10 lists as compact tables:
+- **By gap:** player | market | side | line | proj | gap% | FD | score | balanced
+- **By your score:** player | market | side | line | FD | DvP | score | balanced | Kelly
+- **By balanced:** player | market | side | line | FD | form | score | balanced | signals | Kelly
 
-Then show the top 5 by score (player market side line, score). Then, for each of the seven categories, list the top 3 from `bp_top10_<date>.md` on one line each (player side line, gap %, score), and tell the user the full top 10 per category is in that file. If a category is empty, say so.
+Then list the top 3 in each of the seven categories on one line each (player side line, gap %, score/balanced), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
 
-After that, give 2–4 short bullets that point out:
-- the highest-scoring plays and which parts drove the score (edge, EV, matchup),
-- big-gap plays with low scores, and why (juiced odds, bad matchup, injury),
-- plays to be careful with: a big gap but questionable injury status, very juiced odds (worse than -150), or a tough matchup,
+After that, give 2-4 short bullets that point out:
+- plays near the top of all three lists, which are the strongest,
+- big gaps or high scores that the balancing signals disagree with (poor form, bad market value, juiced odds, injury), and why,
 - the request count the script printed, so the user knows how much of today's allowance is left.
 
 Keep it short and factual. These are projections, not guarantees; add no further disclaimers beyond one line.

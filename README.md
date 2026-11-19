@@ -4,7 +4,7 @@ This repository contains a Python script that pulls the day's NBA player props f
 
 ## Description
 
-The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. Every prop gets a 0-100 score that combines the projection edge, expected value at FanDuel's price, and the matchup. It also writes a Markdown note with the top 10 by score and the 10 biggest discrepancies in each of the seven categories, and prints the top 15 FanDuel-priced props to the terminal.
+The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. Every prop gets two 0-100 ratings: a **score** (projection edge, expected value at FanDuel's price, and matchup) and a **balanced score** that checks it against recent form, market value, and BettingPros' bet rating. It also writes a Markdown note with three top-10 lists (by projection gap, by score, and by balanced score) plus the 10 biggest discrepancies in each of the seven categories, and prints the top 15 FanDuel-priced props to the terminal.
 
 Markets pulled by default (full game only):
 
@@ -15,6 +15,9 @@ Markets pulled by default (full game only):
 
 - **Projection Gap Ranking**: Sorts props by how far the BettingPros projection sits from the line, as a percentage of the line.
 - **0-100 Prop Score**: Combines projection edge, FanDuel EV, and matchup into a single rating, reduced for injury status (see [Scoring](#scoring)).
+- **Balanced Score**: Blends the score with recent hit rate vs. the line, FanDuel's no-vig price, line vs. consensus, and BettingPros' bet rating.
+- **Three Top-10 Lists**: Separate rankings by raw projection gap, by score, and by balanced score.
+- **Kelly Stakes**: Suggested quarter-Kelly stake per prop (1u = 1% of bankroll).
 - **Top 10 by Category**: A separate note lists the 10 biggest projection-vs-line gaps for each of the seven prop categories.
 - **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
@@ -67,7 +70,14 @@ python3 bp_props.py --from-csv         # re-score today's saved CSV, no API requ
 
 Each run writes two files.
 
-**`bp_top10_<date>.md`**: the top 10 props overall by score, then the 10 biggest discrepancies in each category (Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pts + Reb + Ast). FanDuel-priced props only, with line, projection, gap, odds, matchup, injury status, and score.
+**`bp_top10_<date>.md`**: FanDuel-priced props only.
+
+1. Top 10 by projection gap
+2. Top 10 by score
+3. Top 10 by balanced score
+4. Top 10 by gap in each category (Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pts + Reb + Ast)
+
+Each row shows line, projection, gap, FanDuel odds, matchup, recent form, score, balanced score, signal agreement, Kelly stake, and injury status.
 
 **`bp_props_<date>.csv`**: every prop, one row each, including:
 
@@ -83,6 +93,12 @@ Each run writes two files.
 | `model_prob`, `model_ev` | Estimated win chance for the recommended side and EV at FanDuel's odds |
 | `s_edge`, `s_ev`, `s_dvp` | The three score parts, each 0-100 |
 | `score` | Final 0-100 score |
+| `over_odds`, `under_odds`, `consensus_line`, `consensus_odds` | Both FanDuel sides and the cross-book consensus |
+| `form_l5` … `form_h2h`, `streak` | Recommended side's hits vs. games against this line (e.g. `7-10`) |
+| `form_rate`, `nv_edge` | Shrunk recent hit rate; model probability minus FanDuel's no-vig probability |
+| `s_form`, `s_market`, `s_bp` | Balancing parts, each 0-100 |
+| `balanced`, `signals`, `kelly_u` | Balanced score, factors in agreement (of 6), quarter-Kelly units |
+| `is_scored`, `actual` | Final stat once the game is graded, for back-testing |
 
 ## Scoring
 
@@ -96,7 +112,22 @@ Each prop's score is a weighted blend of three parts, each scaled 0-100:
 
 The total is then multiplied by an injury factor: ×0.85 for day-to-day or questionable, ×0.5 for doubtful, 0 for out.
 
-The score is a ranking aid built from public projections, not a win probability.
+### Balanced score
+
+The balanced score keeps your score as its largest part and checks it from independent angles:
+
+| Part | Weight | How it's measured |
+| --- | --- | --- |
+| **Your score** | 40% | As above. |
+| **Form** | 25% | Hit rate of the recommended side against this line over the last 5, 10, and 20 games, the season, and head-to-head, weighted toward the last 10-20 and shrunk toward 50% on small samples. 35% scores 0 and 75% scores 100. |
+| **Market value** | 20% | Model win chance minus FanDuel's no-vig probability (the price with the bookmaker's margin removed), plus whether FanDuel's line is friendlier than the consensus line across books. |
+| **BettingPros rating** | 15% | BettingPros' own 1-5 bet rating (Plus/Elite keys; neutral otherwise). |
+
+Missing data scores a neutral 50. The injury factor applies here too.
+
+**Signals** counts how many of the six parts (edge, EV, matchup, form, market, rating) score 60 or higher. **Kelly** is a quarter-Kelly stake using the model's win chance blended 50/50 with FanDuel's no-vig probability, capped at 2.5u. 0u means no edge at that price.
+
+The scores are ranking aids built from public projections, not win probabilities.
 
 ## Using with Claude Code
 
@@ -109,7 +140,7 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 /props Celtics         # filter to a player or team
 ```
 
-Claude runs the script, reads the results, and summarizes the top plays by score and the per-category top 10. It is blocked from reading `.env`, so the API key never appears in the chat.
+Claude runs the script, reads the results, and summarizes the three top-10 lists and the per-category top 10. It is blocked from reading `.env`, so the API key never appears in the chat.
 
 ## Notes
 
