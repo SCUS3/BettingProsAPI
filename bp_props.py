@@ -38,6 +38,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
+import bp_rotowire  # noqa: E402  (projected lineups and injuries)
 
 
 def eastern_today():
@@ -326,8 +327,8 @@ def write_top_by_market(rows, date, n=10):
 # injury multiplier. The parts are scaled so threes, rebounds and points compete
 # fairly: the gap is measured in standard deviations, not % of the line.
 W_EDGE, W_EV, W_DVP = 0.40, 0.35, 0.25
-INJURY_MULT = {"": 1.0, "probable": 1.0, "dtd": 0.85, "questionable": 0.85, "gtd": 0.85,
-               "doubtful": 0.5, "out": 0.0}
+INJURY_MULT = {"": 1.0, "probable": 1.0, "prob": 1.0, "dtd": 0.85, "questionable": 0.85, "ques": 0.85, "gtd": 0.85,
+               "doubtful": 0.5, "doubt": 0.5, "out": 0.0, "ofs": 0.0}
 
 
 def _num(v):
@@ -520,7 +521,7 @@ def main():
             r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
             for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness"):
                 r[k] = _num(r.get(k))
-        finish(rows, args.date, snapshot=True)
+        finish(rows, args.date, snapshot=True, rw_players=rw_players)
         return
 
     load_dotenv()
@@ -567,6 +568,9 @@ def main():
     pulled_at = bp_learn.utc_now()
     events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
     tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
+    rw_players = bp_rotowire.fetch()                  # public page, not an API request
+    print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
+    bp_learn.save_rotowire(rw_players, args.date, pulled_at)
 
     offer_metrics = {}
     if args.offers and props:
@@ -663,6 +667,7 @@ def write_dashboard(rows, date):
             "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
             "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
             "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
+            "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -701,9 +706,11 @@ def print_record():
               f"Kelly {x['kelly_units']:+.2f}u  {br}  {clv}".rstrip())
 
 
-def finish(rows, date, snapshot=False):
+def finish(rows, date, snapshot=False, rw_players=None):
     """Score, sort, and write the CSV, the top-10 note, and the terminal summary."""
-    bp_learn.add_teammate_context(rows, date)
+    if rw_players is None and rows:                     # re-score: use the run's saved Rotowire snapshot
+        rw_players = bp_learn.load_rotowire(date, rows[0].get("pulled_at"))
+    bp_learn.add_teammate_context(rows, date, rw_players)
     model = bp_learn.load_model()
     for r in rows:
         score_row(r)

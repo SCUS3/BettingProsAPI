@@ -411,6 +411,8 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.season) f.push("Season <b>" + esc(r.season) + "</b>");
     if (r.cons != null) f.push("Consensus line <b>" + num(r.cons) + "</b>");
     if (r.nv != null) f.push("Model vs. no-vig <b>" + (r.nv > 0 ? "+" : "") + Math.round(r.nv * 1000) / 10 + " pts</b>");
+    if (r.starter) f.push("<b>Projected starter</b>");
+    if (r.rw) f.push("Rotowire <b>" + esc(r.rw) + "</b>");
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
     if (r.ph) f.push("<b>Placeholder projection</b>: no edge claimed, EV at FanDuel's no-vig price" + (r.demoted ? ", ranked below real projections" : ", +EV price"));

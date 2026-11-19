@@ -41,14 +41,14 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly"]
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
-            "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder"]
+            "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
 FEATURE_LABELS = {
     "edge": "Projection edge", "ev": "EV at FanDuel price", "matchup": "Matchup (DvP)",
     "form": "Recent form vs. line", "market": "Market value", "implied": "Price (implied prob.)",
     "under": "Under side", "self_injured": "Player tagged DTD", "teammates_out": "Teammates ruled out",
     "teammates_dtd": "Teammates DTD", "form_x_teammates_out": "Form when teammates are out",
     "threes": "Threes market", "combo": "Combo market (P+A, P+R, PRA)",
-    "placeholder": "Placeholder projection",
+    "placeholder": "Placeholder projection", "starter": "Projected starter (Rotowire)",
 }
 
 
@@ -201,26 +201,85 @@ def _regulars(date, lookback=5):
     return out
 
 
-def add_teammate_context(rows, date):
-    """tm_out / tm_out_names / tm_dtd per prop. A rotation teammate counts as out when tagged OUT, or when he
-    had points props in recent slates but has none tonight while his team plays (ruled-out players lose their props)."""
-    tonight, status, pts_line = {}, {}, {}
+BP_TO_RW = {"NOR": "NOP", "PHO": "PHX", "UTH": "UTA", "GS": "GSW", "NY": "NYK", "SA": "SAS", "NO": "NOP"}
+
+
+def save_rotowire(players, date, pulled):
+    if not players or not pulled:
+        return
+    os.makedirs(os.path.join(HISTORY, date), exist_ok=True)
+    with open(os.path.join(HISTORY, date, "rotowire_" + pulled.replace("-", "").replace(":", "") + ".json"), "w") as f:
+        json.dump(players, f)
+
+
+def load_rotowire(date, before=None):
+    """Latest saved Rotowire snapshot for `date` (taken at or before `before`, if given)."""
+    paths = sorted(glob.glob(os.path.join(HISTORY, date, "rotowire_*.json")))
+    if before:
+        stamp = "rotowire_" + before.replace("-", "").replace(":", "") + ".json"
+        paths = [p for p in paths if os.path.basename(p) <= stamp]
+    if not paths:
+        return None
+    with open(paths[-1]) as f:
+        return json.load(f)
+
+
+def add_teammate_context(rows, date, rw_players=None):
+    """Per prop: the player's own Rotowire status (rw_status, rw_play_pct, starter, lineup) and teammate context
+    (tm_out, tm_out_names, tm_dtd). A teammate counts as out only if he is a rotation regular (points props in
+    recent slates, average line 9.5+) and Rotowire lists him Out, or he has no props tonight while Rotowire doesn't
+    list him as playing. Long-term injuries drop out of the regulars on their own, so this flags new absences."""
+    import bp_rotowire as rw
+    idx = {}
+    for p in rw_players or []:
+        idx[(p["team"], rw.norm(p["name"]))] = p
+    have_rw = bool(idx)
+    teams_rw = {p["team"] for p in rw_players or []}
+
+    tonight, status = {}, {}
     for r in rows:
         if r.get("team") and r.get("player"):
             tonight.setdefault(r["team"], set()).add(r["player"])
             status[(r["team"], r["player"])] = (r.get("injury") or "").strip().lower()
-            if r.get("market") == "PTS" and _num(r.get("line")) is not None:
-                pts_line[(r["team"], r["player"])] = _num(r["line"])
-    missing = {team: regs - tonight.get(team, set()) for team, regs in _regulars(date).items() if team in tonight}
+    for r in rows:                                      # the player's own Rotowire line
+        p = idx.get((BP_TO_RW.get(r.get("team"), r.get("team")), rw.norm(r.get("player"))))
+        r["rw_status"] = p["status"] if p else ""
+        r["rw_play_pct"] = p["play_pct"] if p else (100 if have_rw else "")
+        r["starter"] = p["starter"] if p else (False if have_rw else "")
+        r["lineup"] = p["lineup"] if p else ""
+        if p and rw.is_out(p):
+            r["injury"] = "OUT"
+        elif p and p["status"] in ("Ques", "GTD", "Doubt") and not r.get("injury"):
+            r["injury"] = p["status"]
+
+    regs = _regulars(date)
+    out_by_team, dtd_by_team = {}, {}
+    for team, players in regs.items():
+        if team not in tonight:
+            continue
+        rw_team = BP_TO_RW.get(team, team)
+        for name in players:
+            if name in tonight[team] and status.get((team, name)) not in ("out", "o", "suspended"):
+                p = idx.get((rw_team, rw.norm(name)))
+                if p and rw.is_doubtful(p):
+                    dtd_by_team.setdefault(team, set()).add(name)
+                continue
+            p = idx.get((rw_team, rw.norm(name)))
+            if have_rw and rw_team in teams_rw:
+                if p is None or rw.is_out(p):          # not listed as playing, or listed Out
+                    out_by_team.setdefault(team, set()).add(name)
+                elif rw.is_doubtful(p):
+                    dtd_by_team.setdefault(team, set()).add(name)
+            else:                                      # no Rotowire data: missing props = out
+                out_by_team.setdefault(team, set()).add(name)
     for r in rows:
         team, me = r.get("team"), r.get("player")
-        names = set(missing.get(team, set()))
-        names |= {p for (t, p), st in status.items() if t == team and p != me and st in ("out", "o", "suspended")
-                  and pts_line.get((t, p), TM_MIN_PTS_LINE) >= TM_MIN_PTS_LINE}
+        names = out_by_team.get(team, set()) - {me}
         r["tm_out"] = len(names)
         r["tm_out_names"] = ", ".join(sorted(names))
-        r["tm_dtd"] = sum(1 for (t, p), st in status.items()
-                          if t == team and p != me and st in ("dtd", "gtd", "questionable", "doubtful", "q", "d"))
+        dtd = dtd_by_team.get(team, set()) - {me}
+        dtd |= {p for (t, p), st in status.items() if t == team and p != me and st in ("dtd", "gtd", "questionable", "doubtful", "q", "d", "ques")}
+        r["tm_dtd"] = len(dtd)
     return rows
 
 
@@ -240,7 +299,8 @@ def features(r):
             1.0 if inj and inj != "probable" else 0.0,
             tm_out, tm_dtd, form * tm_out,
             1.0 if mk == "3PM" else 0.0, 1.0 if mk in ("P+A", "P+R", "PRA") else 0.0,
-            1.0 if ph else 0.0]
+            1.0 if ph else 0.0,
+            None if r.get("starter") in (None, "") else (1.0 if _truthy(r.get("starter")) else 0.0)]
 
 
 def _sig(z):
