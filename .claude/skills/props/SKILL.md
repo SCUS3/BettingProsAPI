@@ -21,6 +21,7 @@ python3 bp_props.py [--date YYYY-MM-DD] [--offers]
 - Plan on two runs a day for closing line value: one around 2 PM ET when lines post and one around 6:30 PM ET before the first tip. Always report the "requests used this run" number so the user can confirm two pulls plus grading fit under 100 a day.
 - Run it before tip-off: each run logs its top 5 picks per strategy (balanced, your score, gap, learned). For each game, only picks from the last run before that game's tip count; anything logged after a game starts never counts.
 - The script automatically grades earlier slates first (about 18 requests per slate, at most 3 slates per run) and re-learns from the results. To skip that, add `--no-grade`. To grade a single slate, use `--grade YYYY-MM-DD`.
+- Each live run also reads Rotowire's public lineups page once (no API request). If it prints "Rotowire lineups: unavailable", say so; it falls back to missing-props detection.
 - The API key loads by itself from `.env`. Never print, cat or echo `.env` or the key.
 - If a CSV for that date already exists and is less than 30 minutes old, ask whether to reuse it instead of spending requests again (the daily limit is 100 on Free/Plus). To reuse it, run `python3 bp_props.py --from-csv --date YYYY-MM-DD`, which re-scores and rewrites the note with 0 requests.
 

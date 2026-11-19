@@ -521,7 +521,7 @@ def main():
             r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
             for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness"):
                 r[k] = _num(r.get(k))
-        finish(rows, args.date, snapshot=True, rw_players=rw_players)
+        finish(rows, args.date)
         return
 
     load_dotenv()
@@ -638,7 +638,7 @@ def main():
             "pulled_at": pulled_at,                           # when this run pulled the lines, UTC
         })
 
-    finish(rows, args.date)
+    finish(rows, args.date, snapshot=True, rw_players=rw_players)
 
 DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard_template.html")
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
