@@ -317,44 +317,8 @@ def write_top_by_market(rows, date, n=10):
         lines += table(ranked(group, lambda r: r["score"]), "score")
     with open(out, "w") as f:
         f.write("\n".join(lines))
-    with open(out[:-3] + ".html", "w") as f:
-        f.write(md_to_html(lines, f"NBA Props {date}"))
     return out
 
-
-def md_to_html(lines, title):
-    """Minimal converter for the note's own Markdown (headings, paragraphs, pipe tables, rules) -> HTML.
-    Google Docs imports this with real headings and plain header cells, no stray asterisks."""
-    import html as _h
-    out, table = [f"<html><head><meta charset='utf-8'><title>{_h.escape(title)}</title></head><body>"], []
-
-    def flush():
-        if not table:
-            return
-        rows = [r for r in table if not set(r.replace("|", "").strip()) <= set("-: ")]
-        out.append("<table border='1' cellpadding='3' style='border-collapse:collapse'>")
-        for i, r in enumerate(rows):
-            cells = [c.strip() for c in r.strip().strip("|").split("|")]
-            tag = "th" if i == 0 else "td"
-            out.append("<tr>" + "".join(f"<{tag}>{_h.escape(c)}</{tag}>" for c in cells) + "</tr>")
-        out.append("</table>")
-        table.clear()
-
-    for ln in lines:
-        if ln.startswith("|"):
-            table.append(ln)
-            continue
-        flush()
-        if ln.startswith("#"):
-            lvl = len(ln) - len(ln.lstrip("#"))
-            out.append(f"<h{lvl}>{_h.escape(ln[lvl:].strip())}</h{lvl}>")
-        elif ln.strip() == "---":
-            continue                                     # Docs merges <hr> into the next heading
-        elif ln.strip():
-            out.append(f"<p>{_h.escape(ln.replace('_', ''))}</p>")
-    flush()
-    out.append("</body></html>")
-    return "\n".join(out)
 
 
 # ---------------------------------------------------------------- scoring

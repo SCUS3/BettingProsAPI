@@ -45,17 +45,9 @@ The script writes `bp_dashboard.html` (the NBA Prop Board). Publish it with the 
 - If `.dashboard_url` exists, read it and pass that URL as `url` so the same link updates. If the publish is refused because this conversation hasn't read the artifact, do `action: "read"` on that URL first, then publish the new local file.
 - If `.dashboard_url` doesn't exist, publish without `url` (icon `chart`) and save the returned link into `.dashboard_url`.
 
-## 4. Publish the daily Google Doc (the claude.ai Project reads it)
+Include the dashboard link in the report. Don't upload anything to Google Drive (the user has no Drive storage left).
 
-Skip only if `.drive_folder_id` doesn't exist or the Google Drive tools aren't available, and say so in one line.
-
-1. Read `.drive_folder_id` to get the "NBA Bets Daily" folder ID.
-2. Search that folder for `NBA Props <date>` (`parentId = '<folder id>' and title = 'NBA Props <date>'`) and trash any match, so there's one doc per day.
-3. Get the hash of the HTML note with `shasum -a 256 bp_top10_<date>.html`, then `create_file`: title `NBA Props <date>`, `parentId` = folder ID, `contentMimeType` `text/html`, and `base64Content` = `sha256:<hash>:<absolute path to bp_top10_<date>.html>`. Always upload the `.html` file, never the `.md`: HTML gives Google Docs real headings and plain-text table headers with no `**` markers.
-
-Include the dashboard link and the doc link in the report.
-
-## 5. Report
+## 4. Report
 
 Show the three overall top-10 lists as compact tables:
 - **By gap:** player | market | side | line | proj | gap% | FD | score | balanced

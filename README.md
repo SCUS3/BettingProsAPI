@@ -164,10 +164,6 @@ Every live run stamps its props with the pull time and each game's tip time (fro
 
 Grading costs about 18 requests per slate (at most 3 per run), and each live run adds 1 request for tip times. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
 
-### Daily Google Doc
-
-Each run also writes `bp_top10_<date>.html`, an HTML copy of the note with a record summary at the top. `/props` uploads it to Google Drive as `NBA Props <date>` in the folder named in git-ignored `.drive_folder_id`, so a claude.ai Project can read each day's data. HTML gives Google Docs real headings and plain-text table headers.
-
 ### Dashboard
 
 Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single interactive page built from `dashboard_template.html`. It has:
