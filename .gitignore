@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+bp_props_*.csv
+bp_cache.json
