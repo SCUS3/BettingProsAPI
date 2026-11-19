@@ -263,7 +263,7 @@ def write_top_by_market(rows, date, n=10):
     head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Kelly | Injury |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
-        # mark the column this list is ranked by in the header (no ** in cells: Google Docs shows them literally)
+        # mark the column this list is ranked by in the header (no bold markers anywhere: Docs shows them literally)
         cols = {"gap": "Gap %", "score": "Score", "balanced": "Balanced"}
         t = [head[0].replace(f"| {cols[bold]} |", f"| {cols[bold]} ▼ |"), head[1]]
         for i, r in enumerate(group[:n], 1):
@@ -277,11 +277,11 @@ def write_top_by_market(rows, date, n=10):
         return t + [""]
 
     lines = [f"# NBA props: {date}", "",
-             "FanDuel-priced props only. **DvP**: 1 = softest matchup. **Form**: recent hit rate of the "
-             "recommended side vs. this line. **Score**: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
-             "**Balanced**: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
-             "15% BettingPros bet rating. **Signals**: how many of six factors lean the same way. "
-             "**Kelly**: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", ""]
+             "FanDuel-priced props only. DvP: 1 = softest matchup. Form: recent hit rate of the "
+             "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
+             "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
+             "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
+             "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
     lines += table(sorted(fd, key=lambda r: abs(r["pct_gap"] or 0), reverse=True), "gap")
     lines += ["## 2. Top 10 by your score", "", "Edge, FanDuel EV and matchup.", ""]
@@ -329,7 +329,7 @@ def score_row(r):
     line, proj, odds = _num(r.get("line")), _num(r.get("bp_proj")), _num(r.get("fd_odds_rec"))
     side = (r.get("rec_side") or "").lower()
     if line is None or proj is None or side not in ("over", "under"):
-        r.update(model_prob=None, model_ev=None, s_edge=None, s_ev=None, s_dvp=None, score=None)
+        r.update(placeholder=False, model_prob=None, model_ev=None, s_edge=None, s_ev=None, s_dvp=None, score=None)
         return r
 
     # 1. Edge: how many standard deviations the projection sits from the line.
@@ -337,6 +337,8 @@ def score_row(r):
     sd = 1.1 * math.sqrt(max(proj, line, 0.5))
     z = abs(proj - line) / sd
     s_edge = min(z / 0.75, 1.0) * 100                    # 0.75 SD or more = full marks
+    # Whole-number projection exactly 0.5 off the line = likely a rounded placeholder: leave it out of the edge weight.
+    placeholder = bp_learn.is_placeholder(proj, line)
 
     # 2. EV at FanDuel's price: win chance (BettingPros' if given, else from the
     #    projection) against the odds. Juiced prices score lower here.
@@ -364,9 +366,12 @@ def score_row(r):
         s_dvp = ((30 - soft) if side == "over" else (soft - 1)) / 29 * 100
 
     mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
-    score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
-    r.update(model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
-             s_edge=round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
+    if placeholder:
+        score = (W_EV * s_ev + W_DVP * s_dvp) / (W_EV + W_DVP) * mult
+    else:
+        score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
+    r.update(placeholder=placeholder, model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
+             s_edge=None if placeholder else round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
     return r
 
 
@@ -450,7 +455,7 @@ def balance_row(r):
     mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
     bal = W_MINE * r["score"] + (W_FORM * s_form + W_MKT * s_mkt + W_BP * s_bp) * mult
     # how many of the independent signals lean the same way (>= 60)
-    agree = sum(x >= 60 for x in (r["s_edge"], r["s_ev"], r["s_dvp"], s_form, s_mkt, s_bp))
+    agree = sum((x or 0) >= 60 for x in (r["s_edge"], r["s_ev"], r["s_dvp"], s_form, s_mkt, s_bp))
     r.update(form_rate=rate, s_form=round(s_form), nv_edge=nv, s_market=round(s_mkt), s_bp=round(s_bp),
              kelly_u=kelly_units(r), signals=f"{agree}/6", balanced=round(bal))
     return r
@@ -483,7 +488,7 @@ def main():
             r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
             for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness"):
                 r[k] = _num(r.get(k))
-        finish(rows, args.date)
+        finish(rows, args.date, snapshot=True)
         return
 
     load_dotenv()
@@ -527,6 +532,9 @@ def main():
         return
 
     props = pull_props(key, args.date, fd, market_ids, args.page_limit)
+    pulled_at = bp_learn.utc_now()
+    events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
+    tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
 
     offer_metrics = {}
     if args.offers and props:
@@ -590,6 +598,8 @@ def main():
             "is_scored": scored.get("is_scored"),            # for back-testing later
             "actual": scored.get("actual") if scored.get("is_scored") else None,
             "event_id": p.get("event_id"),
+            "tip": tips.get(p.get("event_id")),               # game start, UTC
+            "pulled_at": pulled_at,                           # when this run pulled the lines, UTC
         })
 
     finish(rows, args.date)
@@ -620,7 +630,7 @@ def write_dashboard(rows, date):
             "s_market": r.get("s_market"), "nv": n(r.get("nv_edge")), "cons": n(r.get("consensus_line")),
             "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
             "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
-            "tm_out_names": r.get("tm_out_names") or None,
+            "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")),
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -644,16 +654,22 @@ def fmt(v):
 
 def print_record():
     rec = bp_learn.record()
-    if not any(x["w"] + x["l"] + x["p"] for x in rec["strategies"]):
+    if rec["dropped_after_tip"]:
+        print(f"Not counted: {rec['dropped_after_tip']} picks logged after their game started.")
+    lines = rec["strategies"] + [rec["combined"]]
+    if not any(x["w"] + x["l"] + x["p"] for x in lines):
         print("Record: no graded picks yet.")
         return
-    print(f"Record ({rec['slates']} graded slates, flat 1u):")
-    for x in rec["strategies"]:
+    print(f"Record ({rec['slates']} graded slates, pre-tip picks only, flat 1u):")
+    for x in lines:
         hit = f"{x['hit']}%" if x["hit"] is not None else "-"
-        print(f"  {x['label']:22} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  {x['units']:+.2f}u")
+        br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
+        clv = f"CLV {x['clv']:+} pts" if x["clv"] is not None else ""
+        print(f"  {x['label']:28} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  {x['units']:+.2f}u  "
+              f"Kelly {x['kelly_units']:+.2f}u  {br}  {clv}".rstrip())
 
 
-def finish(rows, date):
+def finish(rows, date, snapshot=False):
     """Score, sort, and write the CSV, the top-10 note, and the terminal summary."""
     bp_learn.add_teammate_context(rows, date)
     model = bp_learn.load_model()
@@ -668,6 +684,8 @@ def finish(rows, date):
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["player"])
         w.writeheader()
         w.writerows(rows)
+    if snapshot and rows:
+        bp_learn.save_snapshot(rows, date, list(rows[0].keys()))
 
     note = write_top_by_market(rows, date)
     dash = write_dashboard(rows, date)

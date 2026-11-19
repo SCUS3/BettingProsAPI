@@ -105,6 +105,8 @@ Each row shows line, projection, gap, FanDuel odds, matchup, recent form, score,
 | `is_scored`, `actual` | Final stat once the game is graded, for back-testing |
 | `tm_out`, `tm_out_names`, `tm_dtd` | Teammates ruled out (by name) and teammates day-to-day |
 | `learned_prob`, `learned` | Model's win probability and learned score (0-100) |
+| `placeholder` | Whole-number projection exactly 0.5 off the line |
+| `tip`, `pulled_at` | Game start and this run's pull time (UTC) |
 
 ## Scoring
 
@@ -150,14 +152,17 @@ Claude runs the script, reads the results, and summarizes the three overall top-
 
 ### Record and self-learning
 
-Every run logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`. The next run grades any finished slate against the final stats BettingPros reports, then:
+Every live run stamps its props with the pull time and each game's tip time (from `/events`), saves a snapshot in `history/<date>/`, and logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`. The next run grades finished slates against the final stats BettingPros reports.
 
-- **Record**: W-L-P, hit rate, flat-stake units and ROI, and Kelly-stake units for each strategy, plus results by category. Shown on the dashboard's Record tab and in the terminal.
-- **Learning**: every graded FanDuel prop (about 300 a night, not just the picks) goes into `bp_graded.csv`. A regularized logistic regression learns how much each factor predicts the recommended side hitting: edge, EV, matchup, form, market value, price, side, the player's own injury tag, teammates ruled out or day-to-day, form when teammates are out, and market type. The model starts after 60 graded props.
-- **Learned score**: the model's win probability turned into EV at FanDuel's price, scaled 0-100, and blended with the balanced score by how much history exists (n / (n + 400), capped at 80% model).
-- **Teammates out**: ruled-out players usually have no props, so a teammate counts as out when he had points props in recent saved slates but has none tonight while his team plays, or is tagged OUT. This lets the model learn when a rule-out (more minutes and shots) matters more than recent form.
+- **Per-game cutoff**: a pick counts only if it came from the last run before *that game's* tip. Picks logged after a game started never count, and an earlier run's pick is replaced by the last pre-tip run. Learning data comes from the same pre-tip snapshot for each game.
+- **Scoreboard**: for each strategy, W-L-P, hit rate, flat-stake units and ROI, Kelly-stake units, **Brier score and log loss** of our probability vs. FanDuel's no-vig probability (lower is better), and **closing line value**: points gained between the first pre-tip run that logged the pick and the last run before tip.
+- **Combined record**: an "All picks" row and the by-category table count each prop once, even when it's on several lists, including in Kelly totals.
+- **Learning**: every graded FanDuel prop goes into `bp_graded.csv`, weighted so **each player-game counts once** (a player's PTS, P+A, P+R and PRA in one game share a single sample). An L2-regularized logistic regression learns how much each factor predicts the recommended side hitting: edge, EV, matchup, form, market value, price, side, the player's injury tag, teammates out or day-to-day, form when teammates are out, market type, and the placeholder flag. It starts after 60 player-games.
+- **Validation and cap**: the model is trained on earlier slates and tested on later ones against a Balanced-only model. The learned score blends model and balanced by sample size (n / (n + 400)) and is **capped at 50% model** until the model has lower held-out log loss than Balanced on 100+ test player-games; after that the cap is 80%.
+- **Placeholder projections**: a whole-number projection exactly 0.5 off the line is flagged. Its edge is left out of the score (the score is re-weighted over EV and matchup) and out of the model's edge weight, and the flag is a model feature.
+- **Teammates out**: ruled-out players usually have no props, so a rotation teammate counts as out when he had points props in recent saved slates but has none tonight while his team plays, or is tagged OUT. The API has no minutes data, so "averages 20+ minutes" is approximated by an average points line of 9.5 or higher.
 
-Grading costs about 18 requests per slate (at most 3 per run). Use `--no-grade` to skip it, or `--grade YYYY-MM-DD` to grade one slate.
+Grading costs about 18 requests per slate (at most 3 per run), and each live run adds 1 request for tip times. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
 
 ### Dashboard
 
