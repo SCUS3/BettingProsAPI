@@ -264,14 +264,14 @@ def write_top_by_market(rows, date, n=10):
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
         # mark the column this list is ranked by in the header (no bold markers anywhere: Docs shows them literally)
-        cols = {"gap": "Gap %", "score": "Score", "balanced": "Balanced"}
+        cols = {"gap": "Gap %", "score": "Score", "balanced": "Balanced"}  # ranked column gets a ▼
         t = [head[0].replace(f"| {cols[bold]} |", f"| {cols[bold]} ▼ |"), head[1]]
         for i, r in enumerate(group[:n], 1):
             vals = {"gap": cell(r["pct_gap"]), "score": cell(r["score"]), "balanced": cell(r["balanced"])}
             form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
             kelly = "" if r.get("kelly_u") is None else f"{fmt(r['kelly_u'])}u"
             t.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]),
-                                        cell(r["line"]), cell(r["bp_proj"]), vals["gap"], cell(r["fd_odds_rec"]),
+                                        cell(r["line"]), cell(r["bp_proj"]) + ("*" if r.get("placeholder") else ""), vals["gap"], cell(r["fd_odds_rec"]),
                                         cell(r["dvp_softness"]), form, vals["score"], vals["balanced"],
                                         cell(r.get("signals")), kelly, cell(r["injury"])]) + " |")
         return t + [""]
@@ -282,12 +282,28 @@ def write_top_by_market(rows, date, n=10):
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
              "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", ""]
+    rec = bp_learn.record()
+    lines += ["## Record", ""]
+    played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
+    if played:
+        lines += [f"{rec['slates']} graded slates, pre-tip picks only, flat 1u.", "",
+                  "| Strategy | W-L-P | Hit | Units | Kelly units | Brier ours / mkt | CLV |", "|---|---|---|---|---|---|---|"]
+        for x in played:
+            br = f"{x['brier']} / {x['brier_mkt']}" if x["brier"] is not None else ""
+            clv = f"{x['clv']:+} pts" if x["clv"] is not None else ""
+            lines.append(f"| {x['label']} | {x['w']}-{x['l']}-{x['p']} | {x['hit'] if x['hit'] is not None else ''}% | "
+                         f"{x['units']:+.2f} | {x['kelly_units']:+.2f} | {br} | {clv} |")
+        lines.append("")
+    else:
+        lines += ["No graded picks yet.", ""]
+    lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
+              "real projection unless the price alone is +EV.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
-    lines += table(sorted(fd, key=lambda r: abs(r["pct_gap"] or 0), reverse=True), "gap")
+    lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
     lines += ["## 2. Top 10 by your score", "", "Edge, FanDuel EV and matchup.", ""]
-    lines += table(sorted(fd, key=lambda r: r["score"], reverse=True), "score")
+    lines += table(ranked(fd, lambda r: r["score"]), "score")
     lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
-    lines += table(sorted(fd, key=lambda r: r["balanced"], reverse=True), "balanced")
+    lines += table(ranked(fd, lambda r: r["balanced"]), "balanced")
     lines += ["---", "", "# Each category: top 10 by projection gap and top 10 by your score", ""]
     for tag, name in CATEGORY_ORDER:
         group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
@@ -296,12 +312,49 @@ def write_top_by_market(rows, date, n=10):
             lines += ["_No FanDuel-priced props found._", ""]
             continue
         lines += [f"### {tag}: by projection gap", ""]
-        lines += table(sorted(group, key=lambda r: abs(r["pct_gap"]), reverse=True), "gap")
+        lines += table(ranked(group, lambda r: abs(r["pct_gap"])), "gap")
         lines += [f"### {tag}: by your score", ""]
-        lines += table(sorted(group, key=lambda r: r["score"], reverse=True), "score")
+        lines += table(ranked(group, lambda r: r["score"]), "score")
     with open(out, "w") as f:
         f.write("\n".join(lines))
+    with open(out[:-3] + ".html", "w") as f:
+        f.write(md_to_html(lines, f"NBA Props {date}"))
     return out
+
+
+def md_to_html(lines, title):
+    """Minimal converter for the note's own Markdown (headings, paragraphs, pipe tables, rules) -> HTML.
+    Google Docs imports this with real headings and plain header cells, no stray asterisks."""
+    import html as _h
+    out, table = [f"<html><head><meta charset='utf-8'><title>{_h.escape(title)}</title></head><body>"], []
+
+    def flush():
+        if not table:
+            return
+        rows = [r for r in table if not set(r.replace("|", "").strip()) <= set("-: ")]
+        out.append("<table border='1' cellpadding='3' style='border-collapse:collapse'>")
+        for i, r in enumerate(rows):
+            cells = [c.strip() for c in r.strip().strip("|").split("|")]
+            tag = "th" if i == 0 else "td"
+            out.append("<tr>" + "".join(f"<{tag}>{_h.escape(c)}</{tag}>" for c in cells) + "</tr>")
+        out.append("</table>")
+        table.clear()
+
+    for ln in lines:
+        if ln.startswith("|"):
+            table.append(ln)
+            continue
+        flush()
+        if ln.startswith("#"):
+            lvl = len(ln) - len(ln.lstrip("#"))
+            out.append(f"<h{lvl}>{_h.escape(ln[lvl:].strip())}</h{lvl}>")
+        elif ln.strip() == "---":
+            continue                                     # Docs merges <hr> into the next heading
+        elif ln.strip():
+            out.append(f"<p>{_h.escape(ln.replace('_', ''))}</p>")
+    flush()
+    out.append("</body></html>")
+    return "\n".join(out)
 
 
 # ---------------------------------------------------------------- scoring
@@ -329,7 +382,7 @@ def score_row(r):
     line, proj, odds = _num(r.get("line")), _num(r.get("bp_proj")), _num(r.get("fd_odds_rec"))
     side = (r.get("rec_side") or "").lower()
     if line is None or proj is None or side not in ("over", "under"):
-        r.update(placeholder=False, model_prob=None, model_ev=None, s_edge=None, s_ev=None, s_dvp=None, score=None)
+        r.update(placeholder=False, ph_demoted=False, model_prob=None, model_ev=None, s_edge=None, s_ev=None, s_dvp=None, score=None)
         return r
 
     # 1. Edge: how many standard deviations the projection sits from the line.
@@ -337,21 +390,31 @@ def score_row(r):
     sd = 1.1 * math.sqrt(max(proj, line, 0.5))
     z = abs(proj - line) / sd
     s_edge = min(z / 0.75, 1.0) * 100                    # 0.75 SD or more = full marks
-    # Whole-number projection exactly 0.5 off the line = likely a rounded placeholder: leave it out of the edge weight.
+    # Whole-number projection exactly 0.5 off the line = a rounded placeholder, not a real projection:
+    # it claims zero edge, and its win chance is FanDuel's no-vig probability (so EV is just the price).
     placeholder = bp_learn.is_placeholder(proj, line)
+    if placeholder:
+        s_edge = 0.0
 
     # 2. EV at FanDuel's price: win chance (BettingPros' if given, else from the
-    #    projection) against the odds. Juiced prices score lower here.
-    p = _num(r.get("bp_win_prob"))
-    if p is not None and p > 1:
-        p /= 100
-    if p is None:
-        p = _phi(z)                                      # chance the recommended side hits
+    #    projection; FanDuel's no-vig probability for placeholders) against the odds.
+    if placeholder:
+        p = bp_learn.no_vig(r)
+        if p is None:
+            p = bp_learn.implied(odds) if odds is not None else 0.5
+    else:
+        p = _num(r.get("bp_win_prob"))
+        if p is not None and p > 1:
+            p /= 100
+        if p is None:
+            p = _phi(z)                                  # chance the recommended side hits
     evs = []
     if odds is not None:
         dec = 1 + (odds / 100 if odds > 0 else 100 / -odds)
         evs.append(p * dec - 1)
-    for k in ("fd_market_ev", "bp_ev"):                  # blend in published EVs when present
+    # Blend in published EVs when present. BettingPros' EV comes from its projection, so placeholders skip it;
+    # FanDuel market EV (--offers) is price-only and applies to every prop.
+    for k in (("fd_market_ev",) if placeholder else ("fd_market_ev", "bp_ev")):
         v = _num(r.get(k))
         if v is not None:
             evs.append(v / 100 if abs(v) > 1 else v)
@@ -366,13 +429,18 @@ def score_row(r):
         s_dvp = ((30 - soft) if side == "over" else (soft - 1)) / 29 * 100
 
     mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
-    if placeholder:
-        score = (W_EV * s_ev + W_DVP * s_dvp) / (W_EV + W_DVP) * mult
-    else:
-        score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
-    r.update(placeholder=placeholder, model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
-             s_edge=None if placeholder else round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
+    score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
+    # Placeholders rank below every real projection unless the price alone is +EV (FanDuel market EV > 0, via --offers).
+    mev = _num(r.get("fd_market_ev"))
+    demoted = placeholder and not (mev is not None and mev > 0)
+    r.update(placeholder=placeholder, ph_demoted=demoted, model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
+             s_edge=round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
     return r
+
+
+def ranked(rows, key):
+    """Sort descending by key, with demoted placeholders after every real projection."""
+    return sorted(rows, key=lambda r: (bool(r.get("ph_demoted")) and r.get("ph_demoted") not in ("False", ""), -(key(r) or 0)))
 
 
 # ------------------------------------------------- balancing algorithms
@@ -630,7 +698,7 @@ def write_dashboard(rows, date):
             "s_market": r.get("s_market"), "nv": n(r.get("nv_edge")), "cons": n(r.get("consensus_line")),
             "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
             "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
-            "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")),
+            "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -678,7 +746,7 @@ def finish(rows, date, snapshot=False):
         balance_row(r)
         bp_learn.learned_row(r, model)
     n_logged = bp_learn.log_picks(rows, date)
-    rows.sort(key=lambda r: abs(r["pct_gap"] or 0), reverse=True)
+    rows[:] = ranked(rows, lambda r: abs(r["pct_gap"] or 0))
     out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["player"])

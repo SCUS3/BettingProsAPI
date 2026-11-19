@@ -159,10 +159,14 @@ Every live run stamps its props with the pull time and each game's tip time (fro
 - **Combined record**: an "All picks" row and the by-category table count each prop once, even when it's on several lists, including in Kelly totals.
 - **Learning**: every graded FanDuel prop goes into `bp_graded.csv`, weighted so **each player-game counts once** (a player's PTS, P+A, P+R and PRA in one game share a single sample). An L2-regularized logistic regression learns how much each factor predicts the recommended side hitting: edge, EV, matchup, form, market value, price, side, the player's injury tag, teammates out or day-to-day, form when teammates are out, market type, and the placeholder flag. It starts after 60 player-games.
 - **Validation and cap**: the model is trained on earlier slates and tested on later ones against a Balanced-only model. The learned score blends model and balanced by sample size (n / (n + 400)) and is **capped at 50% model** until the model has lower held-out log loss than Balanced on 100+ test player-games; after that the cap is 80%.
-- **Placeholder projections**: a whole-number projection exactly 0.5 off the line is flagged. Its edge is left out of the score (the score is re-weighted over EV and matchup) and out of the model's edge weight, and the flag is a model feature.
+- **Placeholder projections**: a whole-number projection exactly 0.5 off the line is flagged as a placeholder, not a real projection. It claims zero edge, its EV uses FanDuel's no-vig probability (so EV reflects only the price), and it ranks below every prop with a real projection in all lists and picks unless the price alone is +EV (FanDuel market EV > 0, available with `--offers`). It is left out of the model's edge weight, and the flag is a model feature.
 - **Teammates out**: ruled-out players usually have no props, so a rotation teammate counts as out when he had points props in recent saved slates but has none tonight while his team plays, or is tagged OUT. The API has no minutes data, so "averages 20+ minutes" is approximated by an average points line of 9.5 or higher.
 
 Grading costs about 18 requests per slate (at most 3 per run), and each live run adds 1 request for tip times. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
+
+### Daily Google Doc
+
+Each run also writes `bp_top10_<date>.html`, an HTML copy of the note with a record summary at the top. `/props` uploads it to Google Drive as `NBA Props <date>` in the folder named in git-ignored `.drive_folder_id`, so a claude.ai Project can read each day's data. HTML gives Google Docs real headings and plain-text table headers.
 
 ### Dashboard
 

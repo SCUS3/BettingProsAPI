@@ -308,9 +308,11 @@ def log_picks(rows, date):
         "bal": lambda r: _num(r.get("balanced")) or 0,
         "learned": lambda r: _num(r.get("learned")) or 0,
     }
+    demoted = lambda r: _truthy(r.get("ph_demoted"))
     new = []
     for strat, _ in STRATEGIES:
-        for i, r in enumerate(sorted(pool, key=sorters[strat], reverse=True)[:PICKS_PER_STRATEGY], 1):
+        ordered = sorted(pool, key=lambda r: (demoted(r), -sorters[strat](r)))
+        for i, r in enumerate(ordered[:PICKS_PER_STRATEGY], 1):
             our = _num(r.get("learned_prob")) if strat == "learned" and r.get("learned_prob") not in (None, "") else _num(r.get("model_prob"))
             nv = no_vig(r)
             row = {"date": date, "pulled_at": pulled, "tip": r.get("tip"), "strategy": strat, "rank": i,

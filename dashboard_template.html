@@ -254,7 +254,7 @@ footer b { color: var(--ink); font-weight: 600; }
 
   <footer>
     <div><b>Gap</b>: projection minus line, as a % of the line. <b>Score</b>: 40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup. <b>Balanced</b>: 40% score + 25% recent form + 20% market value + 15% BettingPros rating. Both scores are cut for DTD (×0.85). <b>Learned</b>: the model's own score from graded results, blended with balanced until it has enough history.</div>
-    <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line); its edge is left out of the score. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Kelly</b>: quarter-Kelly stake, 1u = 1% of bankroll; 0u means no edge at this price. Tap a row for its score breakdown.</div>
+    <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line). It claims no edge, its EV uses FanDuel's no-vig price, and it ranks below every real projection unless the price alone is +EV. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Kelly</b>: quarter-Kelly stake, 1u = 1% of bankroll; 0u means no edge at this price. Tap a row for its score breakdown.</div>
     <div>FanDuel-priced props only. Projections, not guarantees.</div>
   </footer>
 </div>
@@ -288,11 +288,13 @@ footer b { color: var(--ink); font-weight: 600; }
   function tone(v) { return v >= 70 ? "t-good" : v >= 55 ? "t-mid" : "t-low"; }
   function sideTxt(r) { return (r.side === "over" ? "O " : r.side === "under" ? "U " : "") + num(r.line); }
   function key(r) { return r.player + "|" + r.market + "|" + r.side; }
+  // Placeholder projections without a +EV price rank below every real projection.
+  function tier(a, b) { return (a.demoted ? 1 : 0) - (b.demoted ? 1 : 0); }
   var SORT = {
-    gap: function (a, b) { return Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
-    score: function (a, b) { return (b.score || 0) - (a.score || 0); },
-    bal: function (a, b) { return (b.bal || 0) - (a.bal || 0); },
-    learned: function (a, b) { return (b.learned || 0) - (a.learned || 0); }
+    gap: function (a, b) { return tier(a, b) || Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
+    score: function (a, b) { return tier(a, b) || (b.score || 0) - (a.score || 0); },
+    bal: function (a, b) { return tier(a, b) || (b.bal || 0) - (a.bal || 0); },
+    learned: function (a, b) { return tier(a, b) || (b.learned || 0) - (a.learned || 0); }
   };
 
   function pool(cat) {
@@ -411,7 +413,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.nv != null) f.push("Model vs. no-vig <b>" + (r.nv > 0 ? "+" : "") + Math.round(r.nv * 1000) / 10 + " pts</b>");
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
-    if (r.ph) f.push("<b>Placeholder projection</b> (edge left out of the score)");
+    if (r.ph) f.push("<b>Placeholder projection</b>: no edge claimed, EV at FanDuel's no-vig price" + (r.demoted ? ", ranked below real projections" : ", +EV price"));
     f.push("Signals <b>" + esc(r.sig || "") + "</b>");
     return '<div class="label">Score parts (0–100)</div><div class="parts">' +
       part("Edge", r.s_edge, "40%") + part("EV", r.s_ev, "35%") + part("Matchup", r.s_dvp, "25%") +
