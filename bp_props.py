@@ -252,7 +252,7 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
 
 
 def write_top_by_market(rows, date, n=10):
-    """Write the Markdown note: three overall top-10 lists, then the top 10 by gap in each category."""
+    """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     out = f"bp_top10_{date}.md"
     def cell(v):
         return "" if v is None else fmt(v)
@@ -285,12 +285,17 @@ def write_top_by_market(rows, date, n=10):
     lines += table(sorted(fd, key=lambda r: r["score"], reverse=True), "score")
     lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
     lines += table(sorted(fd, key=lambda r: r["balanced"], reverse=True), "balanced")
-    lines += ["---", "", "# Top 10 by projection gap in each category", ""]
+    lines += ["---", "", "# Each category: top 10 by projection gap and top 10 by your score", ""]
     for tag, name in CATEGORY_ORDER:
-        group = sorted([r for r in fd if r["market"] == tag and r["pct_gap"] is not None],
-                       key=lambda r: abs(r["pct_gap"]), reverse=True)
+        group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
         lines += [f"## {name} ({tag})", ""]
-        lines += table(group, "gap") if group else ["_No FanDuel-priced props found._", ""]
+        if not group:
+            lines += ["_No FanDuel-priced props found._", ""]
+            continue
+        lines += [f"### {tag}: by projection gap", ""]
+        lines += table(sorted(group, key=lambda r: abs(r["pct_gap"]), reverse=True), "gap")
+        lines += [f"### {tag}: by your score", ""]
+        lines += table(sorted(group, key=lambda r: r["score"], reverse=True), "score")
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
@@ -592,7 +597,7 @@ def finish(rows, date):
     note = write_top_by_market(rows, date)
 
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
-    print(f"Top 10 lists (gap / score / balanced / per category) -> {note}")
+    print(f"Top 10 lists (overall + gap and score per category) -> {note}")
     print("Top 15 by gap:")
     print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5} {'bal':>4}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:

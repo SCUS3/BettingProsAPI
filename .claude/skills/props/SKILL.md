@@ -32,7 +32,7 @@ Read `bp_top10_<date>.md`, which the script writes. It has:
 1. **Top 10 by projection gap**: |projection - line| as a % of the line, nothing else.
 2. **Top 10 by your score**: the user's rules, `score` = 40% edge (gap in SDs) + 35% EV at FanDuel's price + 25% matchup, cut for injury.
 3. **Top 10 by balanced score**: `balanced` = 40% score + 25% recent form + 20% market value (no-vig price, FanDuel line vs. consensus) + 15% BettingPros bet rating.
-4. The top 10 by gap in each of the seven categories (PTS, REB, AST, 3PM, P+A, P+R, PRA).
+4. For each of the seven categories (PTS, REB, AST, 3PM, P+A, P+R, PRA): a top 10 by projection gap and a top 10 by your score.
 
 Every row also shows Form (recent hit rate vs. the line), Signals (how many of six factors lean the same way) and Kelly (quarter-Kelly stake, 1u = 1% of bankroll). For anything else (a player or team filter, extra columns such as `s_edge`, `s_ev`, `s_dvp`, `s_form`, `s_market`, `nv_edge`, `streak`), read `bp_props_<date>.csv` with a short Python snippet; don't print the whole file.
 
@@ -52,7 +52,7 @@ Show the three overall top-10 lists as compact tables:
 - **By your score:** player | market | side | line | FD | DvP | score | balanced | Kelly
 - **By balanced:** player | market | side | line | FD | form | score | balanced | signals | Kelly
 
-Then list the top 3 in each of the seven categories on one line each (player side line, gap %, score/balanced), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
+Then, for each of the seven categories, give the top 3 by gap and the top 3 by your score on one line each (player side line, gap %, score), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
 
 After that, give 2-4 short bullets that point out:
 - plays near the top of all three lists, which are the strongest,
