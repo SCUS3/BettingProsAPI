@@ -9,3 +9,7 @@ bp_top10_*.md
 .drive_folder_id
 bp_dashboard.html
 .dashboard_url
+bp_ledger.csv
+bp_graded.csv
+bp_model.json
+__pycache__/

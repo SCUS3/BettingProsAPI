@@ -23,6 +23,7 @@ Markets pulled by default (full game only):
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
 - **Fair Odds / Market EV**: Optional `--offers` mode adds FanDuel fair probability and market expected value per prop.
 - **Request Budgeting**: Caches book and market IDs in `bp_cache.json` and backs off on rate limits, so runs fit inside the daily API allowance.
+- **Self-Learning Record**: Logs the top picks of each strategy every slate, grades them automatically after the games, tracks the record and units, and re-learns how much each factor (including teammates being ruled out) actually predicts a win.
 - **Interactive Dashboard**: One page with every list, filters, score breakdowns, and a copy-to-Claude button.
 - **No Dependencies**: Uses only the Python standard library.
 
@@ -65,6 +66,8 @@ python3 bp_props.py --page-limit 50    # Elite keys
 python3 bp_props.py --location NJ      # sportsbook location (default NY)
 python3 bp_props.py --refresh          # re-fetch cached book and market IDs
 python3 bp_props.py --from-csv         # re-score today's saved CSV, no API requests
+python3 bp_props.py --grade 2026-11-18 # grade a finished slate and re-learn
+python3 bp_props.py --no-grade         # skip automatic grading this run
 ```
 
 ## Output
@@ -100,6 +103,8 @@ Each row shows line, projection, gap, FanDuel odds, matchup, recent form, score,
 | `s_form`, `s_market`, `s_bp` | Balancing parts, each 0-100 |
 | `balanced`, `signals`, `kelly_u` | Balanced score, factors in agreement (of 6), quarter-Kelly units |
 | `is_scored`, `actual` | Final stat once the game is graded, for back-testing |
+| `tm_out`, `tm_out_names`, `tm_dtd` | Teammates ruled out (by name) and teammates day-to-day |
+| `learned_prob`, `learned` | Model's win probability and learned score (0-100) |
 
 ## Scoring
 
@@ -143,10 +148,22 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 
 Claude runs the script, reads the results, and summarizes the three overall top-10 lists and the per-category lists.
 
+### Record and self-learning
+
+Every run logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`. The next run grades any finished slate against the final stats BettingPros reports, then:
+
+- **Record**: W-L-P, hit rate, flat-stake units and ROI, and Kelly-stake units for each strategy, plus results by category. Shown on the dashboard's Record tab and in the terminal.
+- **Learning**: every graded FanDuel prop (about 300 a night, not just the picks) goes into `bp_graded.csv`. A regularized logistic regression learns how much each factor predicts the recommended side hitting: edge, EV, matchup, form, market value, price, side, the player's own injury tag, teammates ruled out or day-to-day, form when teammates are out, and market type. The model starts after 60 graded props.
+- **Learned score**: the model's win probability turned into EV at FanDuel's price, scaled 0-100, and blended with the balanced score by how much history exists (n / (n + 400), capped at 80% model).
+- **Teammates out**: ruled-out players usually have no props, so a teammate counts as out when he had points props in recent saved slates but has none tonight while his team plays, or is tagged OUT. This lets the model learn when a rule-out (more minutes and shots) matters more than recent form.
+
+Grading costs about 18 requests per slate (at most 3 per run). Use `--no-grade` to skip it, or `--grade YYYY-MM-DD` to grade one slate.
+
 ### Dashboard
 
 Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single interactive page built from `dashboard_template.html`. It has:
 
+- a **Record** tab with each strategy's record, results by category, recent graded picks, and what the model has learned
 - a "strongest tonight" strip of props in the top 20 on gap, score, and balanced
 - a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA) with ranking by Gap, Score, or Balanced
 - tap-to-expand score breakdowns

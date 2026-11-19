@@ -36,6 +36,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
+
 
 def eastern_today():
     """Today's date in Eastern time; falls back to the computer's own date (Windows without tzdata)."""
@@ -463,6 +466,8 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="re-fetch cached book and market IDs")
     ap.add_argument("--page-limit", type=int, default=20, help="20 for Free/Plus, 50 for Elite")
     ap.add_argument("--offers", action="store_true", help="also pull FanDuel fair odds / market EV")
+    ap.add_argument("--no-grade", action="store_true", help="skip grading finished slates this run")
+    ap.add_argument("--grade", metavar="DATE", help="only grade the saved slate for DATE, re-learn, and exit")
     ap.add_argument("--from-csv", action="store_true",
                     help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
@@ -508,6 +513,18 @@ def main():
             sys.exit("No markets matched. Run --list-markets.")
         market_ids = ":".join(str(m) for m in sorted(picked))
         print("Markets: " + ", ".join(f"{t} ({m})" for m, t in sorted(picked.items(), key=lambda kv: kv[1])))
+
+    # Grade finished slates (yesterday's picks etc.), then re-learn from every graded prop.
+    to_grade = [args.grade] if args.grade else ([] if args.no_grade else bp_learn.pending_dates(args.date)[-3:])
+    for d in to_grade:
+        n_props, n_picks, pend = bp_learn.grade_date(d, pull_props(key, d, fd, market_ids, args.page_limit), labels)
+        print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))
+    if to_grade or not os.path.exists(bp_learn.MODEL):
+        m = bp_learn.fit_model()
+        print(f"Model: {m['n']} graded props" + ("" if m.get("weights") else f" (learning starts at {bp_learn.MIN_TRAIN})"))
+    if args.grade:
+        print_record()
+        return
 
     props = pull_props(key, args.date, fd, market_ids, args.page_limit)
 
@@ -602,6 +619,8 @@ def write_dashboard(rows, date):
             "s_edge": r.get("s_edge"), "s_ev": r.get("s_ev"), "s_dvp": r.get("s_dvp"), "s_form": r.get("s_form"),
             "s_market": r.get("s_market"), "nv": n(r.get("nv_edge")), "cons": n(r.get("consensus_line")),
             "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
+            "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
+            "tm_out_names": r.get("tm_out_names") or None,
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -610,7 +629,8 @@ def write_dashboard(rows, date):
         updated = now.strftime("%b %-d, %-I:%M %p ET")
     except Exception:
         updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
-    payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data}
+    payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
+               "record": bp_learn.record()}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
         f.write(tpl.replace("__BP_DATA__", blob))
@@ -622,11 +642,26 @@ def fmt(v):
     return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
 
 
+def print_record():
+    rec = bp_learn.record()
+    if not any(x["w"] + x["l"] + x["p"] for x in rec["strategies"]):
+        print("Record: no graded picks yet.")
+        return
+    print(f"Record ({rec['slates']} graded slates, flat 1u):")
+    for x in rec["strategies"]:
+        hit = f"{x['hit']}%" if x["hit"] is not None else "-"
+        print(f"  {x['label']:22} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  {x['units']:+.2f}u")
+
+
 def finish(rows, date):
     """Score, sort, and write the CSV, the top-10 note, and the terminal summary."""
+    bp_learn.add_teammate_context(rows, date)
+    model = bp_learn.load_model()
     for r in rows:
         score_row(r)
         balance_row(r)
+        bp_learn.learned_row(r, model)
+    n_logged = bp_learn.log_picks(rows, date)
     rows.sort(key=lambda r: abs(r["pct_gap"] or 0), reverse=True)
     out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:
@@ -641,6 +676,8 @@ def finish(rows, date):
     print(f"Top 10 lists (overall + gap and score per category) -> {note}")
     if dash:
         print(f"Dashboard -> {dash}")
+    print(f"Logged {n_logged} picks for {date} (top {bp_learn.PICKS_PER_STRATEGY} per strategy); graded next run.")
+    print_record()
     print("Top 15 by gap:")
     print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5} {'bal':>4}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:

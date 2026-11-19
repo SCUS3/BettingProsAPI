@@ -153,6 +153,23 @@ tr.detail td { background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 .facts { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 6px 16px; flex-wrap: wrap; }
 .facts b { color: var(--ink); font-weight: 600; }
 
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button {
+  font-family: var(--display); font-size: 18px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted); padding: 6px 12px 8px; cursor: pointer;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.view { display: flex; flex-direction: column; gap: 18px; }
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.res { display: inline-block; width: 22px; text-align: center; font-weight: 700; border-radius: 4px; font-size: 12px; padding: 1px 0; }
+.res.W { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.res.L { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.res.P, .res.pend { color: var(--low); background: color-mix(in srgb, var(--low) 12%, transparent); }
+.note { padding: 12px 14px; font-size: 13px; color: var(--muted); }
+.note b { color: var(--ink); }
+.wbar { display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; }
+.wbar.pos { background: var(--good); } .wbar.neg { background: var(--bad); }
 .empty { padding: 28px 14px; color: var(--muted); text-align: center; }
 footer { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; max-width: 75ch; }
 footer b { color: var(--ink); font-weight: 600; }
@@ -187,6 +204,12 @@ footer b { color: var(--ink); font-weight: 600; }
     <div class="stats" id="stats"></div>
   </header>
 
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-tonight" aria-selected="true" aria-controls="view-tonight">Tonight</button>
+    <button type="button" role="tab" id="tab-record" aria-selected="false" aria-controls="view-record">Record</button>
+  </div>
+
+  <div class="view" id="view-tonight" role="tabpanel" aria-labelledby="tab-tonight">
   <section class="best" aria-labelledby="best-label">
     <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
     <div class="best-list" id="best"></div>
@@ -225,8 +248,12 @@ footer b { color: var(--ink); font-weight: 600; }
     </div>
   </section>
 
+  </div>
+
+  <div class="view" id="view-record" role="tabpanel" aria-labelledby="tab-record" hidden></div>
+
   <footer>
-    <div><b>Gap</b>: projection minus line, as a % of the line. <b>Score</b>: 40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup. <b>Balanced</b>: 40% score + 25% recent form + 20% market value + 15% BettingPros rating. Both scores are cut for DTD (×0.85).</div>
+    <div><b>Gap</b>: projection minus line, as a % of the line. <b>Score</b>: 40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup. <b>Balanced</b>: 40% score + 25% recent form + 20% market value + 15% BettingPros rating. Both scores are cut for DTD (×0.85). <b>Learned</b>: the model's own score from graded results, blended with balanced until it has enough history.</div>
     <div><b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Kelly</b>: quarter-Kelly stake, 1u = 1% of bankroll; 0u means no edge at this price. Tap a row for its score breakdown.</div>
     <div>FanDuel-priced props only. Projections, not guarantees.</div>
   </footer>
@@ -241,8 +268,8 @@ footer b { color: var(--ink); font-weight: 600; }
   var ROWS = DATA.rows;
   var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"]];
   var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists" };
-  var RANKS = [["gap", "Gap"], ["score", "Score"], ["bal", "Balanced"]];
-  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by your score: edge, FanDuel EV and matchup.", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating." };
+  var RANKS = [["gap", "Gap"], ["score", "Score"], ["bal", "Balanced"], ["learned", "Learned"]];
+  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by your score: edge, FanDuel EV and matchup.", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
   var LIMITS = [[10, "Top 10"], [25, "Top 25"]];
 
   var state = { cat: "ALL", rank: "bal", limit: 10, hideDtd: false, open: null };
@@ -264,7 +291,8 @@ footer b { color: var(--ink); font-weight: 600; }
   var SORT = {
     gap: function (a, b) { return Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
     score: function (a, b) { return (b.score || 0) - (a.score || 0); },
-    bal: function (a, b) { return (b.bal || 0) - (a.bal || 0); }
+    bal: function (a, b) { return (b.bal || 0) - (a.bal || 0); },
+    learned: function (a, b) { return (b.learned || 0) - (a.learned || 0); }
   };
 
   function pool(cat) {
@@ -332,7 +360,7 @@ footer b { color: var(--ink); font-weight: 600; }
   var COLS = [
     ["rk", "#", "l"], ["player", "Player", "l"], ["prop", "Prop", "l"], ["proj", "Proj", "hide-sm"],
     ["gap", "Gap", ""], ["odds", "FD", ""], ["dvp", "DvP", "hide-sm"], ["form", "Form", "hide-sm"],
-    ["score", "Score", ""], ["bal", "Bal", ""], ["kelly", "Kelly", "hide-sm"]
+    ["score", "Score", ""], ["bal", "Bal", ""], ["learned", "Lrn", "hide-sm"], ["kelly", "Kelly", "hide-sm"]
   ];
   function render() {
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
@@ -361,6 +389,7 @@ footer b { color: var(--ink); font-weight: 600; }
         form: r.form == null ? '<span class="dim">–</span>' : Math.round(r.form * 100) + "%",
         score: '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
+        learned: r.learned == null ? "" : '<span class="pill ' + tone(r.learned) + '">' + r.learned + "</span>",
         kelly: r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>'
       };
       var tr = '<tr class="row" tabindex="0" aria-expanded="' + open + '" data-k="' + esc(k) + '">' + COLS.map(function (c) {
@@ -380,6 +409,8 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.season) f.push("Season <b>" + esc(r.season) + "</b>");
     if (r.cons != null) f.push("Consensus line <b>" + num(r.cons) + "</b>");
     if (r.nv != null) f.push("Model vs. no-vig <b>" + (r.nv > 0 ? "+" : "") + Math.round(r.nv * 1000) / 10 + " pts</b>");
+    if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
+    if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
     f.push("Signals <b>" + esc(r.sig || "") + "</b>");
     return '<div class="label">Score parts (0–100)</div><div class="parts">' +
       part("Edge", r.s_edge, "40%") + part("EV", r.s_ev, "35%") + part("Matchup", r.s_dvp, "25%") +
@@ -428,6 +459,89 @@ footer b { color: var(--ink); font-weight: 600; }
       navigator.clipboard.writeText(text).then(function () { toast("Copied. Paste it into Claude."); }, function () { fallbackCopy(text); });
     } else { fallbackCopy(text); }
   });
+
+  // Record
+  var REC = DATA.record || { strategies: [], by_cat: [], recent: [], pending: [], insights: [], weights: [] };
+  function units(v) { return v == null ? "" : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + v.toFixed(2) + "u</span>"; }
+  function pct(v) { return v == null ? '<span class="dim">–</span>' : v + "%"; }
+  function board(title, note, head, body) {
+    return '<section class="board"><div class="board-head"><h2>' + title + "</h2>" + (note ? "<p>" + note + "</p>" : "") +
+      '</div><div class="scroll"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div></section>";
+  }
+  function th(cols) { return cols.map(function (c) { return '<th class="' + (c[1] || "") + '" scope="col">' + c[0] + "</th>"; }).join(""); }
+  function pickRow(r) {
+    var res = r.result ? '<span class="res ' + r.result + '">' + r.result + "</span>" : '<span class="res pend">·</span>';
+    var side = (r.side === "over" ? "O " : "U ") + num(Number(r.line));
+    return "<tr><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" +
+      (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
+      "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
+      "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
+  }
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned" };
+  function renderRecord() {
+    var el = document.getElementById("view-record");
+    var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });
+    var html = "";
+    var sHead = th([["Strategy", "l"], ["W-L-P"], ["Hit"], ["Units"], ["ROI"], ["Kelly units", "hide-sm"], ["Kelly ROI", "hide-sm"]]);
+    var sBody = REC.strategies.map(function (x) {
+      return '<tr><td class="l"><span class="player">' + esc(x.label) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p + "</td><td>" + pct(x.hit) +
+        "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm">' + units(x.kelly_units) + '</td><td class="hide-sm">' + pct(x.kelly_roi) + "</td></tr>";
+    }).join("");
+    html += board("Record by strategy", any ? REC.slates + " graded slate" + (REC.slates === 1 ? "" : "s") + ". Flat 1u per pick; Kelly uses each pick's suggested stake." :
+      "No graded picks yet. Tonight's picks are logged and get graded on the next /props run after the games finish.", sHead, sBody);
+
+    var left = "", right = "";
+    if (REC.by_cat.length) {
+      left += board("By category", "All strategies combined.", th([["Category", "l"], ["W-L"], ["Units"]]),
+        REC.by_cat.map(function (c) { return '<tr><td class="l">' + esc(c.market) + "</td><td>" + c.w + "-" + c.l + "</td><td>" + units(c.units) + "</td></tr>"; }).join(""));
+    }
+    var learnBody;
+    if (REC.weights.length) {
+      var mx = Math.max.apply(null, REC.weights.map(function (w) { return Math.abs(w.coef); })) || 1;
+      learnBody = REC.weights.map(function (w) {
+        var wd = Math.round(60 * Math.abs(w.coef) / mx);
+        return '<tr><td class="l">' + esc(w.name) + '</td><td class="l"><span class="wbar ' + (w.coef >= 0 ? "pos" : "neg") + '" style="width:' + wd + 'px"></span></td><td>' +
+          (w.coef >= 0 ? "helps" : "hurts") + "</td></tr>";
+      }).join("");
+      right += board("What the model learned", "From " + REC.model_n + " graded props. The learned score currently counts " + REC.trust + "% model, the rest balanced.",
+        th([["Factor", "l"], ["Effect", "l"], [""]]), learnBody);
+    } else {
+      right += '<section class="board"><div class="board-head"><h2>What the model learned</h2></div><div class="note">' +
+        "The model starts learning once it has <b>" + REC.min_train + " graded props</b> (" + REC.model_n + " so far, about one slate). " +
+        "It checks every factor against real results, including <b>teammates ruled out</b>, which can open minutes that recent form misses. Until then, Learned equals Balanced.</div></section>";
+    }
+    if (REC.insights.length) {
+      right += board("Hit rate by situation", "Recommended side, all graded FanDuel props.", th([["Situation", "l"], ["Hit"], ["Props"]]),
+        REC.insights.map(function (i) { return '<tr><td class="l">' + esc(i.label) + "</td><td>" + i.hit + "%</td><td>" + i.n + "</td></tr>"; }).join(""));
+    }
+    var pHead = th([["", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["Final"], ["Units"]]);
+    var groups = {};
+    REC.recent.concat(REC.pending).forEach(function (r) {
+      var k = r.date + "|" + r.strategy; (groups[k] = groups[k] || []).push(r);
+    });
+    var keys = Object.keys(groups).sort(function (a, b) { return a < b ? 1 : -1; });
+    var dates = []; keys.forEach(function (k) { var d = k.split("|")[0]; if (dates.indexOf(d) < 0) dates.push(d); });
+    dates.slice(0, 3).forEach(function (d) {
+      ["bal", "learned", "score", "gap"].forEach(function (st) {
+        var g = groups[d + "|" + st]; if (!g) return;
+        g.sort(function (a, b) { return a.rank - b.rank; });
+        left += board(d + " · " + STRAT_LABEL[st], null, pHead, g.map(pickRow).join(""));
+      });
+    });
+    html += '<div class="rec-grid"><div class="view">' + left + '</div><div class="view">' + right + "</div></div>";
+    el.innerHTML = html;
+  }
+  var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
+  function showTab(which) {
+    var rec = which === "record";
+    tabT.setAttribute("aria-selected", String(!rec)); tabR.setAttribute("aria-selected", String(rec));
+    document.getElementById("view-tonight").hidden = rec; document.getElementById("view-record").hidden = !rec;
+    try { localStorage.setItem("bp-tab", which); } catch (e) {}
+  }
+  tabT.addEventListener("click", function () { showTab("tonight"); });
+  tabR.addEventListener("click", function () { showTab("record"); });
+  renderRecord();
+  try { if (localStorage.getItem("bp-tab") === "record") showTab("record"); } catch (e) {}
 
   render();
 })();

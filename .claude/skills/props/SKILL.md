@@ -18,6 +18,8 @@ python3 bp_props.py [--date YYYY-MM-DD] [--offers]
 
 - Add `--date` only if the user gave a date (or "tomorrow", which you convert to a date in Eastern time).
 - Add `--offers` only if the user said "offers", "EV" or "fair odds". It costs extra requests (one per game).
+- Run it before tip-off when possible: each run logs tonight's top 5 picks per strategy (balanced, your score, gap, learned) to `bp_ledger.csv`, and only the last run before the games counts.
+- The script automatically grades earlier slates first (about 18 requests per slate, at most 3 slates per run) and re-learns from the results. To skip that, add `--no-grade`. To grade a single slate, use `--grade YYYY-MM-DD`.
 - The API key loads by itself from `.env`. Never print, cat or echo `.env` or the key.
 - If a CSV for that date already exists and is less than 30 minutes old, ask whether to reuse it instead of spending requests again (the daily limit is 100 on Free/Plus). To reuse it, run `python3 bp_props.py --from-csv --date YYYY-MM-DD`, which re-scores and rewrites the note with 0 requests.
 
@@ -55,8 +57,11 @@ Show the three overall top-10 lists as compact tables:
 
 Then, for each of the seven categories, give the top 3 by gap and the top 3 by your score on one line each (player side line, gap %, score), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
 
+If the script printed "Graded <date>", start the report with a **Results** line: last slate's record for each strategy (W-L, units) and the running record by strategy from the printed Record block. Mention any situation in the model's insights that stands out (for example, form when a teammate is ruled out) once it has a real sample.
+
 After that, give 2-4 short bullets that point out:
 - plays near the top of all three lists, which are the strongest,
+- props where a teammate is ruled out (`tm_out_names` in the CSV), since a bigger minutes load can beat weak recent form,
 - big gaps or high scores that the balancing signals disagree with (poor form, bad market value, juiced odds, injury), and why,
 - the request count the script printed, so the user knows how much of today's allowance is left.
 
