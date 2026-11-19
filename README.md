@@ -23,6 +23,7 @@ Markets pulled by default (full game only):
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
 - **Fair Odds / Market EV**: Optional `--offers` mode adds FanDuel fair probability and market expected value per prop.
 - **Request Budgeting**: Caches book and market IDs in `bp_cache.json` and backs off on rate limits, so runs fit inside the daily API allowance.
+- **Interactive Dashboard**: One page with every list, filters, score breakdowns, and a copy-to-Claude button.
 - **No Dependencies**: Uses only the Python standard library.
 
 ## Technologies Used
@@ -142,9 +143,16 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 
 Claude runs the script, reads the results, and summarizes the three overall top-10 lists and the per-category lists.
 
-### Daily feed to a claude.ai Project (optional)
+### Dashboard
 
-If the Google Drive connector is enabled in Claude, `/props` also uploads each day's note as a Google Doc named `NBA Props <date>`. To turn it on, create a Drive folder and put its ID in a git-ignored `.drive_folder_id` file in the project folder. In a claude.ai Project, add an instruction to open today's `NBA Props <date>` doc from that folder at the start of each chat. It is blocked from reading `.env`, so the API key never appears in the chat.
+Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single interactive page built from `dashboard_template.html`. It has:
+
+- a "strongest tonight" strip of props in the top 20 on gap, score, and balanced
+- a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA) with ranking by Gap, Score, or Balanced
+- tap-to-expand score breakdowns
+- a **Copy for Claude** button that copies the full slate as compact text for any Claude chat
+
+`/props` publishes it as a private claude.ai artifact and updates the same link every day (stored in git-ignored `.dashboard_url`).
 
 ## Notes
 

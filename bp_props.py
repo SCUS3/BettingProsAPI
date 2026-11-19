@@ -577,6 +577,46 @@ def main():
 
     finish(rows, args.date)
 
+DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard_template.html")
+DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
+
+
+def write_dashboard(rows, date):
+    """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
+    try:
+        with open(DASH_TEMPLATE) as f:
+            tpl = f.read()
+    except OSError:
+        return None
+    def n(v):
+        return _num(v)
+    data = []
+    for r in rows:
+        if not r["price_is_fanduel"] or r.get("score") is None:
+            continue
+        data.append({
+            "player": r["player"], "team": r["team"], "inj": r["injury"] or None, "market": r["market"],
+            "side": r["rec_side"], "line": n(r["line"]), "proj": n(r["bp_proj"]), "gap": n(r["pct_gap"]),
+            "odds": n(r["fd_odds_rec"]), "dvp": n(r["dvp_softness"]), "form": n(r.get("form_rate")),
+            "score": r["score"], "bal": r.get("balanced"), "kelly": n(r.get("kelly_u")), "sig": r.get("signals"),
+            "s_edge": r.get("s_edge"), "s_ev": r.get("s_ev"), "s_dvp": r.get("s_dvp"), "s_form": r.get("s_form"),
+            "s_market": r.get("s_market"), "nv": n(r.get("nv_edge")), "cons": n(r.get("consensus_line")),
+            "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
+        })
+    d = dt.date.fromisoformat(date)
+    try:
+        from zoneinfo import ZoneInfo
+        now = dt.datetime.now(ZoneInfo("America/New_York"))
+        updated = now.strftime("%b %-d, %-I:%M %p ET")
+    except Exception:
+        updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
+    payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data}
+    blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
+    with open(DASH_OUT, "w") as f:
+        f.write(tpl.replace("__BP_DATA__", blob))
+    return DASH_OUT
+
+
 def fmt(v):
     """Print floats without trailing .0 (2.0 -> 2) so the tables stay tidy."""
     return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
@@ -595,9 +635,12 @@ def finish(rows, date):
         w.writerows(rows)
 
     note = write_top_by_market(rows, date)
+    dash = write_dashboard(rows, date)
 
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
     print(f"Top 10 lists (overall + gap and score per category) -> {note}")
+    if dash:
+        print(f"Dashboard -> {dash}")
     print("Top 15 by gap:")
     print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5} {'bal':>4}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:

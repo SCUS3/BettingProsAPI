@@ -1,0 +1,434 @@
+<title>NBA Prop Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: a sportsbook board. Slate summary on top, one control bar, then one ranked table at a time. */
+:root {
+  --bg: #f2f4f6;
+  --surface: #ffffff;
+  --ink: #15212c;
+  --muted: #5b6977;
+  --line: #dce2e8;
+  --accent: #1d5c86;
+  --accent-ink: #ffffff;
+  --good: #1b8456;
+  --mid: #a8701a;
+  --low: #7f8b97;
+  --bad: #be3f2b;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d141b;
+    --surface: #141e28;
+    --ink: #e4ebf1;
+    --muted: #92a0ad;
+    --line: #243241;
+    --accent: #6cb0de;
+    --accent-ink: #0d141b;
+    --good: #4bc088;
+    --mid: #dfa23b;
+    --low: #6f7d8a;
+    --bad: #ef6a52;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d141b;
+  --surface: #141e28;
+  --ink: #e4ebf1;
+  --muted: #92a0ad;
+  --line: #243241;
+  --accent: #6cb0de;
+  --accent-ink: #0d141b;
+  --good: #4bc088;
+  --mid: #dfa23b;
+  --low: #6f7d8a;
+  --bad: #ef6a52;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 {
+  font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1;
+  letter-spacing: 0.01em; margin: 0; text-transform: uppercase; text-wrap: balance;
+}
+.sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; }
+.stat b { font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+.best { display: flex; flex-direction: column; gap: 8px; }
+.best-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.pick {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; text-align: left;
+  font: inherit; color: inherit; cursor: pointer;
+}
+.pick:hover { border-color: var(--accent); }
+.pick .who { font-weight: 600; }
+.pick .what { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pick .nums { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.seg button {
+  font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--muted);
+  padding: 7px 11px; cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible, .btn:focus-visible, .pick:focus-visible, tr.row:focus-visible, .check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl { display: flex; align-items: center; gap: 8px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.spacer { flex: 1; }
+.btn {
+  font: inherit; font-size: 13px; font-weight: 600; border-radius: 7px; padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+}
+.btn.ghost { background: transparent; color: var(--accent); }
+
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.board-head h2 { font-family: var(--display); font-weight: 600; font-size: 20px; margin: 0; text-transform: uppercase; letter-spacing: 0.02em; }
+.board-head p { margin: 0; font-size: 13px; color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+th {
+  text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted);
+  font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+th.l, td.l { text-align: left; }
+th.on { color: var(--accent); }
+td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr.row { cursor: pointer; }
+tr.row:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+tbody tr:last-child td { border-bottom: 0; }
+.rk { color: var(--muted); width: 28px; }
+.player { font-weight: 600; }
+.team { color: var(--muted); font-size: 12px; margin-left: 6px; font-weight: 500; }
+.chip {
+  display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 4px;
+  margin-left: 6px; vertical-align: 1px; color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent);
+}
+.prop { color: var(--ink); }
+.prop .mk { color: var(--muted); font-size: 12px; margin-right: 6px; font-weight: 600; }
+.pos { color: var(--good); }
+.neg { color: var(--bad); }
+.dim { color: var(--muted); }
+.pill {
+  display: inline-block; min-width: 34px; text-align: center; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+}
+.t-good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.t-mid { color: var(--mid); background: color-mix(in srgb, var(--mid) 14%, transparent); }
+.t-low { color: var(--low); background: color-mix(in srgb, var(--low) 12%, transparent); }
+td.on .pill { outline: 1px solid currentColor; }
+
+tr.detail td { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); text-align: left; white-space: normal; }
+.parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; padding: 4px 0; }
+.part { display: flex; flex-direction: column; gap: 4px; }
+.part .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.part .top b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.facts { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.facts b { color: var(--ink); font-weight: 600; }
+
+.empty { padding: 28px 14px; color: var(--muted); text-align: center; }
+footer { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; max-width: 75ch; }
+footer b { color: var(--ink); font-weight: 600; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 7px; font-size: 13px; font-weight: 600;
+}
+.copybox { display: flex; flex-direction: column; gap: 8px; }
+.copybox textarea {
+  width: 100%; height: 180px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+}
+
+@media (max-width: 640px) {
+  h1 { font-size: 28px; }
+  .hide-sm { display: none; }
+  td, th { padding: 8px 7px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar i { transition: width 0.3s ease; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>NBA Prop Board</h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="best" aria-labelledby="best-label">
+    <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
+    <div class="best-list" id="best"></div>
+  </section>
+
+  <div class="controls">
+    <div class="ctl"><span class="label">Category</span>
+      <div class="seg" id="cat" role="group" aria-label="Category"></div>
+    </div>
+    <div class="ctl"><span class="label">Rank by</span>
+      <div class="seg" id="rank" role="group" aria-label="Rank by"></div>
+    </div>
+    <div class="ctl">
+      <div class="seg" id="limit" role="group" aria-label="Rows shown"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="hide-dtd"> Hide DTD</label>
+    <span class="spacer"></span>
+    <button class="btn" id="copy" type="button">Copy for Claude</button>
+  </div>
+
+  <div class="copybox" id="copybox" hidden>
+    <div class="label">Your browser blocked copying. Select all below and copy it.</div>
+    <textarea id="copytext" readonly></textarea>
+  </div>
+
+  <section class="board">
+    <div class="board-head">
+      <h2 id="board-title"></h2>
+      <p id="board-note"></p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>Gap</b>: projection minus line, as a % of the line. <b>Score</b>: 40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup. <b>Balanced</b>: 40% score + 25% recent form + 20% market value + 15% BettingPros rating. Both scores are cut for DTD (×0.85).</div>
+    <div><b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Kelly</b>: quarter-Kelly stake, 1u = 1% of bankroll; 0u means no edge at this price. Tap a row for its score breakdown.</div>
+    <div>FanDuel-priced props only. Projections, not guarantees.</div>
+  </footer>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script id="bp-data" type="application/json">__BP_DATA__</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById("bp-data").textContent);
+  var ROWS = DATA.rows;
+  var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"]];
+  var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists" };
+  var RANKS = [["gap", "Gap"], ["score", "Score"], ["bal", "Balanced"]];
+  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by your score: edge, FanDuel EV and matchup.", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating." };
+  var LIMITS = [[10, "Top 10"], [25, "Top 25"]];
+
+  var state = { cat: "ALL", rank: "bal", limit: 10, hideDtd: false, open: null };
+  try {
+    var saved = JSON.parse(localStorage.getItem("bp-board") || "{}");
+    ["cat", "rank", "limit", "hideDtd"].forEach(function (k) { if (k in saved) state[k] = saved[k]; });
+  } catch (e) {}
+  function save() {
+    try { localStorage.setItem("bp-board", JSON.stringify({ cat: state.cat, rank: state.rank, limit: state.limit, hideDtd: state.hideDtd })); } catch (e) {}
+  }
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function num(v) { return v == null ? "" : (Math.round(v * 100) / 100).toString(); }
+  function odds(v) { return v == null ? "" : (v > 0 ? "+" + v : String(v)); }
+  function gapTxt(v) { return v == null ? "" : (v > 0 ? "+" : "") + num(v) + "%"; }
+  function tone(v) { return v >= 70 ? "t-good" : v >= 55 ? "t-mid" : "t-low"; }
+  function sideTxt(r) { return (r.side === "over" ? "O " : r.side === "under" ? "U " : "") + num(r.line); }
+  function key(r) { return r.player + "|" + r.market + "|" + r.side; }
+  var SORT = {
+    gap: function (a, b) { return Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
+    score: function (a, b) { return (b.score || 0) - (a.score || 0); },
+    bal: function (a, b) { return (b.bal || 0) - (a.bal || 0); }
+  };
+
+  function pool(cat) {
+    return ROWS.filter(function (r) {
+      return r.score != null && (cat === "ALL" || r.market === cat) && !(state.hideDtd && r.inj);
+    });
+  }
+  function ranked(cat, by, n) { return pool(cat).slice().sort(SORT[by]).slice(0, n); }
+
+  // Header
+  var dtd = ROWS.filter(function (r) { return r.inj; }).length;
+  var strong = ROWS.filter(function (r) { return r.bal != null && r.bal >= 65; }).length;
+  document.getElementById("sub").textContent = DATA.date_label + " · FanDuel lines · updated " + DATA.updated;
+  document.getElementById("stats").innerHTML =
+    stat(ROWS.length, "props") + stat(strong, "balanced 65+") + stat(dtd, "DTD tagged");
+  function stat(v, l) { return '<div class="stat"><b>' + v + "</b><span>" + l + "</span></div>"; }
+
+  // Controls
+  function seg(id, items, field, cast) {
+    var el = document.getElementById(id);
+    el.innerHTML = items.map(function (it) {
+      return '<button type="button" id="' + id + "-" + String(it[0]).replace(/\W/g, "_") + '" data-v="' + esc(it[0]) + '">' + esc(it[1]) + "</button>";
+    }).join("");
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      state[field] = cast ? cast(b.dataset.v) : b.dataset.v; state.open = null; save(); render();
+    });
+  }
+  seg("cat", CATS, "cat");
+  seg("rank", RANKS, "rank");
+  seg("limit", LIMITS, "limit", Number);
+  var dtdBox = document.getElementById("hide-dtd");
+  dtdBox.addEventListener("change", function () { state.hideDtd = dtdBox.checked; save(); render(); });
+
+  function pressed(id, v) {
+    Array.prototype.forEach.call(document.getElementById(id).children, function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.v === String(v)));
+    });
+  }
+
+  // Strongest tonight
+  function renderBest() {
+    var sets = ["gap", "score", "bal"].map(function (by) {
+      var s = {}; ranked("ALL", by, 20).forEach(function (r) { s[key(r)] = 1; }); return s;
+    });
+    var picks = pool("ALL").filter(function (r) { return sets.every(function (s) { return s[key(r)]; }); })
+      .sort(SORT.bal).slice(0, 6);
+    var el = document.getElementById("best");
+    if (!picks.length) { el.innerHTML = '<div class="dim">No prop made all three top-20 lists tonight.</div>'; return; }
+    el.innerHTML = picks.map(function (r) {
+      return '<button type="button" class="pick" data-k="' + esc(key(r)) + '" data-cat="' + esc(r.market) + '">' +
+        '<span class="who">' + esc(r.player) + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") + "</span>" +
+        '<span class="what">' + esc(r.market) + " " + sideTxt(r) + " · " + odds(r.odds) + "</span>" +
+        '<span class="nums">Score <span class="pill ' + tone(r.score) + '">' + r.score + '</span> Bal <span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>" +
+        (r.kelly != null ? " " + num(r.kelly) + "u" : "") + "</span></button>";
+    }).join("");
+  }
+  document.getElementById("best").addEventListener("click", function (e) {
+    var b = e.target.closest(".pick"); if (!b) return;
+    state.cat = b.dataset.cat; state.rank = "bal"; state.open = b.dataset.k; save(); render();
+    document.querySelector(".board").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // Table
+  var COLS = [
+    ["rk", "#", "l"], ["player", "Player", "l"], ["prop", "Prop", "l"], ["proj", "Proj", "hide-sm"],
+    ["gap", "Gap", ""], ["odds", "FD", ""], ["dvp", "DvP", "hide-sm"], ["form", "Form", "hide-sm"],
+    ["score", "Score", ""], ["bal", "Bal", ""], ["kelly", "Kelly", "hide-sm"]
+  ];
+  function render() {
+    pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
+    dtdBox.checked = state.hideDtd;
+    renderBest();
+    var rows = ranked(state.cat, state.rank, state.limit);
+    var label = RANKS.filter(function (x) { return x[0] === state.rank; })[0][1];
+    document.getElementById("board-title").textContent = CAT_NAMES[state.cat] + " · top " + state.limit + " by " + label.toLowerCase();
+    document.getElementById("board-note").textContent = RANK_NOTE[state.rank];
+    document.getElementById("thead").innerHTML = COLS.map(function (c) {
+      var on = c[0] === state.rank ? " on" : "";
+      return '<th class="' + c[2] + on + '" scope="col">' + c[1] + "</th>";
+    }).join("");
+    var tb = document.getElementById("tbody");
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="' + COLS.length + '" class="empty">No FanDuel-priced props in this category tonight.</td></tr>'; return; }
+    tb.innerHTML = rows.map(function (r, i) {
+      var k = key(r), open = state.open === k;
+      var cells = {
+        rk: i + 1,
+        player: '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : ""),
+        prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
+        proj: num(r.proj),
+        gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
+        odds: odds(r.odds),
+        dvp: r.dvp == null ? "" : r.dvp,
+        form: r.form == null ? '<span class="dim">–</span>' : Math.round(r.form * 100) + "%",
+        score: '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
+        bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
+        kelly: r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>'
+      };
+      var tr = '<tr class="row" tabindex="0" aria-expanded="' + open + '" data-k="' + esc(k) + '">' + COLS.map(function (c) {
+        return '<td class="' + c[2] + (c[0] === state.rank ? " on" : "") + (c[0] === "rk" ? " rk" : "") + '">' + cells[c[0]] + "</td>";
+      }).join("") + "</tr>";
+      if (open) tr += '<tr class="detail"><td colspan="' + COLS.length + '">' + detail(r) + "</td></tr>";
+      return tr;
+    }).join("");
+  }
+  function part(name, v, w) {
+    return '<div class="part"><div class="top"><span>' + name + ' <span class="dim">' + w + '</span></span><b>' + (v == null ? "–" : v) + '</b></div><div class="bar"><i style="width:' + (v || 0) + '%"></i></div></div>';
+  }
+  function detail(r) {
+    var f = [];
+    if (r.streak) f.push("Streak <b>" + esc(r.streak) + "</b>");
+    if (r.l10) f.push("Last 10 <b>" + esc(r.l10) + "</b>");
+    if (r.season) f.push("Season <b>" + esc(r.season) + "</b>");
+    if (r.cons != null) f.push("Consensus line <b>" + num(r.cons) + "</b>");
+    if (r.nv != null) f.push("Model vs. no-vig <b>" + (r.nv > 0 ? "+" : "") + Math.round(r.nv * 1000) / 10 + " pts</b>");
+    f.push("Signals <b>" + esc(r.sig || "") + "</b>");
+    return '<div class="label">Score parts (0–100)</div><div class="parts">' +
+      part("Edge", r.s_edge, "40%") + part("EV", r.s_ev, "35%") + part("Matchup", r.s_dvp, "25%") +
+      part("Form", r.s_form, "bal 25%") + part("Market", r.s_market, "bal 20%") +
+      '</div><div class="facts">' + f.join("") + "</div>";
+  }
+  var tbody = document.getElementById("tbody");
+  function toggle(tr) { var k = tr.dataset.k; state.open = state.open === k ? null : k; render(); }
+  tbody.addEventListener("click", function (e) { var tr = e.target.closest("tr.row"); if (tr) toggle(tr); });
+  tbody.addEventListener("keydown", function (e) {
+    var tr = e.target.closest("tr.row");
+    if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(tr); }
+  });
+
+  // Copy for Claude: the full slate as compact text
+  function line(r, i) {
+    return (i + 1) + ". " + r.player + (r.team ? " (" + r.team + ")" : "") + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) +
+      " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal +
+      (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
+      " | " + (r.kelly || 0) + "u" + (r.inj ? " | " + r.inj : "");
+  }
+  function slateText() {
+    var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", ""];
+    [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
+      out.push("ALL: top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
+    });
+    CATS.slice(1).forEach(function (c) {
+      [["gap", "projection gap"], ["score", "score"]].forEach(function (x) {
+        var rs = ranked(c[0], x[0], 10); if (!rs.length) return;
+        out.push(c[0] + ": top 10 by " + x[1]); rs.forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
+      });
+    });
+    return out.join("\n");
+  }
+  var toastEl = document.getElementById("toast"), toastT;
+  function toast(msg) { toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, 2200); }
+  function fallbackCopy(text) {
+    var box = document.getElementById("copybox"), ta = document.getElementById("copytext");
+    ta.value = text; box.hidden = false; ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+    if (ok) { box.hidden = true; toast("Copied. Paste it into Claude."); }
+  }
+  document.getElementById("copy").addEventListener("click", function () {
+    var text = slateText();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast("Copied. Paste it into Claude."); }, function () { fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+  });
+
+  render();
+})();
+</script>
