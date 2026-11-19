@@ -28,6 +28,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import math
 import os
 import sys
 import time
@@ -249,10 +250,22 @@ def write_top_by_market(rows, date, n=10):
     """Write a Markdown note with the n biggest projection-vs-line gaps in each of the seven categories."""
     out = f"bp_top10_{date}.md"
     def cell(v):
-        return "" if v is None else str(v)
+        return "" if v is None else fmt(v)
     lines = [f"# Biggest projection gaps by category: {date}", "",
-             "FanDuel-priced props only, ranked by |projection - line| as a % of the line. "
-             "DvP: 1 = softest matchup.", ""]
+             "FanDuel-priced props only. DvP: 1 = softest matchup. Score (0-100) = "
+             "40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup, "
+             "reduced for injury status.", ""]
+    best = sorted([r for r in rows if r["price_is_fanduel"] and r.get("score") is not None],
+                  key=lambda r: r["score"], reverse=True)[:n]
+    lines += ["## Top 10 overall by score", "",
+              "| # | Score | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Injury |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for i, r in enumerate(best, 1):
+        lines.append("| " + " | ".join([str(i), f"**{r['score']}**", cell(r["player"]), cell(r["market"]),
+                                        cell(r["rec_side"]), cell(r["line"]), cell(r["bp_proj"]),
+                                        cell(r["pct_gap"]), cell(r["fd_odds_rec"]), cell(r["dvp_softness"]),
+                                        cell(r["injury"])]) + " |")
+    lines += ["", "Ranked by gap % within each category below.", ""]
     for tag, name in CATEGORY_ORDER:
         group = [r for r in rows if r["market"] == tag and r["price_is_fanduel"] and r["pct_gap"] is not None]
         group.sort(key=lambda r: abs(r["pct_gap"]), reverse=True)
@@ -260,16 +273,83 @@ def write_top_by_market(rows, date, n=10):
         if not group:
             lines += ["_No FanDuel-priced props found._", ""]
             continue
-        lines += ["| # | Player | Team | Side | Line | Proj | Gap | Gap % | FD odds | DvP | Injury |",
-                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        lines += ["| # | Player | Team | Side | Line | Proj | Gap | Gap % | FD odds | DvP | Injury | Score |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for i, r in enumerate(group[:n], 1):
             lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["team"]), cell(r["rec_side"]),
                                             cell(r["line"]), cell(r["bp_proj"]), cell(r["diff"]), cell(r["pct_gap"]),
-                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), cell(r["injury"])]) + " |")
+                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), cell(r["injury"]),
+                                            f"**{cell(r.get('score'))}**"]) + " |")
         lines.append("")
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
+
+
+# ---------------------------------------------------------------- scoring
+# Each prop gets a 0-100 score built from three parts (weights below), then an
+# injury multiplier. The parts are scaled so threes, rebounds and points compete
+# fairly: the gap is measured in standard deviations, not % of the line.
+W_EDGE, W_EV, W_DVP = 0.40, 0.35, 0.25
+INJURY_MULT = {"": 1.0, "probable": 1.0, "dtd": 0.85, "questionable": 0.85, "gtd": 0.85,
+               "doubtful": 0.5, "out": 0.0}
+
+
+def _num(v):
+    try:
+        return None if v in (None, "") else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _phi(z):
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+def score_row(r):
+    """Add model_prob, model_ev, s_edge, s_ev, s_dvp and score (0-100) to a row in place."""
+    line, proj, odds = _num(r.get("line")), _num(r.get("bp_proj")), _num(r.get("fd_odds_rec"))
+    side = (r.get("rec_side") or "").lower()
+    if line is None or proj is None or side not in ("over", "under"):
+        r.update(model_prob=None, model_ev=None, s_edge=None, s_ev=None, s_dvp=None, score=None)
+        return r
+
+    # 1. Edge: how many standard deviations the projection sits from the line.
+    #    Counting stats spread roughly like sqrt(mean); 1.1x allows for extra variance.
+    sd = 1.1 * math.sqrt(max(proj, line, 0.5))
+    z = abs(proj - line) / sd
+    s_edge = min(z / 0.75, 1.0) * 100                    # 0.75 SD or more = full marks
+
+    # 2. EV at FanDuel's price: win chance (BettingPros' if given, else from the
+    #    projection) against the odds. Juiced prices score lower here.
+    p = _num(r.get("bp_win_prob"))
+    if p is not None and p > 1:
+        p /= 100
+    if p is None:
+        p = _phi(z)                                      # chance the recommended side hits
+    evs = []
+    if odds is not None:
+        dec = 1 + (odds / 100 if odds > 0 else 100 / -odds)
+        evs.append(p * dec - 1)
+    for k in ("fd_market_ev", "bp_ev"):                  # blend in published EVs when present
+        v = _num(r.get(k))
+        if v is not None:
+            evs.append(v / 100 if abs(v) > 1 else v)
+    ev = sum(evs) / len(evs) if evs else None
+    s_ev = 50.0 if ev is None else min(max((ev + 0.10) / 0.30, 0.0), 1.0) * 100   # -10% -> 0, +20% -> 100
+
+    # 3. Matchup: soft defense helps an over, tough defense helps an under.
+    soft = _num(r.get("dvp_softness"))                   # 1 = softest, 30 = toughest
+    if soft is None:
+        s_dvp = 50.0
+    else:
+        s_dvp = ((30 - soft) if side == "over" else (soft - 1)) / 29 * 100
+
+    mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
+    score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
+    r.update(model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
+             s_edge=round(s_edge), s_ev=round(s_ev), s_dvp=round(s_dvp), score=round(score))
+    return r
 
 
 def main():
@@ -282,7 +362,23 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="re-fetch cached book and market IDs")
     ap.add_argument("--page-limit", type=int, default=20, help="20 for Free/Plus, 50 for Elite")
     ap.add_argument("--offers", action="store_true", help="also pull FanDuel fair odds / market EV")
+    ap.add_argument("--from-csv", action="store_true",
+                    help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
+
+    if args.from_csv:
+        path = f"bp_props_{args.date}.csv"
+        try:
+            with open(path, newline="") as f:
+                rows = list(csv.DictReader(f))
+        except OSError:
+            sys.exit(f"{path} not found. Run without --from-csv first.")
+        for r in rows:
+            r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
+            for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness"):
+                r[k] = _num(r.get(k))
+        finish(rows, args.date)
+        return
 
     load_dotenv()
     key = os.environ.get("BP_API_KEY")
@@ -359,21 +455,33 @@ def main():
             "event_id": p.get("event_id"),
         })
 
+    finish(rows, args.date)
+
+def fmt(v):
+    """Print floats without trailing .0 (2.0 -> 2) so the tables stay tidy."""
+    return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
+
+
+def finish(rows, date):
+    """Score, sort, and write the CSV, the top-10 note, and the terminal summary."""
+    for r in rows:
+        score_row(r)
     rows.sort(key=lambda r: abs(r["pct_gap"] or 0), reverse=True)
-    out = f"bp_props_{args.date}.csv"
+    out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["player"])
         w.writeheader()
         w.writerows(rows)
 
-    note = write_top_by_market(rows, args.date)
+    note = write_top_by_market(rows, date)
 
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
-    print(f"Top 10 per category -> {note}")
-    print(f"{'player':22} {'market':14} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4}")
+    print(f"Top 10 per category + top 10 by score -> {note}")
+    print(f"{'player':22} {'market':8} {'side':5} {'line':>5} {'proj':>6} {'gap%':>6} {'FD':>6} {'DvP':>4} {'score':>5}")
     for r in [r for r in rows if r["price_is_fanduel"]][:15]:
-        print(f"{(r['player'] or '')[:22]:22} {str(r['market'])[:14]:14} {str(r['rec_side'])[:5]:5} "
-              f"{r['line']!s:>5} {r['bp_proj']!s:>6} {r['pct_gap']!s:>6} {r['fd_odds_rec']!s:>6} {r['dvp_softness']!s:>4}")
+        print(f"{(r['player'] or '')[:22]:22} {str(r['market'])[:8]:8} {str(r['rec_side'])[:5]:5} "
+              f"{fmt(r['line']):>5} {fmt(r['bp_proj']):>6} {fmt(r['pct_gap']):>6} {fmt(r['fd_odds_rec']):>6} "
+              f"{fmt(r['dvp_softness']):>4} {fmt(r['score']):>5}")
 
 
 if __name__ == "__main__":
