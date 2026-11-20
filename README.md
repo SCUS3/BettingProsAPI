@@ -21,7 +21,7 @@ Markets pulled by default (full game only):
 - **Top 10 by Category**: For each of the eight prop categories (PTS, REB, AST, 3PM, P+A, P+R, PRA, R+A), a top 10 by projection gap and a top 10 by score.
 - **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
-- **Every FanDuel line**: the 2 PM pull joins BettingPros projections (`/props`, all books) to every FanDuel main line (`/offers`), and re-scores each prop at FanDuel's own line and price, including FanDuel's fair probability and market EV. A 6:30 PM `--reprice` refreshes FanDuel's lines from `/offers` only.
+- **Every FanDuel line**: the 2 PM pull takes every FanDuel main line (`/offers`) first, then BettingPros projections (`/props`) only for the players FanDuel prices, and joins them, and re-scores each prop at FanDuel's own line and price, including FanDuel's fair probability and market EV. A 6:30 PM `--reprice` refreshes FanDuel's lines from `/offers` only.
 - **Request Budgeting**: Caches book and market IDs in `bp_cache.json` and backs off on rate limits, so runs fit inside the daily API allowance.
 - **Self-Learning Record**: Logs the top picks of each strategy every slate, grades them automatically after the games, tracks the record and units, and re-learns how much each factor (including teammates being ruled out) actually predicts a win.
 - **Interactive Dashboard**: One page with every list, filters, score breakdowns, and a copy-to-Claude button.
@@ -61,6 +61,7 @@ python3 bp_props.py                    # today's slate (Eastern time)
 python3 bp_props.py --date 2026-11-19  # a specific date
 python3 bp_props.py --max-requests 45  # 2 PM full pull; stops after page 1s if the run would need more
 python3 bp_props.py --reprice          # 6:30 PM re-price from /offers only (picks from this run count)
+python3 bp_props.py --unfiltered-props # full pull with /props for every player (if the player-id filter misses)
 python3 bp_props.py --list-markets     # show every NBA prop market and which are selected
 python3 bp_props.py --markets 156:157  # pick markets by ID
 python3 bp_props.py --page-limit 50    # Elite keys
