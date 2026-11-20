@@ -30,6 +30,10 @@ PICKS_PER_STRATEGY = 5
 MARKETS = ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A")
 STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", "Top 5 projection gap"),
               ("learned", "Top 5 learned")]
+# Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
+# never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
+VALUE_STRATEGIES = [("bet", "BET plays (Mkt EV +2%, 4+ books)"), ("watch", "Watch list (shortlist, not bet)")]
+VALUE_KEYS = {k for k, _ in VALUE_STRATEGIES}
 MIN_TRAIN = 60            # player-games needed before the model is fit at all
 TRUST_N = 400             # model weight = n / (n + TRUST_N), then capped:
 CAP_UNPROVEN = 0.5        #   until the model beats Balanced on held-out later slates
@@ -415,7 +419,8 @@ def log_picks(rows, date):
     ledger = _read(LEDGER)
     old = {(r["date"], r.get("pulled_at"), r["strategy"], r["player"], r["market"], r["side"]): r
            for r in ledger if r["date"] == date}
-    keep = [r for r in ledger if not (r["date"] == date and r.get("pulled_at", "") == (pulled or ""))]
+    keep = [r for r in ledger if not (r["date"] == date and r.get("pulled_at", "") == (pulled or "")
+                                      and r.get("strategy") not in VALUE_KEYS)]
     pool = [r for r in rows if _truthy(r.get("price_is_fanduel")) and r.get("score") is not None
             and (r.get("injury") or "").strip().lower() not in ("out", "doubtful")]
     sorters = {
@@ -465,11 +470,20 @@ def counted_flags(ledger):
             if k not in first_seen or r["pulled_at"] < first_seen[k][0]:
                 first_seen[k] = (r["pulled_at"], _num(r.get("line")))
     counted, clv = [], []
+    closing = {}
     for r in ledger:
         p, tip = r.get("pulled_at"), r.get("tip")
         if not p or not tip or p >= tip:
             counted.append(False)
             clv.append(None)
+            continue
+        if r.get("strategy") in VALUE_KEYS:                # decided once at 2 PM: counts if logged before tip
+            counted.append(True)
+            if r["date"] not in closing:
+                closing[r["date"]] = closing_lines(r["date"])
+            cl, bl = closing[r["date"]].get((str(r.get("event_id")).split(".")[0], r["player"], r["market"])), _num(r.get("line"))
+            clv.append(None if cl is None or bl is None or cl[0] <= p else
+                       ((cl[1] - bl) if r.get("side") == "over" else (bl - cl[1])))
             continue
         last = max((t for t in runs[r["date"]] if t < tip and covers(r["date"], t, r.get("event_id"))), default=None)
         ok = p == last
@@ -485,6 +499,25 @@ def counted_flags(ledger):
 
 
 # ------------------------------------------------------------- grading
+def closing_lines(date):
+    """{(event_id, player, market): (pulled_at, FanDuel line)} from the last saved pull before each game's tip."""
+    out = {}
+    for pulled, rows in snapshots(date):
+        for r in rows:
+            if r.get("tip") and pulled < r["tip"] and _truthy(r.get("price_is_fanduel")) and _num(r.get("line")) is not None \
+                    and not _truthy(r.get("stale_price")):
+                out[(str(r.get("event_id")).split(".")[0], r["player"], r["market"])] = (pulled, _num(r["line"]))
+    return out
+
+
+def log_value_decisions(date, rows):
+    """Replace this date's bet/watch rows for the same pull with `rows` (from bp_value.py)."""
+    pulled = {r.get("pulled_at") for r in rows}
+    ledger = [r for r in _read(LEDGER) if not (r["date"] == date and r.get("strategy") in VALUE_KEYS
+                                                and r.get("pulled_at") in pulled)]
+    _write(LEDGER, ledger + rows, LEDGER_FIELDS)
+
+
 def pending_dates(today):
     """Slates before `today` that still have ungraded ledger rows or no graded props."""
     graded_dates = {r["date"] for r in _read(GRADED)}
@@ -750,8 +783,10 @@ def record():
     live = [(r, v) for r, ok, v in zip(ledger, counted, clv) if ok]
     graded = [(r, v) for r, v in live if r.get("result") in ("W", "L", "P")]   # voids ('V') don't count
     strategies = []
-    for strat, label in STRATEGIES:
+    for strat, label in STRATEGIES + VALUE_STRATEGIES:
         sub = [(r, v) for r, v in graded if r["strategy"] == strat]
+        if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
+            continue                                       # no value-check decisions logged yet
         strategies.append(dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label))
     uniq = _uniq(graded)
     combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", label="All picks (each prop once)")

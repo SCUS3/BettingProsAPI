@@ -617,6 +617,18 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         lines.append("")
     else:
         lines += ["No graded picks yet.", ""]
+    bets = [r for r in rows if r.get("decision") == "BET"]
+    watch = [r for r in rows if r.get("decision") == "watch"]
+    if bets or watch:
+        lines += ["## BET", "", "2 PM shortlist (top 10 by Balanced, real projections) checked against the market (The Odds API): "
+                  "BET = market EV +2% or more (multiplicative devig) with 4+ other books at FanDuel's line. "
+                  "Stake = half-Kelly on the market's fair probability.", ""]
+        lines += [f"- BET {r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])} {fmt(r['fd_odds_rec'])}: market EV "
+                  f"{100 * r['oa_ev']:+.1f}%, {r['oa_books']} books, our EV {100 * (r.get('model_ev') or 0):+.1f}%, stake {fmt(r['bet_kelly'])}u"
+                  for r in bets] or ["- No BET plays today."]
+        lines += ["", "Watch (not bets): " + "; ".join(
+            f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * r['oa_ev']:+.1f}%)" if r.get("oa_ev") is not None else "")
+            for r in watch), ""]
     lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
               "real projection unless the price alone is +EV.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
@@ -1170,6 +1182,8 @@ def attach_value(rows, date):
         r["oa_fair"] = v.get("fair_mult") if v else None
         r["oa_ev"] = v.get("ev_mult") if v else None
         r["oa_books"] = v.get("books") if v else None
+        r["decision"] = v.get("decision") if v else None          # BET / watch (2 PM shortlist value check)
+        r["bet_kelly"] = v.get("bet_kelly") if v else None        # half-Kelly on the market's fair probability
 
 
 def write_dashboard(rows, date, kelly_note=""):
@@ -1197,6 +1211,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
+            "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
             "ev": n(r.get("model_ev")), "oa_ev": n(r.get("oa_ev")), "oa_fair": n(r.get("oa_fair")), "oa_books": r.get("oa_books"),
         })
     d = dt.date.fromisoformat(date)

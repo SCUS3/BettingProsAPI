@@ -38,6 +38,10 @@ BASE = "https://api.the-odds-api.com/v4/sports/basketball_nba"
 CREDITS = os.path.join(HERE, "odds_credits.json")
 MIN_REMAINING = 50
 MIN_BOOKS = 3
+DAILY_CREDITS = 8          # aim per day; --top N is cut to the games with the most shortlist plays
+BET_MIN_EV = 0.02          # BET: market EV (multiplicative) at FanDuel's price, and
+BET_MIN_BOOKS = 4          #      at least this many other books at FanDuel's line
+BET_KELLY_MAX = 2.5        # u; half-Kelly on the market's fair probability
 
 # Checked against https://the-odds-api.com/sports-odds-data/betting-markets.html (NBA player props, Over/Under).
 MARKET_KEYS = {"PTS": "player_points", "REB": "player_rebounds", "AST": "player_assists", "3PM": "player_threes",
@@ -121,13 +125,16 @@ def guard(cost, hard=True):
 def load_picks(date, top):
     """Today's logged picks from the latest run (one row per prop), or the top N FanDuel props by Balanced."""
     if top:
+        now = bp_learn.utc_now()
         rows = [r for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv")))
                 if r.get("price_is_fanduel") == "True" and r.get("balanced") not in (None, "")
-                and r.get("noproj") != "True"]
+                and r.get("noproj") != "True" and r.get("placeholder") != "True"
+                and r.get("stale_price") != "True" and (not r.get("tip") or r["tip"] > now)]
         rows.sort(key=lambda r: -float(r["balanced"]))
         return [{"player": r["player"], "team": r["team"], "market": r["market"], "side": r["rec_side"],
                  "line": float(r["line"]), "odds": float(r["fd_odds_rec"]), "our_prob": _f(r.get("model_prob")),
-                 "our_ev": _f(r.get("model_ev")), "event_id": r["event_id"], "tip": r.get("tip")} for r in rows[:top]]
+                 "our_ev": _f(r.get("model_ev")), "event_id": r["event_id"], "tip": r.get("tip"),
+                 "rank": i, "row": r} for i, r in enumerate(rows[:top], 1)]
     our_ev = {}
     try:
         for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
@@ -165,11 +172,27 @@ def game_teams(date):
     return out
 
 
-def plan(picks):
+def gid(p):
+    return str(int(float(p["event_id"])))
+
+
+def plan(picks, budget=None):
+    """{game: markets}, credit cost, kept picks, dropped picks. Over budget: keep the games with the most
+    shortlist plays (ties: higher total Balanced), adding a game only if its markets still fit."""
     games = {}
     for p in picks:
-        games.setdefault(str(int(float(p["event_id"]))), set()).add(p["market"])
-    return games, sum(len(m) for m in games.values())
+        games.setdefault(gid(p), set()).add(p["market"])
+    cost = sum(len(m) for m in games.values())
+    if budget is None or cost <= budget:
+        return games, cost, picks, []
+    bal = lambda g: sum(float((p.get("row") or {}).get("balanced") or 0) for p in picks if gid(p) == g)
+    order = sorted(games, key=lambda g: (-sum(gid(p) == g for p in picks), -bal(g)))
+    keep, spent = set(), 0
+    for g in order:
+        if spent + len(games[g]) <= budget:
+            keep.add(g)
+            spent += len(games[g])
+    return ({g: games[g] for g in keep}, spent, [p for p in picks if gid(p) in keep], [p for p in picks if gid(p) not in keep])
 
 
 # -------------------------------------------------------------------- math
@@ -242,6 +265,43 @@ def match_event(events, teams, tip):
 
 
 # -------------------------------------------------------------------- save
+def bet_kelly(fair, american):
+    """Half-Kelly stake in units (1u = 1% of bankroll) on the market's fair probability, capped."""
+    b = decimal(american) - 1
+    f = (fair * (b + 1) - 1) / b
+    return round(min(max(f / 2 * 100, 0.0), BET_KELLY_MAX), 1)
+
+
+def decide(date, shortlist, checked, results):
+    """BET = shortlist play with market EV >= +2% (multiplicative) and 4+ other books at FanDuel's line.
+    Every other shortlist play (including ones dropped for credits or without data) is 'watch'.
+    Logged to the ledger as strategies 'bet' / 'watch' with the 2 PM pull's time."""
+    res = {(p["player"], p["market"], p["side"]): v for p, v in zip(checked, results)}
+    rows, bets = [], []
+    for p in shortlist:
+        v = res.get((p["player"], p["market"], p["side"]))
+        is_bet = bool(v and v.get("ev_mult") is not None and v["ev_mult"] >= BET_MIN_EV and v["books"] >= BET_MIN_BOOKS)
+        r = p.get("row") or {}
+        price = v["price_used"] if v else p["odds"]
+        stake = bet_kelly(v["fair_mult"], price) if is_bet else 0.0
+        if v is not None:
+            v.update(decision="BET" if is_bet else "watch", bet_kelly=stake)
+        p["decision"] = "BET" if is_bet else "watch"
+        rows.append({"date": date, "pulled_at": r.get("pulled_at"), "tip": r.get("tip"), "strategy": "bet" if is_bet else "watch",
+                     "rank": p.get("rank"), "player": p["player"], "team": p["team"], "market": p["market"], "side": p["side"],
+                     "line": p["line"], "odds": price, "gap": r.get("pct_gap"), "placeholder": r.get("placeholder"),
+                     "score": r.get("score"), "balanced": r.get("balanced"), "learned": r.get("learned"),
+                     "our_prob": r.get("model_prob"), "nv_prob": v.get("fair_mult") if v else None, "kelly_u": stake,
+                     "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
+                     "oa_fair": v.get("fair_mult") if v else None, "oa_ev": v.get("ev_mult") if v else None})
+        if is_bet:
+            bets.append(f"{p['player']} {p['market']} {p['side']} {p['line']:g} {price:+g}: mkt EV {100 * v['ev_mult']:+.1f}%, "
+                        f"{v['books']} books, {stake}u")
+    bp_learn.log_value_decisions(date, rows)
+    print(f"\nBET ({len(bets)}): " + ("; ".join(bets) if bets else "none today") +
+          f". Watch: {len(shortlist) - len(bets)}. Logged to the ledger (strategies 'bet' / 'watch').")
+
+
 def save(date, picks, results):
     path = os.path.join(HERE, f"value_{date}.json")
     try:
@@ -274,10 +334,18 @@ def main():
     g.add_argument("--top", type=int, help="top N FanDuel props by Balanced")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
     ap.add_argument("--max-credits", type=int, help="required with --go: most credits this run may spend")
+    ap.add_argument("--budget", type=int, default=DAILY_CREDITS,
+                    help=f"credit aim for the run (default {DAILY_CREDITS}); --top is cut to fit")
     args = ap.parse_args()
 
     picks = load_picks(args.date, args.top)
-    games, cost = plan(picks)
+    full_games, full_cost, _, _ = plan(picks)
+    games, cost, picks_kept, dropped = plan(picks, args.budget)
+    if dropped:
+        print(f"Full shortlist would cost {full_cost} credits (over the {args.budget}/day aim). Keeping the "
+              f"{len(games)} games with the most shortlist plays; dropped {len(dropped)}: " +
+              "; ".join(f"#{p.get('rank', '?')} {p['player']} {p['market']} {p['side']} {p['line']:g}" for p in dropped))
+    shortlist, picks = picks, picks_kept
     c = load_credits()
     print(f"{len(picks)} picks in {len(games)} games. Credit cost: " +
           " + ".join(f"{len(m)} ({', '.join(sorted(m))})" for m in games.values()) + f" = {cost} "
@@ -326,6 +394,10 @@ def main():
         warn = "" if v["oa_fd_line"] in (None, p["line"]) else f"  FanDuel now {v['oa_fd_line']:g}"
         print(f"{p['player'][:22]:22} {p['market']:4} {p['side']:5} {fd:14} {fair:16} {evs:14} {ours:7} {v['books']:>5}  {diff}{warn}"
               + ("" if v["books"] >= MIN_BOOKS else f"  (needs {MIN_BOOKS}+ books at FanDuel's line)"))
+    if args.top:
+        decide(args.date, shortlist, picks, results)
+        stub = {"decision": "watch", "bet_kelly": 0.0, "books": 0, "fair_mult": None, "ev_mult": None, "note": "not checked (credits)"}
+        picks, results = picks + dropped, results + [dict(stub) for _ in dropped]
     path = save(args.date, picks, results)
     print(f"\nSaved {path}; ledger updated. Re-score (python3 bp_props.py --from-csv) to show it on the board.")
     print(f"Credits remaining: {load_credits().get('remaining')}")

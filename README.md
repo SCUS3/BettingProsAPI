@@ -189,6 +189,13 @@ Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single inter
 
 This project is for research and entertainment. Projections are not guarantees, so bet responsibly.
 
+## Daily flow
+
+1. 2 PM ET: `python3 bp_props.py --max-requests N` (BettingPros full pull).
+2. `python3 bp_value.py --top 10` plans the market check of the shortlist (top 10 by Balanced, real projections only) within about 8 credits a day; `--go --max-credits N` runs it once approved.
+3. BET = shortlist play with market EV +2% or more and 4+ other books at FanDuel's line; the rest are "watch". Both are logged (strategies `bet` / `watch`) and show on the board and in Copy for Claude. BET stakes are half-Kelly on the market's fair probability.
+4. 6:30 PM ET: `python3 bp_props.py --reprice` (BettingPros `/offers` only) for CLV.
+
 ## Market value check (The Odds API)
 
 `bp_value.py` checks picks against the wider market without replacing BettingPros. For each game with a pick it calls

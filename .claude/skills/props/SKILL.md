@@ -73,6 +73,12 @@ After that, give 2-4 short bullets that point out:
 
 Keep it short and factual. These are projections, not guarantees; add no further disclaimers beyond one line.
 
-## Optional: market value check
+## Daily flow (from 2026-11-20)
 
-If the user asks for a value check, run `python3 bp_value.py --picks` (plan only, no call) and show the credit cost and credits remaining. Run `--go --max-credits <cost>` only after they approve. Report fair prob, market EV vs. our EV, books, and books on another line. Then re-score with `--from-csv` so the board shows "Mkt EV".
+1. **2 PM ET BettingPros full pull** (ask first with the budget math). Shortlist = top 10 by Balanced, real projections only (no placeholders, no no-projection lines, games not yet tipped).
+2. **Value check plan:** `python3 bp_value.py --top 10` (no call). It aims for 8 credits/day: if the shortlist costs more, it keeps the games with the most shortlist plays and lists what it dropped. Show the user the credit cost, credits remaining and anything dropped, and ask. After they approve: `python3 bp_value.py --top 10 --go --max-credits <cost>`.
+3. **Decisions:** BET = shortlist play with market EV >= +2% (multiplicative) and 4+ other books at FanDuel's line. Everything else on the shortlist (including plays dropped for credits) is "watch", not a bet. Both are logged to the ledger (strategies `bet` / `watch`, at the 2 PM pull's time; they count if logged before tip and are never replaced by the 6:30 run; CLV vs. FanDuel's line in the last pull before tip). Then re-score with `python3 bp_props.py --from-csv` so the board and Copy for Claude show BET / watch.
+4. **BET stake:** half-Kelly on the market's fair probability (not ours), max 2.5u.
+5. **6:30 PM ET:** `python3 bp_props.py --reprice` (BettingPros `/offers` only, for CLV). No second Odds API call unless the user asks.
+
+Report the BET plays first (line, price, market EV, books, our EV, stake), then the watch list, then the usual lists.
