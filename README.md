@@ -1,42 +1,50 @@
-# BettingPros NBA Props Puller
+# BettingPros NBA Props
 
-This repository contains a Python script that pulls the day's NBA player props from the BettingPros Consumer API, priced at FanDuel, and ranks them by the gap between the BettingPros projection and the sportsbook line.
+Python tools that price every FanDuel NBA player prop against BettingPros projections and the wider market, pick bets with a market edge, and grade every pick after the games so the model learns what actually wins.
 
 ## Description
 
-The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. Every prop gets two 0-100 ratings: a **score** (projection edge, expected value at FanDuel's price, and matchup) and a **balanced score** that checks it against recent form, market value, and BettingPros' bet rating. It also writes a Markdown note with three top-10 lists (by projection gap, by score, and by balanced score) plus, for each of the eight categories, a top 10 by projection gap and a top 10 by score, and prints the top 15 FanDuel-priced props to the terminal.
+Each day the tools:
 
-Markets pulled by default (full game only):
+1. **Pull the board** (`bp_props.py`): every FanDuel main line from BettingPros `/offers`, joined to BettingPros projections from `/props` for the same players. Each prop is re-scored at FanDuel's own line and price and gets two 0-100 ratings, a **score** (projection edge, EV at FanDuel's price, matchup) and a **balanced score** (score checked against recent form, market value and BettingPros' bet rating).
+2. **Check the market** (`bp_value.py`): one free Unabated call prices both sides of every FanDuel line from a consensus of devigged sportsbooks and exchanges. A **BET** is a line with market EV of +2% or more at FanDuel's line, tagged by whether BettingPros' projection agrees. The Odds API is a fallback for shortlist plays Unabated can't price.
+3. **Track and learn** (`bp_learn.py`): logs picks from several strategies, grades them after the games, reports W-L, units, ROI, Brier score and closing line value, and fits a model on graded props.
 
-- Points, Rebounds, Assists, Threes
-- Points + Assists, Points + Rebounds, Points + Rebounds + Assists
+Markets (full game): Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pts + Reb + Ast. Reb + Ast is built in but off (`DISABLED` in `bp_props.py`), since BettingPros carries no FanDuel R+A lines.
 
 ## Features
 
-- **Projection Gap Ranking**: Sorts props by how far the BettingPros projection sits from the line, as a percentage of the line.
-- **0-100 Prop Score**: Combines projection edge, FanDuel EV, and matchup into a single rating, reduced for injury status (see [Scoring](#scoring)).
-- **Balanced Score**: Blends the score with recent hit rate vs. the line, FanDuel's no-vig price, line vs. consensus, and BettingPros' bet rating.
-- **Three Top-10 Lists**: Separate rankings by raw projection gap, by score, and by balanced score.
-- **Kelly Stakes**: Suggested quarter-Kelly stake per prop (1u = 1% of bankroll).
-- **Top 10 by Category**: For each prop category (PTS, REB, AST, 3PM, P+A, P+R, PRA; R+A is built in but off, since BettingPros carries no FanDuel R+A lines), a top 10 by projection gap and a top 10 by score.
-- **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
-- **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
-- **Every FanDuel line**: the 2 PM pull takes every FanDuel main line (`/offers`) first, then BettingPros projections (`/props`) only for the players FanDuel prices, and joins them, and re-scores each prop at FanDuel's own line and price, including FanDuel's fair probability and market EV. A 6:30 PM `--reprice` refreshes FanDuel's lines from `/offers` only.
-- **Request Budgeting**: Caches book and market IDs in `bp_cache.json` and backs off on rate limits, so runs fit inside the daily API allowance.
-- **Self-Learning Record**: Logs the top picks of each strategy every slate, grades them automatically after the games, tracks the record and units, and re-learns how much each factor (including teammates being ruled out) actually predicts a win.
-- **Interactive Dashboard**: One page with every list, filters, score breakdowns, and a copy-to-Claude button.
-- **No Dependencies**: Uses only the Python standard library.
+- **Every FanDuel line**: `/offers` (FanDuel main lines, all games in one query) first, then `/props` projections only for the players FanDuel prices. Side, gap, EV, Kelly and placeholder status are computed at FanDuel's line; when BettingPros' line differs, both are shown.
+- **Market fair price**: Unabated consensus (median of devigged DraftKings, BetMGM, Caesars, Fanatics, theScore, Novig, ProphetX, Kalshi and Polymarket at FanDuel's line, 3+ sources; pick'em apps excluded), with The Odds API as fallback.
+- **BET tags**: "+EV + proj agrees" vs. "+EV only", with form and DvP for the bet side. Both are recorded separately so the record shows which does better.
+- **Closing check**: a 6:30 PM re-price logs CLV (EV of the bet at the closing fair price) and flags BETs whose market EV fell below 0.
+- **Scores and lists**: top 10 by projection gap, score and balanced score, overall and per category, plus lines with no projection.
+- **Kelly stakes**: BETs at half-Kelly on the market's fair probability; model stakes halved until the model is calibrated.
+- **Lineups and injuries**: Rotowire projected lineups and injury status, including teammates ruled out.
+- **Self-learning record**: per-game pre-tip cutoff, automatic grading, voids for players who didn't play, and a model that is validated on later slates before it's trusted.
+- **Request budgeting**: per-day request counter, budget math before each run, page-1 estimates, a `--max-requests` cap and a big-slate rule.
+- **Interactive dashboard**: one page with every list, BET and watch tags, market EV and source, the record, and a Copy for Claude button.
+- **No dependencies**: Python standard library only.
 
 ## Technologies Used
 
 - **Python 3.9+**
-- **BettingPros Consumer API (v3)**
+- **BettingPros Consumer API (v3)**: projections, FanDuel lines, final stats
+- **Unabated API**: market fair prices (primary)
+- **The Odds API (v4)**: market fair prices (fallback)
+- **Rotowire** public NBA lineups page
 
 ## Getting Started
 
 ### Prerequisites
 
-You need a BettingPros API key. Free/Plus keys allow 100 requests per day and 20 props per page; Elite allows 1,000 per day and 50 per page. The allowance resets at midnight UTC.
+| Service | Limit | `.env` key |
+| --- | --- | --- |
+| BettingPros | 100 requests per day on Free/Plus (1,000 on Elite), reset at midnight UTC | `BP_API_KEY` |
+| Unabated | 1 odds call every 5 s per key (Free API); discovery calls don't count | `UNABATED_API_KEY` |
+| The Odds API | 500 credits per month | `ODDS_API_KEY` |
+
+Only `BP_API_KEY` is required; without the others the market check is skipped or falls back.
 
 1. Clone the repository:
 ```bash
@@ -44,175 +52,155 @@ You need a BettingPros API key. Free/Plus keys allow 100 requests per day and 20
    cd BettingProsAPI
 ```
 
-2. Add your API key to a `.env` file in the project folder (it is git-ignored and never committed):
+2. Add your keys to `.env` (git-ignored, never committed):
 ```bash
    echo "BP_API_KEY=your-key-here" > .env
+   echo "UNABATED_API_KEY=your-key-here" >> .env
+   echo "ODDS_API_KEY=your-key-here" >> .env
 ```
 
-3. Run the script:
+3. Check Unabated once (discovery only):
 ```bash
-   python3 bp_props.py
+   python3 bp_unabated.py --discover
 ```
+
+4. Run the daily pull:
+```bash
+   python3 bp_props.py --max-requests 45
+```
+
+## Daily Flow
+
+| Time (ET) | Step | Cost |
+| --- | --- | --- |
+| First run | Grade the previous slate | about 1.4 BettingPros requests per game, plus up to 8 single-game lookups |
+| 2:00 PM | `python3 bp_props.py --max-requests N`: full pull | about 5.7 requests per game + 1 |
+| After 2 PM | `python3 bp_value.py --board --go [--max-credits N]`: market check of every FanDuel line | 1 Unabated call; Odds API credits only for the fallback |
+| 6:30 PM | `python3 bp_props.py --reprice`: FanDuel lines from `/offers` only | about 2.4 requests per game |
+| 6:30 PM | `python3 bp_value.py --close --go`: CLV for each BET | 1 Unabated call |
+
+Without `--go`, `bp_value.py` only prints its plan and cost. Every step prints its budget math first.
+
+**Big slates**: the 2 PM pull is never trimmed. If the full 6:30 re-price won't fit in what's left of the day, it re-prices only the games with logged picks; if even that won't fit, it's skipped and the 2 PM picks count (`--force-reprice` overrides).
 
 ## Usage
 
 ```bash
-python3 bp_props.py                    # today's slate (Eastern time)
+# BettingPros board
+python3 bp_props.py --max-requests 45  # full pull; stops after the page-1 requests if the run would need more
+python3 bp_props.py --reprice          # 6:30 PM re-price from /offers (picks from this run count)
+python3 bp_props.py --from-csv         # re-score today's saved CSV, no requests
 python3 bp_props.py --date 2026-11-19  # a specific date
-python3 bp_props.py --max-requests 45  # 2 PM full pull; stops after page 1s if the run would need more
-python3 bp_props.py --reprice          # 6:30 PM re-price from /offers only (picks from this run count)
-python3 bp_props.py --unfiltered-props # full pull with /props for every player (if the player-id filter misses)
-python3 bp_value.py --picks            # plan a market value check of today's picks (The Odds API; prints the credit cost, no call)
-python3 bp_value.py --picks --go --max-credits 4   # run it once approved: median no-vig of other books at FanDuel's line
-python3 bp_props.py --reprice --force-reprice  # run a full 6:30 re-price even if the budget rule chose picks-only or skip
-python3 bp_props.py --list-markets     # show every NBA prop market and which are selected
-python3 bp_props.py --markets 156:157  # pick markets by ID
-python3 bp_props.py --page-limit 50    # Elite keys
-python3 bp_props.py --location NJ      # sportsbook location (default NY)
-python3 bp_props.py --refresh          # re-fetch cached book and market IDs
-python3 bp_props.py --from-csv         # re-score today's saved CSV, no API requests
-python3 bp_props.py --grade 2026-11-18 # grade a finished slate and re-learn
+python3 bp_props.py --grade 2026-11-18 # grade one finished slate and re-learn
 python3 bp_props.py --no-grade         # skip automatic grading this run
-python3 bp_props.py --measure          # 3 requests: slate prop counts with/without the FanDuel filter and default ev_threshold
+python3 bp_props.py --unfiltered-props # projections for every player (if the player-id filter misses)
+python3 bp_props.py --force-reprice    # with --reprice: run a full re-price despite the budget rule
+python3 bp_props.py --measure          # 3 requests: slate prop counts with/without the FanDuel filter
+python3 bp_props.py --list-markets     # every NBA prop market and which are selected
+python3 bp_props.py --location NJ      # sportsbook location for the FanDuel book lookup (default NY)
+
+# Market check
+python3 bp_value.py --board                        # plan: cost of pricing every FanDuel line
+python3 bp_value.py --board --go --max-credits 4   # run: Unabated for the board, Odds API fallback up to 4 credits
+python3 bp_value.py --close --go                   # 6:30 PM: CLV for today's BETs
+python3 bp_value.py --top 10                       # plan an Odds API check of the top 10 by Balanced only
+python3 bp_unabated.py --discover                  # Unabated discovery (no odds calls)
+python3 bp_unabated.py --status                    # what discovery found and whether Unabated is used
 ```
 
-## Output
+## Market Check and BETs
 
-Each run writes two files.
+**Unabated (primary).** One props odds call returns the whole NBA board. For each FanDuel line, the fair probability is the **median of devigged (multiplicative) non-FanDuel sources pricing both sides at FanDuel's line**: DraftKings, BetMGM, Caesars, Fanatics and theScore US, plus the exchanges and prediction markets Novig, ProphetX, Kalshi and Polymarket. Pick'em apps (PrizePicks, Underdog, Pick6) and duplicate feeds are excluded, and live, alternate and partial-game lines are ignored. It needs 3+ sources. If the key ever returns the Unabated Line for props, that is used instead. A 401/403 switches to The Odds API automatically.
 
-**`bp_top10_<date>.md`**: FanDuel-priced props only.
+**The Odds API (fallback).** Only for shortlist plays (top 10 by Balanced, real projections) that Unabated can't price, within an 8-credit daily aim and the credits you approve. FanDuel plus 9 US books counts as one region; the fair probability is the median of the non-FanDuel books at FanDuel's line, and needs 4+ books. Credits are tracked from the response headers in `odds_credits.json`, and runs stop before going under 50 for the month.
 
-1. Top 10 by projection gap
-2. Top 10 by score
-3. Top 10 by balanced score
-4. For each category (Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pts + Reb + Ast): top 10 by projection gap and top 10 by score
+**BET rule.** Market EV = fair probability × FanDuel decimal odds − 1. A BET needs EV ≥ +2% at FanDuel's line, with 3+ sources (Unabated) or 4+ books (The Odds API). The stake is half-Kelly on the fair probability, capped at 2.5u. Each BET is tagged:
 
-Each row shows line, projection, gap, FanDuel odds, matchup, recent form, score, balanced score, signal agreement, Kelly stake, and injury status.
+- **+EV + proj agrees**: BettingPros' projection is on the same side.
+- **+EV only**: the projection is on the other side, or there is none.
 
-**`bp_props_<date>.csv`**: every prop, one row each, including:
-
-| Column | Meaning |
-| --- | --- |
-| `player`, `team`, `injury` | Player info |
-| `market`, `rec_side`, `line` | Prop, recommended side, and line |
-| `bp_proj`, `diff`, `pct_gap` | BettingPros projection and gap from the line |
-| `fd_odds_rec`, `implied_prob` | FanDuel odds for the recommended side and implied probability |
-| `bp_win_prob`, `bp_ev`, `bp_rating` | BettingPros probability, EV, and rating (Plus/Elite keys only) |
-| `fd_fair_prob`, `fd_market_ev` | FanDuel fair probability and market EV for the recommended side (from `/offers`) |
-| `bp_line`, `line_note` | BettingPros' line for its projection, and a note when FanDuel's line differs (gap, EV and Kelly use FanDuel's) |
-| `noproj` | FanDuel line with no BettingPros projection: ranked on form, DvP and market value only, no edge or Kelly, never a pick |
-| `dvp_softness` | Opponent defense vs. position, 1 = softest |
-| `model_prob`, `model_ev` | Estimated win chance for the recommended side and EV at FanDuel's odds |
-| `s_edge`, `s_ev`, `s_dvp` | The three score parts, each 0-100 |
-| `score` | Final 0-100 score |
-| `over_odds`, `under_odds`, `consensus_line`, `consensus_odds` | Both FanDuel sides and the cross-book consensus |
-| `form_l5` … `form_h2h`, `streak` | Recommended side's hits vs. games against this line (e.g. `7-10`) |
-| `form_rate`, `nv_edge` | Shrunk recent hit rate; model probability minus FanDuel's no-vig probability |
-| `s_form`, `s_market`, `s_bp` | Balancing parts, each 0-100 |
-| `balanced`, `signals`, `kelly_u` | Balanced score, factors in agreement (of 6), quarter-Kelly units |
-| `is_scored`, `actual` | Final stat once the game is graded, for back-testing |
-| `tm_out`, `tm_out_names`, `tm_dtd` | Teammates ruled out (by name) and teammates day-to-day |
-| `learned_prob`, `learned` | Model's win probability and learned score (0-100) |
-| `placeholder` | Whole-number projection exactly 0.5 off the line |
-| `tip`, `pulled_at` | Game start and this run's pull time (UTC) |
+Shortlist plays that aren't BETs are logged as **watch**. At 6:30 the closing check logs **CLV** (EV of the bet taken, at the 6:30 fair price) and flags any BET whose market EV at FanDuel's current price fell below 0.
 
 ## Scoring
 
-Each prop's score is a weighted blend of three parts, each scaled 0-100:
+Each prop's **score** blends three parts, each 0-100:
 
 | Part | Weight | How it's measured |
 | --- | --- | --- |
-| **Edge** | 40% | Gap between projection and line in standard deviations (SD ≈ 1.1 × √projection). 0.75 SD or more earns full marks. Measuring in SDs keeps a 1.5-line three-pointer prop and a 25.5-line points prop on equal footing. |
-| **EV** | 35% | Win chance for the recommended side (BettingPros' probability when the key provides it, otherwise estimated from the projection) against FanDuel's odds, blended with BettingPros / FanDuel market EV when available. -10% EV scores 0 and +20% scores 100, so heavily juiced prices are penalized. |
+| **Edge** | 40% | Gap between projection and FanDuel's line in standard deviations (SD ≈ 1.1 × √projection). 0.75 SD or more earns full marks. |
+| **EV** | 35% | Win chance for the side (BettingPros' probability when it was priced at the same line and side, else estimated from the projection) against FanDuel's odds, blended with FanDuel's market EV from `/offers`. -10% scores 0 and +20% scores 100. |
 | **Matchup** | 25% | Opponent defense vs. position. A soft defense raises an over; a tough defense raises an under. |
 
-The total is then multiplied by an injury factor: ×0.85 for day-to-day or questionable, ×0.5 for doubtful, 0 for out.
+The total is multiplied by an injury factor: ×0.85 for day-to-day or questionable, ×0.5 for doubtful, 0 for out.
 
-### Balanced score
+The **balanced score** is 40% score, 25% form (hit rate of the side vs. the line over recent windows, shrunk toward 50%), 20% market value (model vs. FanDuel's no-vig probability, and FanDuel's line vs. the consensus line) and 15% BettingPros' bet rating. Missing data scores a neutral 50. **Signals** counts how many of the six parts score 60 or higher.
 
-The balanced score keeps your score as its largest part and checks it from independent angles:
+**Placeholder projections** (a whole number exactly 0.5 off the line) claim no edge, use FanDuel's no-vig price for EV, and rank below real projections unless the price alone is +EV. **Lines with no projection** are ranked on form, DvP and market value only, after every projected prop, with no edge, Kelly or logged pick.
 
-| Part | Weight | How it's measured |
-| --- | --- | --- |
-| **Your score** | 40% | As above. |
-| **Form** | 25% | Hit rate of the recommended side against this line over the last 5, 10, and 20 games, the season, and head-to-head, weighted toward the last 10-20 and shrunk toward 50% on small samples. 35% scores 0 and 75% scores 100. |
-| **Market value** | 20% | Model win chance minus FanDuel's no-vig probability (the price with the bookmaker's margin removed), plus whether FanDuel's line is friendlier than the consensus line across books. |
-| **BettingPros rating** | 15% | BettingPros' own 1-5 bet rating (Plus/Elite keys; neutral otherwise). |
-
-Missing data scores a neutral 50. The injury factor applies here too.
-
-**Signals** counts how many of the six parts (edge, EV, matchup, form, market, rating) score 60 or higher. **Kelly** is a quarter-Kelly stake using the model's win chance blended 50/50 with FanDuel's no-vig probability, capped at 2.5u. 0u means no edge at that price.
+**Model Kelly** is a quarter-Kelly stake on the model's win chance blended 50/50 with FanDuel's no-vig probability, halved (max 1.25u, "half-Kelly: model not yet calibrated") until the combined pick record has 50+ graded picks and its Brier score beats the market's.
 
 The scores are ranking aids built from public projections, not win probabilities.
+
+## Output
+
+Each run writes:
+
+- **`bp_props_<date>.csv`**: every prop, one row each (FanDuel line and price, BettingPros projection and line, gap, scores, form, DvP, Rotowire status, teammates out, Kelly, market fair price and source).
+- **`bp_top10_<date>.md`**: the record, BETs and watch list, top 10 by gap, score and balanced score, lines with no projection, lines where FanDuel differs from BettingPros, and top 10 by gap and score per category.
+- **`bp_dashboard.html`**: the NBA Prop Board (below).
+- **`history/<date>/`**: each pull's snapshot, pagination log and Rotowire snapshot, used for the pre-tip cutoff and CLV.
+- **`value_<date>.json`**: the market check per FanDuel line (both sides, source, decisions, closing check).
+
+Key CSV columns:
+
+| Column | Meaning |
+| --- | --- |
+| `market`, `rec_side`, `line`, `fd_odds_rec` | Prop, side, FanDuel's line and price |
+| `bp_proj`, `bp_line`, `line_note` | BettingPros projection, its line, and a note when FanDuel's line differs |
+| `pct_gap`, `score`, `balanced`, `signals`, `kelly_u` | Gap at FanDuel's line, ratings, agreement, model stake |
+| `fd_fair_prob`, `fd_market_ev` | FanDuel's own fair probability and market EV (from `/offers`) |
+| `oa_fair`, `oa_ev`, `fair_src` | Market fair probability, EV at FanDuel's price, and its source (Unabated / OddsAPI) |
+| `noproj`, `placeholder` | No projection; placeholder projection |
+| `rw_status`, `starter`, `tm_out_names`, `tm_dtd` | Rotowire status, projected starter, teammates out and day-to-day |
+| `tip`, `pulled_at`, `stale_price` | Game start, pull time (UTC), and a price kept from 2 PM on a picks-only re-price |
+
+## Record and Self-Learning
+
+Every run logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`, plus the market-check decisions (`bet_agree`, `bet_only`, `watch`). The first run of the next day grades them.
+
+- **Per-game cutoff**: a strategy pick counts only if it came from the last run before that game's tip that priced the game. BET and watch decisions count when logged before tip and are never replaced by a later run.
+- **Scoreboard**: W-L-P, hit rate, units and ROI, Kelly units, Brier score and log loss vs. FanDuel's no-vig probability, and CLV (line points for strategies; EV at the 6:30 fair price for BETs, with the count that fell below 0).
+- **Market comparison**: after 50 graded picks with both, the record compares our probability with the market's, per fair-price source.
+- **Grading**: final stats from BettingPros. Saved stats are reused, and picks whose FanDuel line was taken down are looked up by game and market (1 request each, at most 8 per slate). A player who didn't play is graded **V** (void).
+- **Learning**: every graded prop goes into `bp_graded.csv`, with each player-game counted once. An L2-regularized logistic regression learns how much each factor predicts the side hitting (edge, EV, matchup, form, market value, price, side, injury, teammates out, market type, placeholder, projected starter). It starts at 60 player-games, is validated on later slates against Balanced, and is capped at 50% weight until it beats Balanced on 100+ held-out player-games (then 80%).
+- **Teammates out**: a rotation regular (points props in recent slates averaging 9.5+, or props tonight with no PTS line under 9.5) counts as out when Rotowire lists him Out, even if his props are still posted, or when he has no props and Rotowire doesn't list him as playing.
+
+## Dashboard
+
+`bp_dashboard.html`, the **NBA Prop Board**, built from `dashboard_template.html`:
+
+- a category picker with ranking by gap, score, balanced or learned
+- **BET** tags (with the bet side and "+EV only" marker), **watch** tags, and an EV-below-0 flag after the closing check
+- columns for our EV, market EV and fair source next to the scores and Kelly
+- tap-to-expand details: score parts, form, Rotowire, teammates out, line differences, market check and closing CLV
+- a **Record** tab with each strategy and BET group, results by category, recent picks, the model and the market comparison
+- **Copy for Claude**: the record summary, BETs with tags, form, DvP and stakes, the watch list and every top-10 list as compact text
+
+`/props` publishes it as a private claude.ai artifact and updates the same link each day (stored in git-ignored `.dashboard_url`).
 
 ## Using with Claude Code
 
 The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-code). Open Claude Code in the project folder and type:
 
 ```
-/props                 # tonight's slate, summarized
-/props reprice         # 6:30 PM re-price from /offers
+/props                 # today's flow: grade, pull, market check, summary
+/props reprice         # 6:30 PM re-price and closing check
 /props 2026-11-19      # a specific date
 /props Celtics         # filter to a player or team
 ```
 
-Claude runs the script, reads the results, and summarizes the three overall top-10 lists and the per-category lists.
-
-### Record and self-learning
-
-Every live run stamps its props with the pull time and each game's tip time (from `/events`), saves a snapshot in `history/<date>/`, and logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`. The next run grades finished slates against the final stats BettingPros reports.
-
-- **Per-game cutoff**: a pick counts only if it came from the last run before *that game's* tip. Picks logged after a game started never count, and an earlier run's pick is replaced by the last pre-tip run. Learning data comes from the same pre-tip snapshot for each game.
-- **Scoreboard**: for each strategy, W-L-P, hit rate, flat-stake units and ROI, Kelly-stake units, **Brier score and log loss** of our probability vs. FanDuel's no-vig probability (lower is better), and **closing line value**: points gained between the first pre-tip run that logged the pick and the last run before tip.
-- **Combined record**: an "All picks" row and the by-category table count each prop once, even when it's on several lists, including in Kelly totals.
-- **Learning**: every graded FanDuel prop goes into `bp_graded.csv`, weighted so **each player-game counts once** (a player's PTS, P+A, P+R and PRA in one game share a single sample). An L2-regularized logistic regression learns how much each factor predicts the recommended side hitting: edge, EV, matchup, form, market value, price, side, the player's injury tag, teammates out or day-to-day, form when teammates are out, market type, the placeholder flag, and projected-starter status. It starts after 60 player-games.
-- **Validation and cap**: the model is trained on earlier slates and tested on later ones against a Balanced-only model. The learned score blends model and balanced by sample size (n / (n + 400)) and is **capped at 50% model** until the model has lower held-out log loss than Balanced on 100+ test player-games; after that the cap is 80%.
-- **Placeholder projections**: a whole-number projection exactly 0.5 off the line is flagged as a placeholder, not a real projection. It claims zero edge, its EV uses FanDuel's no-vig probability (so EV reflects only the price), and it ranks below every prop with a real projection in all lists and picks unless the price alone is +EV (FanDuel market EV > 0, available with `--offers`). It is left out of the model's edge weight, and the flag is a model feature.
-- **Lineups and injuries (Rotowire)**: each live run reads Rotowire's public [NBA lineups page](https://www.rotowire.com/basketball/nba-lineups.php) once (allowed by its robots.txt; no API request) for projected starters, injury status (Out, Ques, GTD) and play probability, saved in `history/` so re-scores and learning use the pre-tip view. Rotowire Out sets the player's own injury to OUT.
-- **Teammates out**: a rotation regular (points props in recent slates, average line 9.5+) counts as out when Rotowire lists him Out, or he has no props and Rotowire doesn't list him as playing. A regular Rotowire shows starting is not counted. Long-term injuries drop out of the regulars, so this flags new absences. Without Rotowire data it falls back to missing props.
-
-Grading costs about 18 requests the first time a slate is graded (at most 3 slates per run), and each live run adds 1 request for tip times. Final stats already saved are reused, so a regrade only looks up what is still missing: FanDuel often takes a line down before the game ends, which drops that prop from the FanDuel-filtered pull, so each pick still missing a final stat is looked up by game and market with no book filter (1 request each, at most 8 per slate). A pick whose game and market are final but whose player has no stat (did not play) is graded **V** (void, no action) and left out of the record. Use `--no-grade` to skip grading, or `--grade YYYY-MM-DD` to grade one slate.
-
-### Dashboard
-
-Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single interactive page built from `dashboard_template.html`. It has:
-
-- a **Record** tab with each strategy's record, results by category, recent graded picks, and what the model has learned
-- a "strongest tonight" strip of props in the top 20 on gap, score, and balanced
-- a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA) with ranking by Gap, Score, or Balanced
-- tap-to-expand score breakdowns
-- a **Copy for Claude** button that copies the full slate as compact text for any Claude chat, led by a record summary: each strategy's W-L-P, units and ROI, the combined each-prop-once row, the last graded slate's picks with results and final stats, the model's sample count vs. the 60 it needs, and model vs. market Brier score
-
-`/props` publishes it as a private claude.ai artifact and updates the same link every day (stored in git-ignored `.dashboard_url`).
+`CLAUDE.md` makes Claude ask before any BettingPros request, Odds API credit or Unabated odds call, showing the estimated cost and what's left first.
 
 ## Notes
 
-This project is for research and entertainment. Projections are not guarantees, so bet responsibly.
-
-## Daily flow
-
-1. 2 PM ET: `python3 bp_props.py --max-requests N` (BettingPros full pull).
-2. `python3 bp_value.py --board --go`: one free Unabated call prices every FanDuel main line (median of devigged books and exchanges at FanDuel's line, 3+ sources). The Odds API only for shortlist plays Unabated can't price (`--max-credits`, 4+ books).
-3. BET = market EV +2% or more at FanDuel's line; stake = half-Kelly on the fair probability. Tagged "+EV + proj agrees" or "+EV only" (BettingPros' projection on the other side or none), with form and DvP; both are logged (`bet_agree` / `bet_only`) so the record shows which does better. Shortlist plays that aren't BETs are `watch`.
-4. 6:30 PM ET: `python3 bp_props.py --reprice`, then `python3 bp_value.py --close --go`: a second free Unabated call logs CLV for each BET (EV of the bet at the 6:30 fair price) and flags BETs whose market EV fell below 0.
-
-## Fair-price sources
-
-Unabated is the primary source (`bp_unabated.py`): after `python3 bp_unabated.py --discover` confirms NBA props,
-our markets, FanDuel and an Unabated Line source on the key, `bp_value.py --go` makes one props odds call for the
-whole board and uses the Unabated Line (devigged) at FanDuel's line as the fair probability. The Odds API covers
-only the plays Unabated doesn't price (or a line mismatch). Each pick records its source (`fair_src`: Unabated /
-OddsAPI) on the board ("Fair src") and in the ledger, so the Record tab can compare sources once there's a sample.
-A 401/403 from Unabated switches to The Odds API automatically. BET with Unabated = market EV +2% (no book count,
-it's one consensus line); with The Odds API = +2% and 4+ books.
-
-## Market value check (The Odds API)
-
-`bp_value.py` checks picks against the wider market without replacing BettingPros. For each game with a pick it calls
-`/v4/sports/basketball_nba/events/{id}/odds` with only those picks' markets and FanDuel plus 9 other US books
-(1 region of cost per market). Each book's over/under is devigged (multiplicative and additive); the fair probability
-is the median of the non-FanDuel books at FanDuel's line (3+ books required), and EV = fair x FanDuel decimal - 1.
-Books on a different line are counted, not used. Credits are tracked in `odds_credits.json` from the response headers,
-and a run stops before going under 50 for the month. Results land in `value_<date>.json`, the ledger (`oa_fair`,
-`oa_ev`) and the board's "Mkt EV" column. After 50 graded picks with both, the Record tab compares our probability
-with the market's (Brier and log loss).
+This project is for research and entertainment. Projections and market prices are not guarantees, so bet responsibly.
