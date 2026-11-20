@@ -35,6 +35,12 @@ STATE = os.path.join(HERE, "unabated_state.json")
 LAST_ODDS = os.path.join(HERE, ".unabated_last_odds")
 ODDS_INTERVAL = 5.0          # seconds between odds calls, per key
 LEAGUE = "nba"
+# Player over/under single-game bet types (from /bettype; names are shared across sports, so match exactly
+# and require betOn=player, sides=ou, betRange=event, not a future). Some names have two ids (e.g. Points 73/275);
+# both go in the odds query, which is still one call.
+BETTYPE_NAMES = {"Points": "PTS", "Rebounds": "REB", "Assists": "AST", "Three Pointers Made": "3PM",
+                 "Points Assists": "P+A", "Points and Rebounds": "P+R", "Points Rebounds Assists": "PRA",
+                 "Rebounds Assists": "R+A"}
 
 
 class Unavailable(Exception):
@@ -153,20 +159,8 @@ def _name(x):
 def discover():
     """Discovery routes only (no odds interval). Saves raw responses plus what they mean for us."""
     out = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "raw": {}}
-    leagues = get("/league")
-    out["raw"]["league"] = leagues
-    nba = next((x for x in _items(leagues) if str(x.get("name", "")).lower() == LEAGUE), None)
-    out["nba"] = bool(nba)
-    bettypes = get("/bettype")
-    out["raw"]["bettype"] = bettypes
-    tags = {}
-    for b in _items(bettypes):
-        tag = bp_props.classify({"slug": _name(b)})
-        if tag and tag not in bp_props.DISABLED and b.get("id") is not None:
-            tags.setdefault(tag, []).append({"id": b["id"], "name": _name(b)})
-    out["bettypes"] = tags
-    wanted = [t for t in ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA")]
-    out["missing_markets"] = [t for t in wanted if t not in tags]
+    out["raw"]["league"] = get("/league")
+    out["raw"]["bettype"] = get("/bettype")
     for path, k in ((f"/market/{LEAGUE}/props/sources", "sources"), ("/period-type", "period_types"),
                     (f"/market/{LEAGUE}/props/people", "people")):
         try:
@@ -175,7 +169,26 @@ def discover():
             out["raw"][k] = {"error": str(e)}
             if isinstance(e, Unavailable):
                 out.setdefault("unavailable", []).append(path)
-    srcs = _items(out["raw"].get("sources"))
+    return analyze(out)
+
+
+def analyze(out):
+    """Interpret saved discovery responses (no calls)."""
+    raw = out["raw"]
+    nba = next((x for x in _items(raw.get("league")) if str(x.get("name", "")).lower() == LEAGUE), None)
+    out["nba"] = bool(nba)
+    out["nba_league_id"] = nba.get("id") if nba else None
+    tags = {}
+    for b in _items(raw.get("bettype")):
+        tag = BETTYPE_NAMES.get(str(b.get("name", "")).strip())
+        if (tag and tag not in bp_props.DISABLED and b.get("betOn") == "player" and b.get("sides") == "ou"
+                and b.get("betRange") == "event" and not b.get("isFuture") and b.get("active", True)):
+            tags.setdefault(tag, []).append({"id": b["id"], "name": b["name"]})
+    out["bettypes"] = tags
+    out["missing_markets"] = [t for t in ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA") if t not in tags]
+    people = _items(raw.get("people"))
+    out["people_count"] = len(people)
+    srcs = _items(raw.get("sources"))
     fd = [s for s in srcs if "fanduel" in _name(s).lower().replace(" ", "")]
     line = [s for s in srcs if "unabated" in _name(s).lower()]
     out["fanduel_source_id"] = fd[0].get("id") if fd else None
@@ -184,7 +197,7 @@ def discover():
                        "disabledMarketTypeIds": s.get("disabledMarketTypeIds")} for s in srcs]
     out["full_game_period_ids"] = [p.get("id") for p in _items(out["raw"].get("period_types"))
                                    if norm(_name(p)) in ("full game", "game", "full time", "fullgame")]
-    out["props_ok"] = bool(nba and tags and srcs and "unavailable" not in out)
+    out["props_ok"] = bool(nba and tags and srcs and people and "unavailable" not in out)
     save(DISCOVERY, out)
     if out["props_ok"]:
         save(STATE, {"disabled": False})
@@ -193,7 +206,8 @@ def discover():
 
 def report(d):
     print(f"NBA league: {'yes' if d.get('nba') else 'NO'}")
-    print("Bet types for our markets: " + (", ".join(f"{t} -> {[b['name'] for b in v]}" for t, v in sorted(d.get("bettypes", {}).items())) or "none"))
+    print("Bet types for our markets: " + (", ".join(f"{t} = {' / '.join(b['name'] + ' (' + str(b['id']) + ')' for b in v)}" for t, v in sorted(d.get("bettypes", {}).items())) or "none"))
+    print(f"People (player ids) on the NBA props board: {d.get('people_count', 0)}")
     if d.get("missing_markets"):
         print(f"No bet type matched: {', '.join(d['missing_markets'])}")
     print(f"Props sources: {len(d.get('sources', []))}" + (f" ({', '.join(s['name'] for s in d['sources'])})" if d.get("sources") else ""))
@@ -307,6 +321,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--discover", action="store_true", help="run discovery (no odds interval used)")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--reanalyze", action="store_true", help="re-read the saved discovery responses (no calls)")
     a = ap.parse_args()
     if a.discover:
         try:
@@ -315,6 +330,8 @@ def main():
             print(f"Unabated unavailable: {e}. bp_value.py will use The Odds API.")
         return
     d = load(DISCOVERY, None)
+    if a.reanalyze and d:
+        d = analyze(d)
     if d:
         report(d)
     ok, why = usable()
