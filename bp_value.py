@@ -42,7 +42,8 @@ MIN_BOOKS = 3
 DAILY_CREDITS = 8          # aim per day; --top N is cut to the games with the most shortlist plays
 BET_MIN_EV = 0.02          # BET: market EV (multiplicative) at FanDuel's price, and
 BET_MIN_BOOKS = 4          #      The Odds API: at least 4 other books at FanDuel's line (Unabated: U.MIN_SOURCES = 3)
-BET_KELLY_MAX = 2.5        # u; half-Kelly on the market's fair probability
+BET_KELLY_MAX = 2.5        # u; quarter-Kelly on the market's fair probability, once BET CLV is proven
+BET_KELLY_CAP = 1.25       # u; until 50 graded BETs show positive average CLV
 
 # Checked against https://the-odds-api.com/sports-odds-data/betting-markets.html (NBA player props, Over/Under).
 MARKET_KEYS = {"PTS": "player_points", "REB": "player_rebounds", "AST": "player_assists", "3PM": "player_threes",
@@ -281,11 +282,22 @@ def qualifies(v):
     return (v.get("books") or 0) >= BET_MIN_BOOKS
 
 
-def bet_kelly(fair, american):
-    """Half-Kelly stake in units (1u = 1% of bankroll) on the market's fair probability, capped."""
+def bet_cap():
+    """(cap in u, note). 1.25u until 50 graded BETs show positive average CLV, then 2.5u."""
+    n, avg, n_clv = bp_learn.bet_clv_status()
+    if n >= bp_learn.BET_CAP_MIN_BETS and avg is not None and avg > 0:
+        return BET_KELLY_MAX, f"BET stakes ¼K, cap {BET_KELLY_MAX}u: {n} graded BETs, average CLV {100 * avg:+.1f}%."
+    why = f"{n} of {bp_learn.BET_CAP_MIN_BETS} graded BETs" if n < bp_learn.BET_CAP_MIN_BETS else \
+        f"average CLV {'n/a' if avg is None else f'{100 * avg:+.1f}%'} on {n_clv} BETs"
+    return BET_KELLY_CAP, f"BET stakes ¼K, cap {BET_KELLY_CAP}u until 50 graded BETs show positive average CLV ({why})."
+
+
+def bet_kelly(fair, american, cap=None):
+    """Quarter-Kelly stake in units (1u = 1% of bankroll) on the market's fair probability, capped."""
+    cap = bet_cap()[0] if cap is None else cap
     b = decimal(american) - 1
     f = (fair * (b + 1) - 1) / b
-    return round(min(max(f / 2 * 100, 0.0), BET_KELLY_MAX), 1)
+    return round(min(max(f / 4 * 100, 0.0), cap), 2)
 
 
 def decide(date, shortlist, checked, results):
@@ -313,7 +325,7 @@ def decide(date, shortlist, checked, results):
                      "fair_src": v.get("fair_src") if v else None})
         if is_bet:
             bets.append(f"{p['player']} {p['market']} {p['side']} {p['line']:g} {price:+g}: mkt EV {100 * v['ev_mult']:+.1f}% "
-                        f"({v['fair_src']}" + (f", {v['books']} books" if v.get("books") else "") + f"), {stake}u")
+                        f"({v['fair_src']}" + (f", {v['books']} books" if v.get("books") else "") + f"), {stake}u ¼K")
     bp_learn.log_value_decisions(date, rows)
     print(f"\nBET ({len(bets)}): " + ("; ".join(bets) if bets else "none today") +
           f". Watch: {len(shortlist) - len(bets)}. Logged to the ledger (strategies 'bet' / 'watch').")
@@ -428,11 +440,12 @@ def run_board(args):
             bets.append((r, sd, v))
         entries[line_key(r["player"], r["market"], r["line"])] = e
     ledger, lines_out = [], []
+    cap, cap_note = bet_cap()
     for r, sd, v in sorted(bets, key=lambda x: -x[2]["ev_mult"]):
         ps = proj_side(r)
         tag = "+EV + proj agrees" if ps == sd else "+EV only"
         form, dvp = side_context(r, sd)
-        stake = bet_kelly(v["fair_mult"], v["price_used"])
+        stake = bet_kelly(v["fair_mult"], v["price_used"], cap)
         e = entries[line_key(r["player"], r["market"], r["line"])]
         e.update(decision="BET", bet_side=sd, tag=tag, bet_kelly=stake, bet_price=v["price_used"], bet_ev=v["ev_mult"],
                  form=form, dvp=dvp, proj_side=ps)
@@ -443,7 +456,7 @@ def run_board(args):
                          f"{100 * v['ev_mult']:+.1f}%, fair {v['fair_mult']:.3f} ({v['fair_src']}, {v.get('books')} "
                          f"{'sources' if v['fair_src'] == 'Unabated' else 'books'}{', exchange' if v.get('exchange') else ''}); "
                          f"BP proj {'agrees' if ps == sd else ('says ' + ps if ps else 'none')} ({r.get('bp_proj') or '-'} vs {float(r['line']):g}); "
-                         f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u")
+                         f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K")
     bet_keys = {(r["player"], r["market"]) for r, _, _ in bets}
     for p in shortlist:
         if (p["player"], p["market"]) in bet_keys:
@@ -460,11 +473,13 @@ def run_board(args):
     except (OSError, ValueError):
         pass
     old.update(entries)
+    old["_meta"] = {"bet_cap": cap, "bet_cap_note": cap_note}
     json.dump(old, open(path, "w"), indent=1)
     n_agree = sum(1 for x in ledger if x["strategy"] == "bet_agree")
     print(f"\nBET: {len(bets)} ({n_agree} +EV + proj agrees, {len(bets) - n_agree} +EV only). "
           f"Watch: {sum(1 for x in ledger if x['strategy'] == 'watch')} of the shortlist.")
     print("\n".join(lines_out) if lines_out else "  No line reached +2% with enough sources.")
+    print(cap_note)
     print(f"Saved {path}; ledger updated. Re-score (python3 bp_props.py --from-csv) to show it on the board. "
           f"Odds API credits remaining: {load_credits().get('remaining')}")
 

@@ -516,6 +516,18 @@ def closing_lines(date):
     return out
 
 
+BET_CAP_MIN_BETS = 50     # graded BETs needed before the BET stake cap lifts
+
+
+def bet_clv_status():
+    """(graded BETs, average CLV in EV terms or None, BETs with CLV). Counted, graded W/L/P BETs only."""
+    ledger = _read(LEDGER)
+    counted, _ = counted_flags(ledger)
+    bets = [r for r, ok in zip(ledger, counted) if ok and r.get("strategy") in BET_KEYS and r.get("result") in ("W", "L", "P")]
+    clv = [_num(r["clv_ev"]) for r in bets if _num(r.get("clv_ev")) is not None]
+    return len(bets), (sum(clv) / len(clv) if clv else None), len(clv)
+
+
 def log_value_decisions(date, rows):
     """Replace this date's bet/watch rows for the same pull with `rows` (from bp_value.py)."""
     pulled = {r.get("pulled_at") for r in rows}

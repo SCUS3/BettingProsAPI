@@ -19,7 +19,7 @@ Markets (full game): Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pt
 - **BET tags**: "+EV + proj agrees" vs. "+EV only", with form and DvP for the bet side. Both are recorded separately so the record shows which does better.
 - **Closing check**: a 6:30 PM re-price logs CLV (EV of the bet at the closing fair price) and flags BETs whose market EV fell below 0.
 - **Scores and lists**: top 10 by projection gap, score and balanced score, overall and per category, plus lines with no projection.
-- **Kelly stakes**: BETs at half-Kelly on the market's fair probability; model stakes halved until the model is calibrated.
+- **Kelly stakes**: BETs at quarter-Kelly (¼K) on the market's fair probability, capped at 1.25u until 50 graded BETs show positive average CLV; model stakes halved until the model is calibrated.
 - **Lineups and injuries**: Rotowire projected lineups and injury status, including teammates ruled out.
 - **Self-learning record**: per-game pre-tip cutoff, automatic grading, voids for players who didn't play, and a model that is validated on later slates before it's trusted.
 - **Request budgeting**: per-day request counter, budget math before each run, page-1 estimates, a `--max-requests` cap and a big-slate rule.
@@ -114,7 +114,7 @@ python3 bp_unabated.py --status                    # what discovery found and wh
 
 **The Odds API (fallback).** Only for shortlist plays (top 10 by Balanced, real projections) that Unabated can't price, within an 8-credit daily aim and the credits you approve. FanDuel plus 9 US books counts as one region; the fair probability is the median of the non-FanDuel books at FanDuel's line, and needs 4+ books. Credits are tracked from the response headers in `odds_credits.json`, and runs stop before going under 50 for the month.
 
-**BET rule.** Market EV = fair probability × FanDuel decimal odds − 1. A BET needs EV ≥ +2% at FanDuel's line, with 3+ sources (Unabated) or 4+ books (The Odds API). The stake is half-Kelly on the fair probability, capped at 2.5u. Each BET is tagged:
+**BET rule.** Market EV = fair probability × FanDuel decimal odds − 1. A BET needs EV ≥ +2% at FanDuel's line, with 3+ sources (Unabated) or 4+ books (The Odds API). The stake is quarter-Kelly (shown as "¼K"; 1u = 1% of bankroll) on the fair probability, capped at **1.25u until 50 graded BETs show positive average CLV**, then 2.5u. Each BET is tagged:
 
 - **+EV + proj agrees**: BettingPros' projection is on the same side.
 - **+EV only**: the projection is on the other side, or there is none.

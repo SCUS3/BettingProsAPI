@@ -401,7 +401,7 @@ footer b { color: var(--ink); font-weight: 600; }
         score: r.score == null ? '<span class="dim">–</span>' : '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
         learned: r.learned == null ? "" : '<span class="pill ' + tone(r.learned) + '">' + r.learned + "</span>",
-        kelly: r.decision === "BET" ? '<b title="Half-Kelly on the market fair probability">' + num(r.bet_kelly) + "u</b>" : r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>',
+        kelly: r.decision === "BET" ? '<b title="Quarter-Kelly on the market fair probability">' + num(r.bet_kelly) + 'u</b> <span class="dim">¼K</span>' : r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>',
         ev: pctEv(r.ev),
         src: r.fair_src ? esc(r.fair_src) : '<span class="dim">–</span>',
         oa: r.oa_ev == null ? '<span class="dim" title="No market check">–</span>' : '<span title="' + (r.fair_src === "Unabated" ? "Unabated Line, devigged" : "The Odds API: median no-vig of " + r.oa_books + " books") + ' at FanDuel\'s line">' + pctEv(r.oa_ev) + "</span>"
@@ -428,7 +428,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
     if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
-    if (r.decision === "BET") f.push("<b>BET " + esc(r.bet_side) + "</b> (" + esc(r.bet_tag) + "): market EV " + (r.bet_ev > 0 ? "+" : "") + Math.round(r.bet_ev * 1000) / 10 + "%, stake " + num(r.bet_kelly) + "u" +
+    if (r.decision === "BET") f.push("<b>BET " + esc(r.bet_side) + "</b> (" + esc(r.bet_tag) + "): market EV " + (r.bet_ev > 0 ? "+" : "") + Math.round(r.bet_ev * 1000) / 10 + "%, stake " + num(r.bet_kelly) + "u ¼K" +
       (r.close_clv != null ? "; 6:30 CLV " + (r.close_clv > 0 ? "+" : "") + Math.round(r.close_clv * 1000) / 10 + "%, market EV now " + (r.close_mkt_ev > 0 ? "+" : "") + Math.round(r.close_mkt_ev * 1000) / 10 + "%" : ""));
     if (r.oa_ev != null) f.push("Market check (" + esc(r.fair_src || "OddsAPI") + ") <b>fair " + Math.round(r.oa_fair * 1000) / 10 + "%, EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%</b>" + (r.oa_books ? " from " + r.oa_books + " books" : "") + "; our EV " + (r.ev == null ? "–" : (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%"));
     if (r.note) f.push("Line <b>" + esc(r.note) + "</b> (gap, EV and Kelly use FanDuel's)");
@@ -497,12 +497,13 @@ footer b { color: var(--ink); font-weight: 600; }
     var bets = DATA.bets || [], watch = ROWS.filter(function (r) { return r.decision === "watch"; });
     function p1(v) { return v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%"; }
     if (bets.length || watch.length) {
-      out.push("BET (market EV >= +2% at FanDuel's line; 3+ sources Unabated or 4+ books Odds API; stake = half-Kelly on fair prob):");
+      out.push("BET (market EV >= +2% at FanDuel's line; 3+ sources Unabated or 4+ books Odds API; stake = quarter-Kelly (¼K) on fair prob):");
+      if (DATA.bet_cap_note) out.push("  " + DATA.bet_cap_note);
       if (!bets.length) out.push("  none today");
       bets.forEach(function (b, i) {
         out.push("  " + (i + 1) + ". BET [" + b.tag + "] " + b.player + " " + b.market + " " + (b.side === "over" ? "O " : "U ") + num(b.line) + " " + odds(b.price) +
           " | mkt EV " + p1(b.ev) + " | fair " + b.fair + " (" + b.src + ", " + b.n + " sources" + (b.exchange ? ", exchange" : "") + ")" +
-          " | form " + (b.form == null ? "–" : Math.round(b.form * 100) + "%") + " | DvP " + (b.dvp == null ? "–" : b.dvp) + " | stake " + num(b.stake) + "u" +
+          " | form " + (b.form == null ? "–" : Math.round(b.form * 100) + "%") + " | DvP " + (b.dvp == null ? "–" : b.dvp) + " | stake " + num(b.stake) + "u ¼K" +
           (b.close && b.close.mkt_ev != null ? " | 6:30 CLV " + p1(b.close.clv_ev) + ", mkt EV now " + p1(b.close.mkt_ev) + (b.close.mkt_ev < 0 ? " FLAG" : "") : ""));
       });
       out.push("Watch (shortlist, not bet): " + watch.map(function (r) { return r.player + " " + r.market + " " + sideTxt(r) + (r.oa_ev != null ? " (mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%)" : ""); }).join("; "), "");

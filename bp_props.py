@@ -622,12 +622,13 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     if bets or watch:
         lines += ["## BET", "", "Every FanDuel line priced against the market (Unabated consensus of devigged books and exchanges; "
                   "The Odds API only for shortlist plays Unabated can't price). BET = market EV +2% or more at FanDuel's line "
-                  "with 3+ sources (Unabated) or 4+ books (The Odds API). Stake = half-Kelly on the fair probability. "
+                  "with 3+ sources (Unabated) or 4+ books (The Odds API). Stake = quarter-Kelly (¼K) on the fair probability. "
+                  + ((load_value(date).get("_meta") or {}).get("bet_cap_note") or "") + " "
                   "Tag: '+EV + proj agrees' when BettingPros' projection is on the same side, else '+EV only'.", ""]
         lines += [f"- BET [{b['tag']}] {b['player']} {b['market']} {b['side']} {fmt(b['line'])} {fmt(b['price'])}: market EV "
                   f"{100 * b['ev']:+.1f}%, fair {b['fair']} ({b['src']}, {b['n']} sources{', exchange' if b['exchange'] else ''}); "
                   f"form {'-' if b['form'] is None else str(round(100 * b['form'])) + '%'}, DvP {'-' if b['dvp'] is None else fmt(b['dvp'])}; "
-                  f"stake {fmt(b['stake'])}u" + (f"; 6:30 CLV {100 * b['close']['clv_ev']:+.1f}%, market EV now "
+                  f"stake {fmt(b['stake'])}u ¼K" + (f"; 6:30 CLV {100 * b['close']['clv_ev']:+.1f}%, market EV now "
                   f"{100 * b['close']['mkt_ev']:+.1f}%" + (" FLAG" if b['close']['mkt_ev'] < 0 else "")
                   if b.get("close") and b["close"].get("mkt_ev") is not None else "") for b in bets] or ["- No BET plays today."]
         lines += ["", "Watch (not bets): " + "; ".join(
@@ -1185,7 +1186,7 @@ def value_bets(date):
     """BETs from the day's value check (bp_value.py --board), best market EV first."""
     out = []
     for k, e in load_value(date).items():
-        if e.get("decision") != "BET" or "sides" not in e:
+        if k.startswith("_") or e.get("decision") != "BET" or "sides" not in e:
             continue
         player, market, line = k.split("|")
         v = e["sides"].get(e["bet_side"]) or {}
@@ -1216,7 +1217,7 @@ def attach_value(rows, date):
         r["oa_books"] = v.get("books") if v else None
         r["fair_src"] = v.get("fair_src") if v else None
         r["decision"] = v.get("decision") if v else None          # BET / watch (2 PM shortlist value check)
-        r["bet_kelly"] = v.get("bet_kelly") if v else None        # half-Kelly on the market's fair probability
+        r["bet_kelly"] = v.get("bet_kelly") if v else None        # quarter-Kelly on the market's fair probability
 
 
 def write_dashboard(rows, date, kelly_note=""):
@@ -1259,6 +1260,7 @@ def write_dashboard(rows, date, kelly_note=""):
         updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
     payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
+               "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
                "record": bp_learn.record()}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
