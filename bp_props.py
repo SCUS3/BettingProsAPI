@@ -659,12 +659,30 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                   "Gap, side, EV and Kelly use FanDuel's line; BettingPros' win chance and rating are dropped for these.", ""]
         lines += [f"- {r['player']} {r['market']} {r['rec_side']}: {r['line_note']}" for r in ranked(diffs, lambda r: r["balanced"])[:15]]
         lines.append("")
-    lines += ["---", "", "# Each category: top 10 by projection gap and top 10 by your score", ""]
+    lines += ["---", "", "# Each category", "", "3PM and P+R: top 10 by projection gap and by your score. PTS, REB, AST, P+A "
+              "and PRA: BettingPros publishes whole-number side leans, so those are ranked on form, matchup and market value.", ""]
     for tag, name in CATEGORY_ORDER:
         if tag in DISABLED:
             continue
-        group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
         lines += [f"## {name} ({tag})", ""]
+        if tag not in REAL_PROJ_MARKETS:
+            lean = [r for r in rows if r["price_is_fanduel"] and r["market"] == tag and r.get("lean_only") is True
+                    and r.get("balanced") is not None]
+            if not lean:
+                lines += ["_No FanDuel-priced props found._", ""]
+                continue
+            lines += [f"BettingPros publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
+                      f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", "",
+                      "| # | Player | BP lean | Line | FD odds | DvP | Form | Market | Ranking | Injury |",
+                      "|---|---|---|---|---|---|---|---|---|---|"]
+            for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1):
+                form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
+                lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r.get("bp_lean")), cell(r["line"]),
+                                                cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), form, cell(r.get("s_market")),
+                                                cell(r["balanced"]), cell(r["injury"])]) + " |")
+            lines.append("")
+            continue
+        group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
         if not group:
             lines += ["_No FanDuel-priced props found._", ""]
             continue
@@ -760,11 +778,12 @@ def score_row(r):
 
 
 def ranked(rows, key):
-    """Sort descending by key: real projections, then demoted placeholders, then lines with no projection."""
+    """Sort descending by key: real projections (3PM, P+R), then side-lean markets and demoted placeholders,
+    then lines with no projection."""
     def tier(r):
         if bp_learn._truthy(r.get("noproj")):
             return 2
-        return 1 if bp_learn._truthy(r.get("ph_demoted")) else 0
+        return 1 if bp_learn._truthy(r.get("ph_demoted")) or bp_learn._truthy(r.get("lean_only")) else 0
     return sorted(rows, key=lambda r: (tier(r), -(key(r) or 0)))
 
 
@@ -855,7 +874,18 @@ def kelly_units(r):
     return round(min(max(f / 4 * 100 * KELLY_SCALE, 0.0), KELLY_MAX * KELLY_SCALE), 1)
 
 
+# BettingPros publishes PTS, REB, AST, P+A and PRA projections as whole numbers, nearly always the line +-0.5
+# (every saved pull: 100% whole). That's a side lean, not a projection. Only these markets carry real projections:
+REAL_PROJ_MARKETS = {"3PM", "P+R"}
 W_NP_FORM, W_NP_DVP, W_NP_MKT = 0.25, 0.25, 0.20   # no projection: form, matchup and market value only (renormalized)
+
+
+def lean_row(r):
+    """PTS/REB/AST/P+A/PRA: BettingPros' projection is only a side lean. Rank on form, DvP and market value
+    (like a line with no projection), keep the lean as the side, no edge / projection EV / Kelly, never a pick."""
+    noproj_row(r)
+    r.update(lean_only=True, bp_lean=r.get("rec_side"), pct_gap=None)
+    return r
 
 
 def noproj_row(r):
@@ -1245,6 +1275,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
+            "lean": r.get("bp_lean") if r.get("lean_only") in (True, "True") else None,
             "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
             "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
             "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),
@@ -1260,6 +1291,7 @@ def write_dashboard(rows, date, kelly_note=""):
         updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
     payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
+               "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
                "record": bp_learn.record()}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
@@ -1304,6 +1336,10 @@ def finish(rows, date, snapshot=False, rw_players=None):
         if r["noproj"]:
             noproj_row(r)
             continue
+        if r.get("market") not in REAL_PROJ_MARKETS and _num(r.get("bp_proj")) is not None:
+            lean_row(r)
+            continue
+        r["lean_only"] = False
         score_row(r)
         balance_row(r)
         bp_learn.learned_row(r, model)

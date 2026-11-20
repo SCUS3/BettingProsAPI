@@ -292,11 +292,11 @@ footer b { color: var(--ink); font-weight: 600; }
   function key(r) { return r.player + "|" + r.market + "|" + r.side; }
   // Placeholder projections without a +EV price rank below every real projection.
   // No-projection FanDuel lines rank after every projected prop (they claim no edge).
-  function tierOf(r) { return r.noproj ? 2 : r.demoted ? 1 : 0; }
+  function tierOf(r) { return r.noproj ? 2 : (r.demoted || r.lean) ? 1 : 0; }
   function tier(a, b) { return tierOf(a) - tierOf(b); }
   var SORT = {
-    gap: function (a, b) { return tier(a, b) || Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
-    score: function (a, b) { return tier(a, b) || (b.score || 0) - (a.score || 0); },
+    gap: function (a, b) { return tier(a, b) || Math.abs(b.gap || 0) - Math.abs(a.gap || 0) || (b.bal || 0) - (a.bal || 0); },
+    score: function (a, b) { return tier(a, b) || (b.score || 0) - (a.score || 0) || (b.bal || 0) - (a.bal || 0); },
     bal: function (a, b) { return tier(a, b) || (b.bal || 0) - (a.bal || 0); },
     learned: function (a, b) { return tier(a, b) || (b.learned || 0) - (a.learned || 0); }
   };
@@ -393,7 +393,7 @@ footer b { color: var(--ink); font-weight: 600; }
           (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
-        proj: r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
+        proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
         odds: odds(r.odds),
         dvp: r.dvp == null ? "" : r.dvp,
@@ -427,6 +427,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.rw) f.push("Rotowire <b>" + esc(r.rw) + "</b>");
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
+    if (r.lean) f.push("<b>BP lean: " + esc(r.lean) + "</b>. BettingPros publishes whole-number projections for this market, so it's a side lean, not a projection: ranked on form, matchup and market value; no edge, projection EV or Kelly");
     if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
     if (r.decision === "BET") f.push("<b>BET " + esc(r.bet_side) + "</b> (" + esc(r.bet_tag) + "): market EV " + (r.bet_ev > 0 ? "+" : "") + Math.round(r.bet_ev * 1000) / 10 + "%, stake " + num(r.bet_kelly) + "u ¼K" +
       (r.close_clv != null ? "; 6:30 CLV " + (r.close_clv > 0 ? "+" : "") + Math.round(r.close_clv * 1000) / 10 + "%, market EV now " + (r.close_mkt_ev > 0 ? "+" : "") + Math.round(r.close_mkt_ev * 1000) / 10 + "%" : ""));
@@ -450,7 +451,7 @@ footer b { color: var(--ink); font-weight: 600; }
   // Copy for Claude: the full slate as compact text
   function line(r, i) {
     return (i + 1) + ". " + r.player + (r.team ? " (" + r.team + ")" : "") + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) +
-      (r.noproj ? " | no BettingPros projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
+      (r.lean ? " | BP lean: " + r.lean + " | rank " + r.bal : r.noproj ? " | no BettingPros projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
       (r.note ? " | " + r.note : "") +
       (r.ev != null ? " | EV " + (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%" : "") +
       (r.oa_ev != null ? " | mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "% (" + (r.fair_src || "OddsAPI") + (r.oa_books ? ", " + r.oa_books + " books" : "") + ")" : "") +
@@ -511,7 +512,13 @@ footer b { color: var(--ink); font-weight: 600; }
     [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
       out.push("ALL: top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
     });
+    var LEAN = DATA.lean_markets || [];
     CATS.slice(1).forEach(function (c) {
+      if (LEAN.indexOf(c[0]) >= 0) {
+        var lr = ranked(c[0], "bal", 10); if (!lr.length) return;
+        out.push(c[0] + ": top 10 ranked on form, matchup and market value (BettingPros only publishes a side lean here)");
+        lr.forEach(function (r, i) { out.push(line(r, i)); }); out.push(""); return;
+      }
       [["gap", "projection gap"], ["score", "score"]].forEach(function (x) {
         var rs = ranked(c[0], x[0], 10); if (!rs.length) return;
         out.push(c[0] + ": top 10 by " + x[1]); rs.forEach(function (r, i) { out.push(line(r, i)); }); out.push("");

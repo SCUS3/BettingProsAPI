@@ -138,7 +138,9 @@ The total is multiplied by an injury factor: ×0.85 for day-to-day or questionab
 
 The **balanced score** is 40% score, 25% form (hit rate of the side vs. the line over recent windows, shrunk toward 50%), 20% market value (model vs. FanDuel's no-vig probability, and FanDuel's line vs. the consensus line) and 15% BettingPros' bet rating. Missing data scores a neutral 50. **Signals** counts how many of the six parts score 60 or higher.
 
-**Placeholder projections** (a whole number exactly 0.5 off the line) claim no edge, use FanDuel's no-vig price for EV, and rank below real projections unless the price alone is +EV. **Lines with no projection** are ranked on form, DvP and market value only, after every projected prop, with no edge, Kelly or logged pick.
+**Real projections only for 3PM and P+R.** BettingPros publishes PTS, REB, AST, P+A and PRA projections as whole numbers, nearly always the line ±0.5 (100% whole in every saved pull; P+R and 3PM carry decimals, and the pipeline doesn't round). For those five markets the projection is treated as a side lean: shown as "BP lean: over/under", ranked on form, matchup and market value, with no edge, projection EV, Kelly or logged strategy pick, and the model's projection-gap feature is left out. Value in every category comes from the market check, which doesn't use BettingPros projections.
+
+**Placeholder projections** (3PM or P+R projections that are a whole number exactly 0.5 off the line) claim no edge, use FanDuel's no-vig price for EV, and rank below real projections unless the price alone is +EV. **Lines with no projection** are ranked on form, DvP and market value only, after every projected prop, with no edge, Kelly or logged pick.
 
 **Model Kelly** is a quarter-Kelly stake on the model's win chance blended 50/50 with FanDuel's no-vig probability, halved (max 1.25u, "half-Kelly: model not yet calibrated") until the combined pick record has 50+ graded picks and its Brier score beats the market's.
 

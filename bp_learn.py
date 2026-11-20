@@ -357,7 +357,8 @@ def features(r):
     imp = implied(r.get("fd_odds_rec"))
     form = s("s_form")
     ph = _truthy(r.get("placeholder"))
-    return [None if ph else s("s_edge"), s("s_ev"), s("s_dvp"), form, s("s_market"), imp if imp is not None else 0.5,
+    real = (r.get("market") or "") in ("3PM", "P+R")      # only these carry real BettingPros projections
+    return [None if ph or not real else s("s_edge"), s("s_ev"), s("s_dvp"), form, s("s_market"), imp if imp is not None else 0.5,
             1.0 if (r.get("rec_side") or "").lower() == "under" else 0.0,
             1.0 if inj and inj != "probable" else 0.0,
             tm_out, tm_dtd, form * tm_out,

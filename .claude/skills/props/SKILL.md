@@ -36,6 +36,8 @@ If the script exits with an error, report the message plainly. These are the com
 - "403 Forbidden": the key in `.env` is wrong or deactivated.
 - "No markets matched" or a missing-market warning: run `python3 bp_props.py --list-markets` and show the user.
 
+**Projections:** only 3PM and P+R carry real BettingPros projections. PTS, REB, AST, P+A and PRA come as whole-number side leans (nearly always the line ±0.5): the board shows "BP lean: over/under", ranks them on form, DvP and market value, gives them no edge/EV/Kelly, and never logs them as strategy picks. Say so when reporting; value in those markets comes only from the market check (BETs).
+
 ## 2. Read the results
 
 Read `bp_top10_<date>.md`, which the script writes. It has:
