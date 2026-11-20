@@ -16,3 +16,12 @@ tip-time (`/events`) checks, regrades, market or book lookups, and one-off diagn
 
 The daily limit is 100 requests (Free/Plus) and resets at midnight UTC (7 PM ET in winter, 8 PM in summer).
 Never print, cat or echo `.env` or the API key.
+
+## The Odds API (value check, bp_value.py)
+
+500 credits per month. Ask the user before every call that costs credits, and show the credit cost and the
+credits remaining (`odds_credits.json`, from the x-requests-* headers). `python3 bp_value.py --picks` (or
+`--top N`) with no `--go` only plans: it prints the cost and makes no call. Run with
+`--go --max-credits <approved>` only after the user approves. `GET /events` is free; each event-odds call
+costs (markets in the call) x 1 region (FanDuel + up to 9 books). The script stops before going under 50
+credits. Key: `ODDS_API_KEY` in `.env`, never printed.

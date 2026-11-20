@@ -40,7 +40,8 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
-                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly"]
+                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev"]
+OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
 FEATURE_LABELS = {
@@ -440,6 +441,8 @@ def log_picks(rows, date):
             prev = old.get((date, pulled, strat, row["player"], row["market"], row["side"]))
             if prev and prev.get("result"):
                 row.update({k: prev[k] for k in ("result", "actual", "profit_u", "profit_kelly")})
+            if prev and prev.get("oa_fair"):
+                row.update({k: prev.get(k) for k in ("oa_fair", "oa_ev")})
             new.append(row)
     _write(LEDGER, keep + new, LEDGER_FIELDS)
     return len(new)
@@ -758,6 +761,17 @@ def record():
         if sub:
             s = _summ(sub)
             by_cat.append({"market": mk, "w": s["w"], "l": s["l"], "p": s["p"], "units": s["units"]})
+    both = [r for r, _ in uniq if r["result"] in ("W", "L") and _num(r.get("our_prob")) is not None
+            and _num(r.get("oa_fair")) is not None]
+    oa = {"n": len(both), "min": OA_COMPARE_MIN}
+    if len(both) >= OA_COMPARE_MIN:
+        ys = [1.0 if r["result"] == "W" else 0.0 for r in both]
+        br = lambda ps: round(sum((p - y) ** 2 for p, y in zip(ps, ys)) / len(ys), 4)
+        oa.update(brier_ours=br([_num(r["our_prob"]) for r in both]), brier_oa=br([_num(r["oa_fair"]) for r in both]),
+                  logloss_ours=round(_logloss([_num(r["our_prob"]) for r in both], ys, [1.0] * len(ys)), 4),
+                  logloss_oa=round(_logloss([_num(r["oa_fair"]) for r in both], ys, [1.0] * len(ys)), 4))
+        pos = [r for r in both if (_num(r.get("oa_ev")) or 0) > 0]
+        oa.update(oa_pos_n=len(pos), oa_pos_units=round(sum(_num(r.get("profit_u")) or 0 for r in pos), 2))
     graded_dates = sorted({r["date"] for r, _ in graded}, reverse=True)
     recent = [r for r, _ in live if r["date"] in graded_dates[:3]]
     pending = [r for r, _ in live if not r.get("result")]
@@ -773,4 +787,4 @@ def record():
             "model_n": model.get("n", 0), "trust": round(100 * trust(model)), "proven": model.get("proven", False),
             "cap_unproven": round(100 * CAP_UNPROVEN), "validation": model.get("validation"),
             "calibration": model.get("calibration", {}), "weights": weights,
-            "insights": model.get("insights", []), "min_train": MIN_TRAIN}
+            "insights": model.get("insights", []), "min_train": MIN_TRAIN, "oa_compare": oa}

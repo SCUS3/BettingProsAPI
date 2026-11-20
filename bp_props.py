@@ -1157,6 +1157,21 @@ DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashbo
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
 
 
+def attach_value(rows, date):
+    """The Odds API value check (bp_value.py) on rows it covered: oa_fair, oa_ev, oa_books."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), f"value_{date}.json")) as f:
+            val = json.load(f)
+    except (OSError, ValueError):
+        val = {}
+    for r in rows:
+        line = _num(r.get("line"))
+        v = val.get(f"{r.get('player')}|{r.get('market')}|{r.get('rec_side')}|{line:g}") if line is not None else None
+        r["oa_fair"] = v.get("fair_mult") if v else None
+        r["oa_ev"] = v.get("ev_mult") if v else None
+        r["oa_books"] = v.get("books") if v else None
+
+
 def write_dashboard(rows, date, kelly_note=""):
     """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
     try:
@@ -1182,6 +1197,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
+            "ev": n(r.get("model_ev")), "oa_ev": n(r.get("oa_ev")), "oa_fair": n(r.get("oa_fair")), "oa_books": r.get("oa_books"),
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -1238,6 +1254,7 @@ def finish(rows, date, snapshot=False, rw_players=None):
         score_row(r)
         balance_row(r)
         bp_learn.learned_row(r, model)
+    attach_value(rows, date)
     n_logged = bp_learn.log_picks(rows, date)
     rows[:] = ranked(rows, lambda r: abs(r["pct_gap"] or 0))
     out = f"bp_props_{date}.csv"

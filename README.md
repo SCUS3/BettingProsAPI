@@ -62,6 +62,8 @@ python3 bp_props.py --date 2026-11-19  # a specific date
 python3 bp_props.py --max-requests 45  # 2 PM full pull; stops after page 1s if the run would need more
 python3 bp_props.py --reprice          # 6:30 PM re-price from /offers only (picks from this run count)
 python3 bp_props.py --unfiltered-props # full pull with /props for every player (if the player-id filter misses)
+python3 bp_value.py --picks            # plan a market value check of today's picks (The Odds API; prints the credit cost, no call)
+python3 bp_value.py --picks --go --max-credits 4   # run it once approved: median no-vig of other books at FanDuel's line
 python3 bp_props.py --reprice --force-reprice  # run a full 6:30 re-price even if the budget rule chose picks-only or skip
 python3 bp_props.py --list-markets     # show every NBA prop market and which are selected
 python3 bp_props.py --markets 156:157  # pick markets by ID
@@ -186,3 +188,14 @@ Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single inter
 ## Notes
 
 This project is for research and entertainment. Projections are not guarantees, so bet responsibly.
+
+## Market value check (The Odds API)
+
+`bp_value.py` checks picks against the wider market without replacing BettingPros. For each game with a pick it calls
+`/v4/sports/basketball_nba/events/{id}/odds` with only those picks' markets and FanDuel plus 9 other US books
+(1 region of cost per market). Each book's over/under is devigged (multiplicative and additive); the fair probability
+is the median of the non-FanDuel books at FanDuel's line (3+ books required), and EV = fair x FanDuel decimal - 1.
+Books on a different line are counted, not used. Credits are tracked in `odds_credits.json` from the response headers,
+and a run stops before going under 50 for the month. Results land in `value_<date>.json`, the ledger (`oa_fair`,
+`oa_ev`) and the board's "Mkt EV" column. After 50 graded picks with both, the Record tab compares our probability
+with the market's (Brier and log loss).

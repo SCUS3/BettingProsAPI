@@ -72,3 +72,7 @@ After that, give 2-4 short bullets that point out:
 - the request count the script printed, so the user knows how much of today's allowance is left.
 
 Keep it short and factual. These are projections, not guarantees; add no further disclaimers beyond one line.
+
+## Optional: market value check
+
+If the user asks for a value check, run `python3 bp_value.py --picks` (plan only, no call) and show the credit cost and credits remaining. Run `--go --max-credits <cost>` only after they approve. Report fair prob, market EV vs. our EV, books, and books on another line. Then re-score with `--from-csv` so the board shows "Mkt EV".

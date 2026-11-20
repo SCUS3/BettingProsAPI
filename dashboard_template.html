@@ -366,8 +366,10 @@ footer b { color: var(--ink); font-weight: 600; }
   var COLS = [
     ["rk", "#", "l"], ["player", "Player", "l"], ["prop", "Prop", "l"], ["proj", "Proj", "hide-sm"],
     ["gap", "Gap", ""], ["odds", "FD", ""], ["dvp", "DvP", "hide-sm"], ["form", "Form", "hide-sm"],
+    ["ev", "EV", "hide-sm"], ["oa", "Mkt EV", "hide-sm"],
     ["score", "Score", ""], ["bal", "Bal", ""], ["learned", "Lrn", "hide-sm"], ["kelly", "Kelly", "hide-sm"]
   ];
+  function pctEv(v) { return v == null ? '<span class="dim">–</span>' : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%</span>"; }
   function render() {
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
     dtdBox.checked = state.hideDtd;
@@ -396,7 +398,9 @@ footer b { color: var(--ink); font-weight: 600; }
         score: r.score == null ? '<span class="dim">–</span>' : '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
         learned: r.learned == null ? "" : '<span class="pill ' + tone(r.learned) + '">' + r.learned + "</span>",
-        kelly: r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>'
+        kelly: r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>',
+        ev: pctEv(r.ev),
+        oa: r.oa_ev == null ? '<span class="dim" title="No Odds API check">–</span>' : '<span title="Odds API: median no-vig of ' + r.oa_books + ' books at FanDuel\'s line">' + pctEv(r.oa_ev) + "</span>"
       };
       var tr = '<tr class="row" tabindex="0" aria-expanded="' + open + '" data-k="' + esc(k) + '">' + COLS.map(function (c) {
         return '<td class="' + c[2] + (c[0] === state.rank ? " on" : "") + (c[0] === "rk" ? " rk" : "") + '">' + cells[c[0]] + "</td>";
@@ -420,6 +424,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
     if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
+    if (r.oa_ev != null) f.push("Market check (The Odds API) <b>fair " + Math.round(r.oa_fair * 1000) / 10 + "%, EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%</b> from " + r.oa_books + " books; our EV " + (r.ev == null ? "–" : (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%"));
     if (r.note) f.push("Line <b>" + esc(r.note) + "</b> (gap, EV and Kelly use FanDuel's)");
     if (r.ph) f.push("<b>Placeholder projection</b>: no edge claimed, EV at FanDuel's no-vig price" + (r.demoted ? ", ranked below real projections" : ", +EV price"));
     f.push("Signals <b>" + esc(r.sig || "") + "</b>");
@@ -441,6 +446,8 @@ footer b { color: var(--ink); font-weight: 600; }
     return (i + 1) + ". " + r.player + (r.team ? " (" + r.team + ")" : "") + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) +
       (r.noproj ? " | no BettingPros projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
       (r.note ? " | " + r.note : "") +
+      (r.ev != null ? " | EV " + (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%" : "") +
+      (r.oa_ev != null ? " | mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "% (" + r.oa_books + " books)" : "") +
       (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
       " | " + (r.kelly || 0) + "u" + (r.inj ? " | " + r.inj : "");
   }
@@ -457,6 +464,9 @@ footer b { color: var(--ink); font-weight: 600; }
     out.push("Model: " + R.model_n + " of " + R.min_train + " graded player-games needed to train" +
       (C.model ? " | Brier, all graded props (" + C.n + "): model " + C.model.brier + " vs market " + C.market.brier +
         (C.learned ? ", learned " + C.learned.brier : "") : ""));
+    var O = R.oa_compare || {};
+    out.push(O.brier_ours != null ? "Odds API check (" + O.n + " graded picks): Brier ours " + O.brier_ours + " vs market fair " + O.brier_oa +
+      "; picks with market EV > 0: " + O.oa_pos_n + ", " + signed(O.oa_pos_units, "u") : "Odds API check: " + (O.n || 0) + " of " + (O.min || 50) + " graded picks with both EVs before comparing");
     var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
     if (last) {
       out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
@@ -575,6 +585,12 @@ footer b { color: var(--ink); font-weight: 600; }
       right += board("Probability accuracy", "All graded props (" + C.n + " player-games). Lower is better.", th([["Source", "l"], ["Brier"], ["Log loss"]]),
         cr("Our model probability", C.model) + cr("Learned probability", C.learned) + cr("FanDuel no-vig", C.market));
     }
+    var O = REC.oa_compare || {};
+    right += '<section class="board"><div class="board-head"><h2>Our EV vs. market EV</h2></div><div class="note">' +
+      (O.brier_ours != null ? "On " + O.n + " graded picks with both: Brier <b>ours " + O.brier_ours + "</b> vs <b>market fair " + O.brier_oa +
+        "</b> (lower is better); log loss " + O.logloss_ours + " vs " + O.logloss_oa + ". Picks the market rated +EV: " + O.oa_pos_n + ", " + units(O.oa_pos_units) + "."
+        : "Comparison starts at <b>" + (O.min || 50) + "</b> graded picks with both our probability and The Odds API's fair probability (" + (O.n || 0) + " so far).") +
+      "</div></section>";
     if (REC.insights.length) {
       right += board("Hit rate by situation", "Recommended side, all graded FanDuel props.", th([["Situation", "l"], ["Hit"], ["Props"]]),
         REC.insights.map(function (i) { return '<tr><td class="l">' + esc(i.label) + "</td><td>" + i.hit + "%</td><td>" + i.n + "</td></tr>"; }).join(""));
