@@ -438,6 +438,21 @@ def price_row(base, offer, tip, pulled_at, fd):
     return row
 
 
+def stale_offer(r):
+    """A 2 PM CSV row's FanDuel price as an offer, for games a picks-only re-price leaves alone."""
+    line, side, odds = _num(r.get("line")), r.get("rec_side"), _num(r.get("fd_odds_rec"))
+    o = {"line": line, "odds": _num(r.get("over_odds")) if side != "over" else odds}
+    u = {"line": line, "odds": _num(r.get("under_odds")) if side != "under" else odds}
+    rec = o if side == "over" else u
+    rec.update(fair=_num(r.get("fd_fair_prob")), mev=_num(r.get("fd_market_ev")))
+    off = {"event_id": int(float(r["event_id"])), "market_id": r["market"], "player_id": r.get("player_id") or "",
+           "player": r.get("player"), "team": r.get("team")}
+    for side_name, d in (("over", o), ("under", u)):
+        if d["odds"] is not None:
+            off[side_name] = d
+    return off
+
+
 def _tip(tips, ev):
     if ev in (None, ""):
         return None
@@ -486,23 +501,45 @@ def build_rows(bases, offers, labels, tips, pulled_at, fd):
     return rows, missing
 
 
-def budget_math(used_before, grading, pull, reprice, cap, label):
-    """Print today's request math and decide the 6:30 re-price. Returns True when the re-price is skipped.
-    Rule: never trim the 2 PM pull; if pull + re-price would pass the daily limit, skip the re-price
-    (the 2 PM picks then count). Stops only if the pull itself can't fit, or it would pass --max-requests."""
+def budget_math(used_before, grading, pull, reprice_full, cap, label, enforce=True):
+    """Print today's request math and decide the 6:30 re-price. Returns 'full', 'picks' or 'skip'.
+    Rule: never trim the 2 PM pull. If pull + full re-price fits, re-price every game; if not, re-price only the
+    games with logged picks (decided once picks are known, see picks_reprice_decision); if not even 1 request is
+    left after the pull, skip it (the 2 PM picks count). Stops only if the pull itself can't fit or passes --max-requests."""
     this_run = grading + pull
     left = DAILY_LIMIT - used_before
-    print(f"Budget ({label}): {used_before} used earlier today + this run {this_run} "
-          f"(grading {grading} + pull {pull}) = {used_before + this_run}; 6:30 re-price ~{reprice} "
-          f"-> {used_before + this_run + reprice} of {DAILY_LIMIT}")
+    print(f"Budget ({label}): {used_before} used earlier today + this run {this_run} (grading {grading} + pull {pull}) "
+          f"= {used_before + this_run} of {DAILY_LIMIT}; full 6:30 re-price ~{reprice_full} "
+          f"-> {used_before + this_run + reprice_full}")
+    if not enforce:                       # estimate only: the exact check after /props page 1 decides
+        return None
     if this_run > left:
         sys.exit(f"Stopped: this run needs ~{this_run} but only {left} are left today. {REQUESTS_MADE} used so far this run.")
     if cap is not None and this_run > cap:
         sys.exit(f"Stopped: this run needs ~{this_run}, over --max-requests {cap}. {REQUESTS_MADE} used so far this run.")
-    skip = this_run + reprice > left
-    if skip:
-        print(f"Re-price skipped tonight: pull + re-price ({this_run + reprice}) is over the {left} left. The 2 PM picks count.")
-    return skip
+    after = left - this_run
+    if reprice_full <= after:
+        return "full"
+    if after < 1:
+        print("6:30 re-price skipped: nothing left after this pull. The 2 PM picks count.")
+        return "skip"
+    print(f"Full re-price ({reprice_full}) won't fit in the {after} left after this pull: re-price only the games "
+          f"with logged picks (cost decided once the picks are logged).")
+    return "picks"
+
+
+def picks_reprice_decision(date, pulled_at, mode, after, reprice_full, fd_lines_by_game, page_limit):
+    """After the 2 PM picks are logged: cost of re-pricing only their games, and the final mode."""
+    games = {str(r.get("event_id")) for r in bp_learn._read(bp_learn.LEDGER)
+             if r["date"] == date and r.get("pulled_at") == pulled_at and r.get("event_id")}
+    lines = sum(fd_lines_by_game.get(g, 0) for g in games)
+    picks_cost = max(1, math.ceil(lines / page_limit)) if games else 0
+    if mode == "picks":
+        mode = "picks" if games and picks_cost <= after else "skip"
+    print(f"6:30 re-price: full ~{reprice_full} vs. picks-only ~{picks_cost} ({len(games)} games with picks, "
+          f"{lines} FanDuel lines); {after} left after this run -> " +
+          {"full": "full re-price", "picks": "picks-only re-price", "skip": "skipped (the 2 PM picks count)"}[mode])
+    return mode, sorted(games), picks_cost
 
 
 def warn_started(tips, pulled_at):
@@ -537,7 +574,7 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
                   ("R+A", "Rebounds + Assists")]
 
 
-def write_top_by_market(rows, date, n=10):
+def write_top_by_market(rows, date, n=10, kelly_note=""):
     """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     out = f"bp_top10_{date}.md"
     def cell(v):
@@ -564,7 +601,8 @@ def write_top_by_market(rows, date, n=10):
              "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
-             "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", ""]
+             "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
+             f"**{kelly_note}**" if kelly_note else "", ""]
     rec = bp_learn.record()
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
@@ -766,9 +804,29 @@ def no_vig_prob(r):
     return (io if (r.get("rec_side") or "").lower() == "over" else iu) / (io + iu)
 
 
+KELLY_MAX = 2.5            # u, once the model is calibrated
+KELLY_SCALE = 1.0          # set by finish(): 0.5 (max 1.25u) until calibrated
+CALIBRATION_MIN_PICKS = 50
+
+
+def calibration_status():
+    """Calibrated = the combined pick record ('each prop once') has 50+ graded W/L picks and its Brier
+    score beats FanDuel's no-vig Brier. Until then stakes are halved (half-Kelly cap, max 1.25u)."""
+    c = bp_learn.record()["combined"]
+    n = c["w"] + c["l"]
+    ok = n >= CALIBRATION_MIN_PICKS and c["brier"] is not None and c["brier"] < c["brier_mkt"]
+    if ok:
+        note = f"Full Kelly sizing: model Brier {c['brier']} beats market {c['brier_mkt']} on {n} graded picks."
+    else:
+        why = (f"{n} of {CALIBRATION_MIN_PICKS} graded picks" if n < CALIBRATION_MIN_PICKS
+               else f"model Brier {c['brier']} vs market {c['brier_mkt']} on {n} picks")
+        note = f"Half-Kelly: model not yet calibrated ({why}). Stakes halved, max {KELLY_MAX / 2}u."
+    return ok, note
+
+
 def kelly_units(r):
-    """Quarter-Kelly stake in units (1u = 1% of bankroll), capped at 2.5u.
-    The model's win chance is blended 50/50 with FanDuel's no-vig price so stakes stay realistic."""
+    """Quarter-Kelly stake in units (1u = 1% of bankroll), capped at 2.5u; halved (max 1.25u) until the model
+    is calibrated. The model's win chance is blended 50/50 with FanDuel's no-vig price so stakes stay realistic."""
     p, odds = _num(r.get("model_prob")), _num(r.get("fd_odds_rec"))
     if p is None or odds is None:
         return None
@@ -777,7 +835,7 @@ def kelly_units(r):
         p = (p + fair) / 2
     b = odds / 100 if odds > 0 else 100 / -odds
     f = (p * (b + 1) - 1) / b
-    return round(min(max(f / 4 * 100, 0.0), 2.5), 1)
+    return round(min(max(f / 4 * 100 * KELLY_SCALE, 0.0), KELLY_MAX * KELLY_SCALE), 1)
 
 
 W_NP_FORM, W_NP_DVP, W_NP_MKT = 0.25, 0.25, 0.20   # no projection: form, matchup and market value only (renormalized)
@@ -939,7 +997,7 @@ def main():
     reprice_est = 1 + pages_left(first_off)
     est_props = math.ceil(1.4 * ((first_off.get("_pagination") or {}).get("total_items") or 0) / args.page_limit) or 1
     budget_math(used_before, grading, REQUESTS_MADE - grading + pages_left(first_off) + est_props, reprice_est,
-                args.max_requests, "estimate before /props (projections ~1.4 rows per FanDuel line)")
+                args.max_requests, "estimate before /props (projections ~1.4 rows per FanDuel line)", enforce=False)
     offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd)
     if args.unfiltered_props:
         prop_queries = [props_params(args.date, None, market_ids, args.page_limit)]
@@ -948,9 +1006,13 @@ def main():
         evs = ":".join(str(e) for e in sorted(upcoming))
         prop_queries = [dict(props_params(None, None, market_ids, args.page_limit, event_id=evs), player_id=":".join(ids[i:i + 150]))
                         for i in range(0, len(ids), 150)] or []
-    firsts = [get("/props", dict(q, page=1), key) for q in prop_queries]
-    skip_reprice = budget_math(used_before, grading, REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts), reprice_est,
-                               args.max_requests, "exact")
+    firsts = [get("/props", dict(prop_queries[0], page=1), key)]
+    if not args.unfiltered_props:
+        check_projection_match(firsts[0], offers, labels)
+    firsts += [get("/props", dict(q, page=1), key) for q in prop_queries[1:]]
+    mode = budget_math(used_before, grading, REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts), reprice_est,
+                       args.max_requests, "exact")
+    after = DAILY_LIMIT - used_before - (REQUESTS_MADE + sum(pages_left(f) for f in firsts))
     props = [p for q, f in zip(prop_queries, firsts) for p in fetch_pages("/props", q, key, "props", f)]
     bases = {}
     for p in props:
@@ -961,8 +1023,9 @@ def main():
     if offers and matched < 0.5 * len(offers) and not args.unfiltered_props:
         print(f"Warning: projections matched only {matched} of {len(offers)} FanDuel lines. If /offers player ids don't "
               f"match /props ids, re-run with --unfiltered-props (about 5-6 /props pages per game).")
+    print(f"Projections matched {matched} of {len(offers)} FanDuel lines ({round(100 * matched / max(len(offers), 1))}%).")
     save_pull(args.date, pulled_at, fd, market_ids, events, tips, props, offers, rows,
-              extra={"reprice_skipped": skip_reprice, "reprice_estimate": reprice_est})
+              extra={"reprice_mode": mode, "reprice_estimate": reprice_est})
     rw_players = bp_rotowire.fetch()                  # public page, not an API request
     print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
     bp_learn.save_rotowire(rw_players, args.date, pulled_at)
@@ -970,6 +1033,34 @@ def main():
     print(f"FanDuel lines: {n_fd} ({sum(1 for r in rows if r['price_is_fanduel'] and r['noproj'])} without a BettingPros projection); "
           f"BettingPros projections: {len(bases)}")
     finish(rows, args.date, snapshot=True, rw_players=rw_players)
+    by_game = {}
+    for r in rows:
+        if r["price_is_fanduel"]:
+            by_game[str(r["event_id"])] = by_game.get(str(r["event_id"]), 0) + 1
+    mode, games, picks_cost = picks_reprice_decision(args.date, pulled_at, mode, after, reprice_est, by_game, args.page_limit)
+    bp_learn.update_pull_log(args.date, pulled_at, {"reprice_mode": mode, "reprice_games": games,
+                                                    "reprice_picks_estimate": picks_cost, "fanduel_lines_by_game": by_game})
+
+
+def check_projection_match(first_page, offers, labels):
+    """Item-3 guard on the player_id filter, after the first /props page: stop and ask before any fallback."""
+    page = first_page.get("props", [])
+    keys = {(str(o["event_id"]), labels.get(o["market_id"], o["market_id"]), o["player_id"]) for o in offers.values()}
+    names = {(str(o["event_id"]), labels.get(o["market_id"], o["market_id"]), _name(o.get("player"))) for o in offers.values()}
+    hit = 0
+    for p in page:
+        b = base_from_prop(p, labels)
+        k = (str(b["event_id"]), b["market"])
+        hit += (k + (b["player_id"],)) in keys or (k + (_name(b["player"]),)) in names
+    total = (first_page.get("_pagination") or {}).get("total_items") or 0
+    share_page = hit / len(page) if page else 0.0
+    cover = min(total / len(offers), 1.0) if offers else 1.0
+    print(f"Player-id filter check (first /props page): {hit} of {len(page)} rows match a FanDuel line "
+          f"({round(100 * share_page)}%); {total} projections for {len(offers)} FanDuel lines (up to {round(100 * cover)}% matched).")
+    if offers and (share_page < 0.5 or cover < 0.5):
+        sys.exit(f"Stopped after the first /props page: under 50% of FanDuel lines can match a projection, so the "
+                 f"player_id filter may not line up with /offers. Ask before re-running with --unfiltered-props "
+                 f"(about 5-6 /props pages per game). {REQUESTS_MADE} requests used this run.")
 
 
 def reprice(key, args, fd, market_ids, labels):
@@ -988,7 +1079,10 @@ def reprice(key, args, fd, market_ids, labels):
         if r.get("event_id") and r.get("tip"):
             tips[int(float(r["event_id"]))] = r["tip"]
     log = bp_learn.last_pull_log(args.date)
-    if log and log.get("reprice_skipped") and not args.force_reprice:
+    mode = (log or {}).get("reprice_mode") or ("skip" if (log or {}).get("reprice_skipped") else "full")
+    if args.force_reprice:
+        mode = "full"
+    if mode == "skip":
         sys.exit("The 2 PM pull skipped tonight's re-price to stay under the daily limit; the 2 PM picks count. "
                  "Use --force-reprice to run it anyway.")
     for e in (log or {}).get("events", []):
@@ -998,28 +1092,47 @@ def reprice(key, args, fd, market_ids, labels):
     upcoming = warn_started(tips, pulled_at)
     if not upcoming:
         sys.exit("Every game has tipped; nothing to re-price.")
-    off_params = offers_params(upcoming, market_ids, fd, args.page_limit)
+    cover = set(upcoming)
+    if mode == "picks":
+        cover &= {int(g) for g in log.get("reprice_games") or []}
+        if not cover:
+            sys.exit("Picks-only re-price: none of the games with 2 PM picks are still to tip.")
     used_before = used_today() - REQUESTS_MADE
+    by_game = (log or {}).get("fanduel_lines_by_game") or {}
+    est = lambda games: max(1, math.ceil(sum(by_game.get(str(g), 0) for g in games) / args.page_limit))
+    print(f"Budget (re-price): {used_before} used earlier today; full re-price ~{est(upcoming)} vs. picks-only "
+          f"~{est(cover)}; running {'picks-only (' + str(len(cover)) + ' of ' + str(len(upcoming)) + ' games)' if mode == 'picks' else 'full'}; "
+          f"{DAILY_LIMIT - used_before} left")
+    off_params = offers_params(cover, market_ids, fd, args.page_limit)
     first_off = get("/offers", dict(off_params, page=1), key)
     more = pages_left(first_off)
-    print(f"Budget (re-price): {used_before} used earlier today + this run {1 + more} = {used_before + 1 + more} of {DAILY_LIMIT}")
+    print(f"Budget (re-price, exact): {used_before} + this run {1 + more} = {used_before + 1 + more} of {DAILY_LIMIT}")
     if used_before + 1 + more > DAILY_LIMIT or (args.max_requests is not None and 1 + more > args.max_requests):
         sys.exit(f"Stopped: the re-price needs {1 + more} requests; {DAILY_LIMIT - used_before} left today"
                  + (f", --max-requests {args.max_requests}" if args.max_requests is not None else "") + ". 1 used.")
     offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd)
     bases = {}
     for r in old:
-        if r.get("event_id") and int(float(r["event_id"])) in upcoming:
-            b = {k: r.get(k) for k in BASE_FIELDS}
-            b["line_seen"] = r.get("line") if r.get("price_is_fanduel") == "True" else None
-            bases.setdefault((str(int(float(r["event_id"]))), r["market"], r.get("player_id") or ""), b)
+        ev = int(float(r["event_id"])) if r.get("event_id") else None
+        if ev not in upcoming:
+            continue
+        b = {k: r.get(k) for k in BASE_FIELDS}
+        b["line_seen"] = r.get("line") if r.get("price_is_fanduel") == "True" else None
+        k = (str(ev), r["market"], r.get("player_id") or "")
+        bases.setdefault(k, b)
+        if ev not in cover and r.get("price_is_fanduel") == "True":     # not re-priced: keep the 2 PM FanDuel price
+            offers[(ev, r["market"], r.get("player_id") or "")] = stale_offer(r)
     rows, _ = build_rows(bases, offers, labels, tips, pulled_at, fd)
+    for r in rows:
+        r["stale_price"] = r["price_is_fanduel"] and int(float(r["event_id"])) not in cover
     before = {(r["event_id"], r["market"], r["player"]) for r in old if r.get("price_is_fanduel") == "True"
-              and r.get("event_id") and int(float(r["event_id"])) in upcoming}
-    now = {(str(r["event_id"]), r["market"], r["player"]) for r in rows if r["price_is_fanduel"]}
+              and r.get("event_id") and int(float(r["event_id"])) in cover}
+    now = {(str(r["event_id"]), r["market"], r["player"]) for r in rows if r["price_is_fanduel"] and not r["stale_price"]}
     gone = sorted(before - now)
     moved = sum(1 for r in rows if r.get("line_moved"))
-    save_pull(args.date, pulled_at, fd, market_ids, [{"id": e} for e in sorted(upcoming)], tips, [], offers, rows, kind="reprice")
+    # events = the games this run re-priced: its picks count only for these (2 PM picks keep counting for the rest)
+    save_pull(args.date, pulled_at, fd, market_ids, [{"id": e} for e in sorted(cover)], tips, [], offers, rows, kind="reprice",
+              extra={"mode": mode})
     rw_players = bp_rotowire.fetch()
     print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
     bp_learn.save_rotowire(rw_players, args.date, pulled_at)
@@ -1044,7 +1157,7 @@ DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashbo
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
 
 
-def write_dashboard(rows, date):
+def write_dashboard(rows, date, kelly_note=""):
     """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
     try:
         with open(DASH_TEMPLATE) as f:
@@ -1078,7 +1191,7 @@ def write_dashboard(rows, date):
     except Exception:
         updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
     payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
-               "disabled": sorted(DISABLED),
+               "disabled": sorted(DISABLED), "kelly_note": kelly_note,
                "record": bp_learn.record()}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
@@ -1113,6 +1226,9 @@ def finish(rows, date, snapshot=False, rw_players=None):
     if rw_players is None and rows:                     # re-score: use the run's saved Rotowire snapshot
         rw_players = bp_learn.load_rotowire(date, rows[0].get("pulled_at"))
     bp_learn.add_teammate_context(rows, date, rw_players)
+    global KELLY_SCALE
+    calibrated, kelly_note = calibration_status()
+    KELLY_SCALE = 1.0 if calibrated else 0.5
     model = bp_learn.load_model()
     for r in rows:
         r["noproj"] = bp_learn._truthy(r.get("noproj"))
@@ -1133,13 +1249,14 @@ def finish(rows, date, snapshot=False, rw_players=None):
     if snapshot and rows:
         bp_learn.save_snapshot(rows, date, fields)
 
-    note = write_top_by_market(rows, date)
-    dash = write_dashboard(rows, date)
+    note = write_top_by_market(rows, date, kelly_note=kelly_note)
+    dash = write_dashboard(rows, date, kelly_note=kelly_note)
 
     print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
     print(f"Top 10 lists (overall + gap and score per category) -> {note}")
     if dash:
         print(f"Dashboard -> {dash}")
+    print(kelly_note)
     print(f"Logged {n_logged} picks for {date} (top {bp_learn.PICKS_PER_STRATEGY} per strategy); graded next run.")
     print_record()
     print("Top 15 by gap:")

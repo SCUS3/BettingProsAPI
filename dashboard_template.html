@@ -310,7 +310,8 @@ footer b { color: var(--ink); font-weight: 600; }
   // Header
   var dtd = ROWS.filter(function (r) { return r.inj; }).length;
   var strong = ROWS.filter(function (r) { return r.bal != null && r.bal >= 65; }).length;
-  document.getElementById("sub").textContent = DATA.date_label + " · FanDuel lines · updated " + DATA.updated;
+  document.getElementById("sub").textContent = DATA.date_label + " · FanDuel lines · updated " + DATA.updated +
+    (DATA.kelly_note ? " · " + DATA.kelly_note : "");
   document.getElementById("stats").innerHTML =
     stat(ROWS.length, "props") + stat(strong, "balanced 65+") + stat(dtd, "DTD tagged");
   function stat(v, l) { return '<div class="stat"><b>' + v + "</b><span>" + l + "</span></div>"; }
@@ -475,7 +476,7 @@ footer b { color: var(--ink); font-weight: 600; }
     return out;
   }
   function slateText() {
-    var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", ""];
+    var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", DATA.kelly_note || "", ""];
     out = out.concat(recordText());
     [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
       out.push("ALL: top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");

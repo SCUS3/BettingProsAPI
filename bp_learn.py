@@ -220,6 +220,32 @@ def save_pull_log(date, pulled, data, prefix="pull_"):
         json.dump(data, f, indent=1)
 
 
+def update_pull_log(date, pulled, extra):
+    path = os.path.join(HISTORY, date, "pull_" + pulled.replace("-", "").replace(":", "") + ".json")
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return
+    d.update(extra)
+    with open(path, "w") as f:
+        json.dump(d, f, indent=1)
+
+
+def run_coverage(date):
+    """{pulled_at: set of event ids the run priced} from history logs. Runs without a log covered every game."""
+    out = {}
+    for path in glob.glob(os.path.join(HISTORY, date, "pull_*.json")) + glob.glob(os.path.join(HISTORY, date, "reprice_*.json")):
+        try:
+            with open(path) as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if d.get("pulled_at") and d.get("events"):
+            out[d["pulled_at"]] = {str(e.get("id")) for e in d["events"] if e.get("id") and not e.get("started")}
+    return out
+
+
 def last_pull_log(date, kind="full"):
     """The latest saved pull log of `kind` for `date` (game list and tip times), or None."""
     for path in sorted(glob.glob(os.path.join(HISTORY, date, "pull_*.json")), reverse=True):
@@ -248,8 +274,9 @@ def load_rotowire(date, before=None):
 def add_teammate_context(rows, date, rw_players=None):
     """Per prop: the player's own Rotowire status (rw_status, rw_play_pct, starter, lineup) and teammate context
     (tm_out, tm_out_names, tm_dtd). A teammate counts as out only if he is a rotation regular (points props in
-    recent slates, average line 9.5+) and Rotowire lists him Out, or he has no props tonight while Rotowire doesn't
-    list him as playing. Long-term injuries drop out of the regulars on their own, so this flags new absences."""
+    recent slates, average line 9.5+, or props tonight with no PTS line under 9.5) and Rotowire lists him Out, even
+    when his props are still posted, or he has no props tonight while Rotowire doesn't list him as playing.
+    Long-term injuries drop out of the regulars on their own, so this flags new absences."""
     import bp_rotowire as rw
     idx = {}
     for p in rw_players or []:
@@ -257,11 +284,6 @@ def add_teammate_context(rows, date, rw_players=None):
     have_rw = bool(idx)
     teams_rw = {p["team"] for p in rw_players or []}
 
-    tonight, status = {}, {}
-    for r in rows:
-        if r.get("team") and r.get("player"):
-            tonight.setdefault(r["team"], set()).add(r["player"])
-            status[(r["team"], r["player"])] = (r.get("injury") or "").strip().lower()
     for r in rows:                                      # the player's own Rotowire line
         p = idx.get((BP_TO_RW.get(r.get("team"), r.get("team")), rw.norm(r.get("player"))))
         r["rw_status"] = p["status"] if p else ""
@@ -273,19 +295,31 @@ def add_teammate_context(rows, date, rw_players=None):
         elif p and p["status"] in ("Ques", "GTD", "Doubt") and not r.get("injury"):
             r["injury"] = p["status"]
 
-    regs = _regulars(date)
+    tonight, status, pts_line = {}, {}, {}             # after Rotowire, so an Out there counts here
+    for r in rows:
+        if r.get("team") and r.get("player"):
+            tonight.setdefault(r["team"], set()).add(r["player"])
+            status[(r["team"], r["player"])] = (r.get("injury") or "").strip().lower()
+            if r.get("market") == "PTS" and _num(r.get("line")) is not None:
+                pts_line[(r["team"], r["player"])] = _num(r["line"])
+    regs = {t: set(v) for t, v in _regulars(date).items()}
+    for team, players in tonight.items():               # tonight's rotation: props posted, no PTS line under 9.5
+        for name in players:
+            if pts_line.get((team, name), TM_MIN_PTS_LINE) >= TM_MIN_PTS_LINE:
+                regs.setdefault(team, set()).add(name)
     out_by_team, dtd_by_team = {}, {}
     for team, players in regs.items():
         if team not in tonight:
             continue
         rw_team = BP_TO_RW.get(team, team)
         for name in players:
-            if name in tonight[team] and status.get((team, name)) not in ("out", "o", "suspended"):
-                p = idx.get((rw_team, rw.norm(name)))
-                if p and rw.is_doubtful(p):
+            p = idx.get((rw_team, rw.norm(name)))
+            if name in tonight[team]:                   # props posted: out only if tagged or listed Out
+                if status.get((team, name)) in ("out", "o", "suspended") or (p and rw.is_out(p)):
+                    out_by_team.setdefault(team, set()).add(name)
+                elif p and rw.is_doubtful(p):
                     dtd_by_team.setdefault(team, set()).add(name)
                 continue
-            p = idx.get((rw_team, rw.norm(name)))
             if have_rw and rw_team in teams_rw:
                 if p is None or rw.is_out(p):          # not listed as playing, or listed Out
                     out_by_team.setdefault(team, set()).add(name)
@@ -414,10 +448,13 @@ def log_picks(rows, date):
 def counted_flags(ledger):
     """counted[i] = True when ledger row i came from the last run before its game's tip.
     clv[i] = closing-line value in points for counted rows seen in an earlier pre-tip run."""
-    runs = {}
+    runs, cover = {}, {}
     for r in ledger:
         if r.get("pulled_at"):
             runs.setdefault(r["date"], set()).add(r["pulled_at"])
+    for d in runs:
+        cover[d] = run_coverage(d)
+    covers = lambda d, t, ev: t not in cover[d] or str(ev) in cover[d][t]   # a picks-only re-price skips some games
     first_seen = {}
     for r in ledger:
         if r.get("pulled_at") and r.get("tip") and r["pulled_at"] < r["tip"]:
@@ -431,7 +468,7 @@ def counted_flags(ledger):
             counted.append(False)
             clv.append(None)
             continue
-        last = max(t for t in runs[r["date"]] if t < tip)
+        last = max((t for t in runs[r["date"]] if t < tip and covers(r["date"], t, r.get("event_id"))), default=None)
         ok = p == last
         counted.append(ok)
         v = None

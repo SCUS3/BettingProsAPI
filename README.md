@@ -62,6 +62,7 @@ python3 bp_props.py --date 2026-11-19  # a specific date
 python3 bp_props.py --max-requests 45  # 2 PM full pull; stops after page 1s if the run would need more
 python3 bp_props.py --reprice          # 6:30 PM re-price from /offers only (picks from this run count)
 python3 bp_props.py --unfiltered-props # full pull with /props for every player (if the player-id filter misses)
+python3 bp_props.py --reprice --force-reprice  # run a full 6:30 re-price even if the budget rule chose picks-only or skip
 python3 bp_props.py --list-markets     # show every NBA prop market and which are selected
 python3 bp_props.py --markets 156:157  # pick markets by ID
 python3 bp_props.py --page-limit 50    # Elite keys
