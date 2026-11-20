@@ -25,3 +25,13 @@ credits remaining (`odds_credits.json`, from the x-requests-* headers). `python3
 `--go --max-credits <approved>` only after the user approves. `GET /events` is free; each event-odds call
 costs (markets in the call) x 1 region (FanDuel + up to 9 books). The script stops before going under 50
 credits. Key: `ODDS_API_KEY` in `.env`, never printed.
+
+## Unabated (primary fair-price source, bp_unabated.py)
+
+Ask the user before any Unabated odds call (`bp_value.py --go` makes one props odds call for the whole board
+when Unabated is enabled). Discovery (`python3 bp_unabated.py --discover`: /league, /bettype, props sources,
+period types, people) doesn't use the odds rate limit; run it when the user asks. Free API: at most one odds call
+every 5 seconds per key (the script enforces it). A 401/403 disables Unabated (`unabated_state.json`) and
+bp_value.py falls back to The Odds API and says so. Key: `UNABATED_API_KEY` in `.env` (X-Api-Key header),
+never printed.
+

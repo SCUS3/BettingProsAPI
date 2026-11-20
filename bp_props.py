@@ -624,7 +624,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                   "BET = market EV +2% or more (multiplicative devig) with 4+ other books at FanDuel's line. "
                   "Stake = half-Kelly on the market's fair probability.", ""]
         lines += [f"- BET {r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])} {fmt(r['fd_odds_rec'])}: market EV "
-                  f"{100 * r['oa_ev']:+.1f}%, {r['oa_books']} books, our EV {100 * (r.get('model_ev') or 0):+.1f}%, stake {fmt(r['bet_kelly'])}u"
+                  f"{100 * r['oa_ev']:+.1f}% ({r.get('fair_src') or 'OddsAPI'}), our EV {100 * (r.get('model_ev') or 0):+.1f}%, stake {fmt(r['bet_kelly'])}u"
                   for r in bets] or ["- No BET plays today."]
         lines += ["", "Watch (not bets): " + "; ".join(
             f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * r['oa_ev']:+.1f}%)" if r.get("oa_ev") is not None else "")
@@ -1182,6 +1182,7 @@ def attach_value(rows, date):
         r["oa_fair"] = v.get("fair_mult") if v else None
         r["oa_ev"] = v.get("ev_mult") if v else None
         r["oa_books"] = v.get("books") if v else None
+        r["fair_src"] = v.get("fair_src") if v else None
         r["decision"] = v.get("decision") if v else None          # BET / watch (2 PM shortlist value check)
         r["bet_kelly"] = v.get("bet_kelly") if v else None        # half-Kelly on the market's fair probability
 
@@ -1212,6 +1213,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
             "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
+            "fair_src": r.get("fair_src") or None,
             "ev": n(r.get("model_ev")), "oa_ev": n(r.get("oa_ev")), "oa_fair": n(r.get("oa_fair")), "oa_books": r.get("oa_books"),
         })
     d = dt.date.fromisoformat(date)

@@ -196,6 +196,16 @@ This project is for research and entertainment. Projections are not guarantees, 
 3. BET = shortlist play with market EV +2% or more and 4+ other books at FanDuel's line; the rest are "watch". Both are logged (strategies `bet` / `watch`) and show on the board and in Copy for Claude. BET stakes are half-Kelly on the market's fair probability.
 4. 6:30 PM ET: `python3 bp_props.py --reprice` (BettingPros `/offers` only) for CLV.
 
+## Fair-price sources
+
+Unabated is the primary source (`bp_unabated.py`): after `python3 bp_unabated.py --discover` confirms NBA props,
+our markets, FanDuel and an Unabated Line source on the key, `bp_value.py --go` makes one props odds call for the
+whole board and uses the Unabated Line (devigged) at FanDuel's line as the fair probability. The Odds API covers
+only the plays Unabated doesn't price (or a line mismatch). Each pick records its source (`fair_src`: Unabated /
+OddsAPI) on the board ("Fair src") and in the ledger, so the Record tab can compare sources once there's a sample.
+A 401/403 from Unabated switches to The Odds API automatically. BET with Unabated = market EV +2% (no book count,
+it's one consensus line); with The Odds API = +2% and 4+ books.
+
 ## Market value check (The Odds API)
 
 `bp_value.py` checks picks against the wider market without replacing BettingPros. For each game with a pick it calls

@@ -44,7 +44,7 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
-                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev"]
+                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -447,7 +447,7 @@ def log_picks(rows, date):
             if prev and prev.get("result"):
                 row.update({k: prev[k] for k in ("result", "actual", "profit_u", "profit_kelly")})
             if prev and prev.get("oa_fair"):
-                row.update({k: prev.get(k) for k in ("oa_fair", "oa_ev")})
+                row.update({k: prev.get(k) for k in ("oa_fair", "oa_ev", "fair_src")})
             new.append(row)
     _write(LEDGER, keep + new, LEDGER_FIELDS)
     return len(new)
@@ -798,13 +798,20 @@ def record():
             by_cat.append({"market": mk, "w": s["w"], "l": s["l"], "p": s["p"], "units": s["units"]})
     both = [r for r, _ in uniq if r["result"] in ("W", "L") and _num(r.get("our_prob")) is not None
             and _num(r.get("oa_fair")) is not None]
-    oa = {"n": len(both), "min": OA_COMPARE_MIN}
+    oa = {"n": len(both), "min": OA_COMPARE_MIN,
+          "n_by_source": {s: sum(1 for r in both if (r.get("fair_src") or "OddsAPI") == s) for s in ("Unabated", "OddsAPI")}}
     if len(both) >= OA_COMPARE_MIN:
         ys = [1.0 if r["result"] == "W" else 0.0 for r in both]
         br = lambda ps: round(sum((p - y) ** 2 for p, y in zip(ps, ys)) / len(ys), 4)
         oa.update(brier_ours=br([_num(r["our_prob"]) for r in both]), brier_oa=br([_num(r["oa_fair"]) for r in both]),
                   logloss_ours=round(_logloss([_num(r["our_prob"]) for r in both], ys, [1.0] * len(ys)), 4),
                   logloss_oa=round(_logloss([_num(r["oa_fair"]) for r in both], ys, [1.0] * len(ys)), 4))
+        oa["by_source"] = {}
+        for src in sorted({r.get("fair_src") or "OddsAPI" for r in both}):
+            sub = [r for r in both if (r.get("fair_src") or "OddsAPI") == src]
+            ys2 = [1.0 if r["result"] == "W" else 0.0 for r in sub]
+            oa["by_source"][src] = {"n": len(sub), "brier": round(sum((_num(r["oa_fair"]) - y) ** 2 for r, y in zip(sub, ys2)) / len(sub), 4),
+                                    "brier_ours": round(sum((_num(r["our_prob"]) - y) ** 2 for r, y in zip(sub, ys2)) / len(sub), 4)}
         pos = [r for r in both if (_num(r.get("oa_ev")) or 0) > 0]
         oa.update(oa_pos_n=len(pos), oa_pos_units=round(sum(_num(r.get("profit_u")) or 0 for r in pos), 2))
     graded_dates = sorted({r["date"] for r, _ in graded}, reverse=True)

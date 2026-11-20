@@ -31,6 +31,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bp_learn  # noqa: E402
 import bp_props  # noqa: E402
+import bp_unabated as U  # noqa: E402
 from bp_rotowire import norm  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -172,6 +173,12 @@ def game_teams(date):
     return out
 
 
+def report_dropped(dropped, full_cost, budget, n_games):
+    print(f"Odds API: the full set would cost {full_cost} credits (over {budget}). Keeping the {n_games} games with the most "
+          f"shortlist plays; not checked ({len(dropped)}): " +
+          "; ".join(f"#{p.get('rank', '?')} {p['player']} {p['market']} {p['side']} {p['line']:g}" for p in dropped))
+
+
 def gid(p):
     return str(int(float(p["event_id"])))
 
@@ -280,7 +287,9 @@ def decide(date, shortlist, checked, results):
     rows, bets = [], []
     for p in shortlist:
         v = res.get((p["player"], p["market"], p["side"]))
-        is_bet = bool(v and v.get("ev_mult") is not None and v["ev_mult"] >= BET_MIN_EV and v["books"] >= BET_MIN_BOOKS)
+        # Unabated is one consensus line (no book count); The Odds API needs 4+ books at FanDuel's line.
+        is_bet = bool(v and v.get("ev_mult") is not None and v["ev_mult"] >= BET_MIN_EV
+                      and (v.get("fair_src") == "Unabated" or (v.get("books") or 0) >= BET_MIN_BOOKS))
         r = p.get("row") or {}
         price = v["price_used"] if v else p["odds"]
         stake = bet_kelly(v["fair_mult"], price) if is_bet else 0.0
@@ -293,10 +302,11 @@ def decide(date, shortlist, checked, results):
                      "score": r.get("score"), "balanced": r.get("balanced"), "learned": r.get("learned"),
                      "our_prob": r.get("model_prob"), "nv_prob": v.get("fair_mult") if v else None, "kelly_u": stake,
                      "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
-                     "oa_fair": v.get("fair_mult") if v else None, "oa_ev": v.get("ev_mult") if v else None})
+                     "oa_fair": v.get("fair_mult") if v else None, "oa_ev": v.get("ev_mult") if v else None,
+                     "fair_src": v.get("fair_src") if v else None})
         if is_bet:
-            bets.append(f"{p['player']} {p['market']} {p['side']} {p['line']:g} {price:+g}: mkt EV {100 * v['ev_mult']:+.1f}%, "
-                        f"{v['books']} books, {stake}u")
+            bets.append(f"{p['player']} {p['market']} {p['side']} {p['line']:g} {price:+g}: mkt EV {100 * v['ev_mult']:+.1f}% "
+                        f"({v['fair_src']}" + (f", {v['books']} books" if v.get("books") else "") + f"), {stake}u")
     bp_learn.log_value_decisions(date, rows)
     print(f"\nBET ({len(bets)}): " + ("; ".join(bets) if bets else "none today") +
           f". Watch: {len(shortlist) - len(bets)}. Logged to the ledger (strategies 'bet' / 'watch').")
@@ -321,7 +331,7 @@ def save(date, picks, results):
             continue
         v = old.get(f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}") if r.get("line") else None
         if v and v.get("fair_mult") is not None:
-            r["oa_fair"], r["oa_ev"] = v["fair_mult"], v["ev_mult"]
+            r["oa_fair"], r["oa_ev"], r["fair_src"] = v["fair_mult"], v["ev_mult"], v.get("fair_src")
     bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
     return path
 
@@ -338,65 +348,104 @@ def main():
                     help=f"credit aim for the run (default {DAILY_CREDITS}); --top is cut to fit")
     args = ap.parse_args()
 
-    picks = load_picks(args.date, args.top)
-    full_games, full_cost, _, _ = plan(picks)
-    games, cost, picks_kept, dropped = plan(picks, args.budget)
-    if dropped:
-        print(f"Full shortlist would cost {full_cost} credits (over the {args.budget}/day aim). Keeping the "
-              f"{len(games)} games with the most shortlist plays; dropped {len(dropped)}: " +
-              "; ".join(f"#{p.get('rank', '?')} {p['player']} {p['market']} {p['side']} {p['line']:g}" for p in dropped))
-    shortlist, picks = picks, picks_kept
+    shortlist = load_picks(args.date, args.top)
+    ua_ok, ua_why = U.usable()
     c = load_credits()
-    print(f"{len(picks)} picks in {len(games)} games. Credit cost: " +
-          " + ".join(f"{len(m)} ({', '.join(sorted(m))})" for m in games.values()) + f" = {cost} "
-          f"(markets x 1 region; FanDuel + {len(BOOKS) - 1} books). /events is free.")
+    games, cost, _, dropped = plan(shortlist, args.budget)
+    print(f"{len(shortlist)} plays in {len(plan(shortlist)[0])} games.")
+    if ua_ok:
+        print("Fair source 1: Unabated Line, one props odds call for the whole board (no credits; max 1 per 5 s).")
+        print(f"Fair source 2 (fallback, only plays Unabated doesn't price): The Odds API, at most {cost} credits "
+              f"(worst case; the exact cost is known after the Unabated call).")
+    else:
+        print(f"Unabated not used: {ua_why}. Fair source: The Odds API.")
+        print("Odds API cost: " + " + ".join(f"{len(m)} ({', '.join(sorted(m))})" for m in games.values()) + f" = {cost} credits "
+              f"(markets x 1 region; FanDuel + {len(BOOKS) - 1} books). /events is free.")
+    if dropped and not ua_ok:
+        report_dropped(dropped, plan(shortlist)[1], args.budget, len(games))
     print(f"Credits: {c.get('remaining') if c.get('remaining') is not None else 'unknown (no call yet)'} remaining this month; "
           f"stop at {MIN_REMAINING}.")
     if not args.go:
         print("Plan only: no call made. Re-run with --go --max-credits N once approved.")
         return
-    if args.max_credits is None or cost > args.max_credits:
-        sys.exit(f"Stopped: this run costs {cost}; pass --max-credits {cost} (or more) once approved.")
-    bp_props.load_dotenv()
-    key = os.environ.get("ODDS_API_KEY")
-    if not key:
-        sys.exit("No ODDS_API_KEY in .env.")
-    guard(0)
-    events = get("/events", {"dateFormat": "iso"}, key, expect_cost=0)
-    teams = game_teams(args.date)
+
+    # 1. Unabated for every play (if usable); a 401/403 switches to The Odds API for this and later runs.
+    ua = {}
+    if ua_ok:
+        try:
+            ua, _ = U.fair_prices(shortlist)
+            got = sum(1 for v in ua.values() if v.get("fair_mult") is not None)
+            print(f"  Unabated: fair price for {got} of {len(shortlist)} plays.")
+        except U.Unavailable as e:
+            print(f"  Unabated key stopped working ({e}). Switched to The Odds API for this run and later ones "
+                  f"until bp_unabated.py --discover passes again.")
+        except RuntimeError as e:
+            print(f"  Unabated error ({e}); using The Odds API for this run.")
+    k = lambda p: (p["player"], p["market"], p["side"])
+    need = [p for p in shortlist if not (ua.get(k(p)) and ua[k(p)].get("fair_mult") is not None)]
+
+    # 2. The Odds API only for plays Unabated didn't price, within the credit aim and the approved cap.
+    cap = min(args.budget, args.max_credits if args.max_credits is not None else 0)
+    games, cost, picks, dropped = plan(need, cap)
+    if dropped:
+        report_dropped(dropped, plan(need)[1], cap, len(games))
     by_game = {}
-    for gid, mkts in games.items():
-        tip = next((p.get("tip") for p in picks if str(int(float(p["event_id"]))) == gid), None)
-        e = match_event(events, teams.get(gid, set()), tip)
-        if not e:
-            print(f"  No Odds API event for game {gid} ({', '.join(sorted(teams.get(gid, [])))}); skipped, no credits used.")
-            continue
-        n = len(mkts)
-        if not guard(n, hard=False):
-            break
-        by_game[gid] = get(f"/events/{e['id']}/odds", {"markets": ",".join(MARKET_KEYS[m] for m in sorted(mkts)),
-                                                       "bookmakers": ",".join(BOOKS), "oddsFormat": "american",
-                                                       "dateFormat": "iso"}, key, expect_cost=n)
+    if need and games:
+        if args.max_credits is None:
+            sys.exit(f"Stopped: the fallback costs {cost}; pass --max-credits {cost} (or more) once approved.")
+        bp_props.load_dotenv()
+        key = os.environ.get("ODDS_API_KEY")
+        if not key:
+            sys.exit("No ODDS_API_KEY in .env.")
+        print(f"The Odds API for {len(picks)} plays in {len(games)} games: {cost} credits.")
+        guard(0)
+        events = get("/events", {"dateFormat": "iso"}, key, expect_cost=0)
+        teams = game_teams(args.date)
+        for gid, mkts in games.items():
+            tip = next((p.get("tip") for p in picks if str(int(float(p["event_id"]))) == gid), None)
+            e = match_event(events, teams.get(gid, set()), tip)
+            if not e:
+                print(f"  No Odds API event for game {gid} ({', '.join(sorted(teams.get(gid, [])))}); skipped, no credits used.")
+                continue
+            n = len(mkts)
+            if not guard(n, hard=False):
+                break
+            by_game[gid] = get(f"/events/{e['id']}/odds", {"markets": ",".join(MARKET_KEYS[m] for m in sorted(mkts)),
+                                                           "bookmakers": ",".join(BOOKS), "oddsFormat": "american",
+                                                           "dateFormat": "iso"}, key, expect_cost=n)
+    checked = {k(p) for p in picks}
+    picks = [p for p in shortlist if k(p) in checked or (ua.get(k(p)) and ua[k(p)].get("fair_mult") is not None)]
+    dropped = [p for p in shortlist if p not in picks]
     results = []
-    print(f"\n{'player':22} {'mkt':4} {'side':5} {'FD line/price':14} {'fair (mult/add)':16} {'EV mult/add':14} {'our EV':7} books  other-line")
+    print(f"\n{'player':22} {'mkt':4} {'side':5} {'FD line/price':14} {'fair':12} {'EV':8} {'our EV':7} {'src':9} books  note")
     for p in picks:
-        ev = by_game.get(str(int(float(p["event_id"]))))
-        v = value_for(p, ev) if ev else None
+        if ua.get(k(p)) and ua[k(p)].get("fair_mult") is not None:
+            v = ua[k(p)]
+        else:
+            ev = by_game.get(str(int(float(p["event_id"]))))
+            v = value_for(p, ev) if ev else None
+            if v is not None:
+                v["fair_src"] = "OddsAPI"
+                if ua.get(k(p), {}).get("note"):
+                    v["note"] = ua[k(p)]["note"]
         results.append(v)
         if v is None:
-            print(f"{p['player'][:22]:22} {p['market']:4} {p['side']:5} (no Odds API data)")
+            print(f"{p['player'][:22]:22} {p['market']:4} {p['side']:5} (no data from either source)")
             continue
-        fd = f"{v['oa_fd_line'] if v['oa_fd_line'] is not None else p['line']:g} {v['price_used']:+g}"
-        fair = "-" if v["fair_mult"] is None else f"{v['fair_mult']:.3f}/{v['fair_add']:.3f}"
-        evs = "-" if v["ev_mult"] is None else f"{100 * v['ev_mult']:+.1f}%/{100 * v['ev_add']:+.1f}%"
+        fd = f"{v['oa_fd_line'] if v.get('oa_fd_line') is not None else p['line']:g} {v['price_used']:+g}"
+        fair = "-" if v["fair_mult"] is None else f"{v['fair_mult']:.3f}"
+        evs = "-" if v["ev_mult"] is None else f"{100 * v['ev_mult']:+.1f}%"
         ours = "-" if p.get("our_ev") is None else f"{100 * p['our_ev']:+.1f}%"
-        diff = f"{v['other_line_books']} on another line" if v["other_line_books"] else ""
-        warn = "" if v["oa_fd_line"] in (None, p["line"]) else f"  FanDuel now {v['oa_fd_line']:g}"
-        print(f"{p['player'][:22]:22} {p['market']:4} {p['side']:5} {fd:14} {fair:16} {evs:14} {ours:7} {v['books']:>5}  {diff}{warn}"
-              + ("" if v["books"] >= MIN_BOOKS else f"  (needs {MIN_BOOKS}+ books at FanDuel's line)"))
+        books = "-" if v.get("books") is None else str(v["books"])
+        note = "; ".join(x for x in (f"{v.get('other_line_books')} books on another line" if v.get("other_line_books") else "",
+                                     v.get("note") or "",
+                                     "" if v.get("oa_fd_line") in (None, p["line"]) else f"FanDuel now {v['oa_fd_line']:g}",
+                                     "" if v["fair_mult"] is not None else f"needs {MIN_BOOKS}+ books at FanDuel's line") if x)
+        print(f"{p['player'][:22]:22} {p['market']:4} {p['side']:5} {fd:14} {fair:12} {evs:8} {ours:7} {v['fair_src']:9} {books:>5}  {note}")
     if args.top:
         decide(args.date, shortlist, picks, results)
-        stub = {"decision": "watch", "bet_kelly": 0.0, "books": 0, "fair_mult": None, "ev_mult": None, "note": "not checked (credits)"}
+        stub = {"decision": "watch", "bet_kelly": 0.0, "books": 0, "fair_mult": None, "ev_mult": None, "fair_src": None,
+                "note": "not checked (credits)"}
         picks, results = picks + dropped, results + [dict(stub) for _ in dropped]
     path = save(args.date, picks, results)
     print(f"\nSaved {path}; ledger updated. Re-score (python3 bp_props.py --from-csv) to show it on the board.")
