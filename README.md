@@ -169,6 +169,10 @@ Key CSV columns:
 | `rw_status`, `starter`, `tm_out_names`, `tm_dtd` | Rotowire status, projected starter, teammates out and day-to-day |
 | `tip`, `pulled_at`, `stale_price` | Game start, pull time (UTC), and a price kept from 2 PM on a picks-only re-price |
 
+## BETs vs. Model Picks
+
+Only market BETs are bets: they carry a stake (quarter-Kelly on the market's fair probability). Everything the model lists produce (top 5 by balanced, score, gap and learned, and the shortlist watch list) is a **model pick: research, not a bet**, logged with no stake and tracked at a flat 1u only to measure it. Every model pick shows its market EV; picks the market prices below 0 are greyed out. The Record tab keeps the two apart: **BETs (market +EV)** and **Model picks (research)**, each with W-L, units and CLV, and 3PM overs tracked separately inside model picks.
+
 ## Record and Self-Learning
 
 Every run logs the top 5 picks from four strategies (balanced, your score, projection gap, learned) to `bp_ledger.csv`, plus the market-check decisions (`bet_agree`, `bet_only`, `watch`). The first run of the next day grades them.

@@ -580,7 +580,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     def cell(v):
         return "" if v is None else fmt(v)
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
-    head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Kelly | Injury |",
+    head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Mkt EV | Injury |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
         # mark the column this list is ranked by in the header (no bold markers anywhere: Docs shows them literally)
@@ -589,7 +589,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         for i, r in enumerate(group[:n], 1):
             vals = {"gap": cell(r["pct_gap"]), "score": cell(r["score"]), "balanced": cell(r["balanced"])}
             form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
-            kelly = "" if r.get("kelly_u") is None else f"{fmt(r['kelly_u'])}u"
+            kelly = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"   # market EV; model lists carry no stake
             t.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]),
                                         cell(r["line"]), cell(r["bp_proj"]) + ("*" if r.get("placeholder") else ""), vals["gap"], cell(r["fd_odds_rec"]),
                                         cell(r["dvp_softness"]), form, vals["score"], vals["balanced"],
@@ -597,7 +597,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         return t + [""]
 
     lines = [f"# NBA props: {date}", "",
-             "FanDuel-priced props only. DvP: 1 = softest matchup. Form: recent hit rate of the "
+             "FanDuel-priced props only. Only BETs (market +EV, below) are bets; every other list is model picks (research, not a bet, no stake). DvP: 1 = softest matchup. Form: recent hit rate of the "
              "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
@@ -1204,6 +1204,18 @@ DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashbo
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
 
 
+def mark_model_picks(rows, date):
+    """model_pick = the strategies that picked this row in this run (research, not a bet)."""
+    pulled = rows[0].get("pulled_at") if rows else None
+    picks = {}
+    model = {k for k, _ in bp_learn.STRATEGIES}
+    for r in bp_learn._read(bp_learn.LEDGER):
+        if r["date"] == date and r.get("pulled_at") == pulled and r["strategy"] in model:
+            picks.setdefault((r["player"], r["market"], r["side"]), []).append(r["strategy"])
+    for r in rows:
+        r["model_pick"] = ",".join(picks.get((r.get("player"), r.get("market"), r.get("rec_side")), [])) or None
+
+
 def load_value(date):
     try:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), f"value_{date}.json")) as f:
@@ -1276,6 +1288,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
             "lean": r.get("bp_lean") if r.get("lean_only") in (True, "True") else None,
+            "pick": r.get("model_pick") or None,
             "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
             "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
             "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),
@@ -1345,6 +1358,7 @@ def finish(rows, date, snapshot=False, rw_players=None):
         bp_learn.learned_row(r, model)
     attach_value(rows, date)
     n_logged = bp_learn.log_picks(rows, date)
+    mark_model_picks(rows, date)
     rows[:] = ranked(rows, lambda r: abs(r["pct_gap"] or 0))
     out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:

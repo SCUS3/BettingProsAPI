@@ -130,6 +130,8 @@ tbody tr:last-child td { border-bottom: 0; }
   display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 4px;
   margin-left: 6px; vertical-align: 1px; color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent);
 }
+tr.dimrow td { opacity: 0.45; }
+.chip.pick { color: var(--muted); border-color: color-mix(in srgb, var(--muted) 50%, transparent); }
 .chip.bet { color: var(--accent-ink); background: var(--good); border-color: var(--good); margin-left: 0; margin-right: 6px; }
 .prop { color: var(--ink); }
 .prop .mk { color: var(--muted); font-size: 12px; margin-right: 6px; font-weight: 600; }
@@ -368,7 +370,7 @@ footer b { color: var(--ink); font-weight: 600; }
     ["rk", "#", "l"], ["player", "Player", "l"], ["prop", "Prop", "l"], ["proj", "Proj", "hide-sm"],
     ["gap", "Gap", ""], ["odds", "FD", ""], ["dvp", "DvP", "hide-sm"], ["form", "Form", "hide-sm"],
     ["ev", "EV", "hide-sm"], ["oa", "Mkt EV", "hide-sm"], ["src", "Fair src", "hide-sm"],
-    ["score", "Score", ""], ["bal", "Bal", ""], ["learned", "Lrn", "hide-sm"], ["kelly", "Kelly", "hide-sm"]
+    ["score", "Score", ""], ["bal", "Bal", ""], ["learned", "Lrn", "hide-sm"], ["kelly", "Stake", "hide-sm"]
   ];
   function pctEv(v) { return v == null ? '<span class="dim">–</span>' : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%</span>"; }
   function render() {
@@ -391,7 +393,8 @@ footer b { color: var(--ink); font-weight: 600; }
         rk: i + 1,
         player: (r.decision === "BET" ? '<span class="chip bet" title="' + esc(r.bet_tag || "") + '">BET' + (r.bet_side && r.bet_side !== r.side ? " " + (r.bet_side === "over" ? "O" : "U") : "") + (r.bet_tag === "+EV only" ? " ·EV" : "") + "</span>" +
           (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
-          '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : ""),
+          '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") +
+          (r.pick ? '<span class="chip pick" title="Model pick (' + esc(r.pick) + '): research, not a bet">model pick</span>' : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
         proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
@@ -401,12 +404,12 @@ footer b { color: var(--ink); font-weight: 600; }
         score: r.score == null ? '<span class="dim">–</span>' : '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
         learned: r.learned == null ? "" : '<span class="pill ' + tone(r.learned) + '">' + r.learned + "</span>",
-        kelly: r.decision === "BET" ? '<b title="Quarter-Kelly on the market fair probability">' + num(r.bet_kelly) + 'u</b> <span class="dim">¼K</span>' : r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>',
+        kelly: r.decision === "BET" ? '<b title="Quarter-Kelly on the market fair probability">' + num(r.bet_kelly) + 'u</b> <span class="dim">¼K</span>' : '<span class="dim" title="Only market BETs carry a stake">–</span>',
         ev: pctEv(r.ev),
         src: r.fair_src ? esc(r.fair_src) : '<span class="dim">–</span>',
         oa: r.oa_ev == null ? '<span class="dim" title="No market check">–</span>' : '<span title="' + (r.fair_src === "Unabated" ? "Unabated Line, devigged" : "The Odds API: median no-vig of " + r.oa_books + " books") + ' at FanDuel\'s line">' + pctEv(r.oa_ev) + "</span>"
       };
-      var tr = '<tr class="row" tabindex="0" aria-expanded="' + open + '" data-k="' + esc(k) + '">' + COLS.map(function (c) {
+      var tr = '<tr class="row' + (r.pick && r.oa_ev != null && r.oa_ev < 0 ? " dimrow" : "") + '" tabindex="0" aria-expanded="' + open + '" data-k="' + esc(k) + '">' + COLS.map(function (c) {
         return '<td class="' + c[2] + (c[0] === state.rank ? " on" : "") + (c[0] === "rk" ? " rk" : "") + '">' + cells[c[0]] + "</td>";
       }).join("") + "</tr>";
       if (open) tr += '<tr class="detail"><td colspan="' + COLS.length + '">' + detail(r) + "</td></tr>";
@@ -456,16 +459,20 @@ footer b { color: var(--ink); font-weight: 600; }
       (r.ev != null ? " | EV " + (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%" : "") +
       (r.oa_ev != null ? " | mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "% (" + (r.fair_src || "OddsAPI") + (r.oa_books ? ", " + r.oa_books + " books" : "") + ")" : "") +
       (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
-      " | " + (r.kelly || 0) + "u" + (r.inj ? " | " + r.inj : "");
+      (r.inj ? " | " + r.inj : "");
   }
   function signed(v, suffix) { return v == null ? "–" : (v > 0 ? "+" : "") + v + suffix; }
   function recordText() {
     var R = DATA.record; if (!R) return [];
     var out = ["RECORD (" + R.slates + " graded slate" + (R.slates === 1 ? "" : "s") + ", pre-tip picks only, flat 1u" +
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
-    R.strategies.concat(R.combined ? [R.combined] : []).forEach(function (x) {
+    var grp = function (g) { return R.strategies.filter(function (x) { return (x.group === "bet") === (g === "bet"); }); };
+    [["bet", "BETs (market +EV):"], ["model", "Model picks (research, not bets; flat 1u for tracking):"]].forEach(function (G) {
+      out.push(G[1]);
+      grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []).forEach(function (x) {
       out.push(x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") + " | ROI " + signed(x.roi, "%") +
-        (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, " pts") : ""));
+        (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : ""));
+      });
     });
     var C = R.calibration || {};
     out.push("Model: " + R.model_n + " of " + R.min_train + " graded player-games needed to train" +
@@ -510,8 +517,14 @@ footer b { color: var(--ink); font-weight: 600; }
       out.push("Watch (shortlist, not bet): " + watch.map(function (r) { return r.player + " " + r.market + " " + sideTxt(r) + (r.oa_ev != null ? " (mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%)" : ""); }).join("; "), "");
     }
     [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
-      out.push("ALL: top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
+      out.push("ALL (model lists, research): top 10 by " + x[1]); ranked("ALL", x[0], 10).forEach(function (r, i) { out.push(line(r, i)); }); out.push("");
     });
+    var mp = ROWS.filter(function (r) { return r.pick; });
+    if (mp.length) {
+      out.push("MODEL PICKS (research, not a bet; no stake). Market EV shown; below 0 means the market disagrees:");
+      mp.forEach(function (r) { out.push("  " + r.player + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) + " | " + r.pick + " | mkt EV " + (r.oa_ev == null ? "–" : (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%" + (r.oa_ev < 0 ? " (below 0)" : ""))); });
+      out.push("");
+    }
     var LEAN = DATA.lean_markets || [];
     CATS.slice(1).forEach(function (c) {
       if (LEAN.indexOf(c[0]) >= 0) {
@@ -553,10 +566,13 @@ footer b { color: var(--ink); font-weight: 600; }
   function pickRow(r) {
     var res = r.result ? '<span class="res ' + r.result + '">' + r.result + "</span>" : '<span class="res pend">·</span>';
     var side = (r.side === "over" ? "O " : "U ") + num(Number(r.line));
-    return "<tr><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" +
+    var ev = r.oa_ev === "" || r.oa_ev == null ? null : Number(r.oa_ev);
+    var isBet = r.strategy === "bet_agree" || r.strategy === "bet_only";
+    var evCell = ev == null ? '<span class="dim">–</span>' : '<span class="' + (ev > 0 ? "pos" : ev < 0 ? "neg" : "") + '">' + (ev > 0 ? "+" : "") + Math.round(ev * 1000) / 10 + "%</span>";
+    return "<tr" + (!isBet && ev != null && ev < 0 ? ' class="dimrow"' : "") + "><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" +
       (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
-      "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
+      "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
   var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", watch: "Watch list" };
   function renderRecord() {
@@ -577,12 +593,22 @@ footer b { color: var(--ink); font-weight: 600; }
         '</td><td class="hide-sm">' + vs(x.brier, x.brier_mkt) + '</td><td class="hide-sm">' + vs(x.logloss, x.logloss_mkt) +
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
     }
-    var sBody = REC.strategies.map(function (x) { return sRow(x, false); }).join("") + (REC.combined ? sRow(REC.combined, true) : "");
+    var betRows = REC.strategies.filter(function (x) { return x.group === "bet"; });
+    var modelRows = REC.strategies.filter(function (x) { return x.group !== "bet"; });
+    var sBody = modelRows.map(function (x) { return sRow(x, x.key === "model_3pm_over"); }).join("") + (REC.combined ? sRow(REC.combined, true) : "");
+    var bHead = th([["Group", "l"], ["W-L-P"], ["Hit"], ["Units"], ["ROI"], ["Kelly units", "hide-sm"], ["CLV", "hide-sm"]]);
+    var bBody = betRows.map(function (x) {
+      return '<tr><td class="l"><span class="player">' + (x.key === "bets_all" ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p +
+        "</td><td>" + pct(x.hit) + "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm">' + units(x.kelly_units) +
+        '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
+    }).join("");
+    html += board("BETs (market +EV)", "The only bets: market EV +2% or more at FanDuel's line, staked at quarter-Kelly on the market's fair probability. CLV = EV of the bet at the 6:30 fair price.", bHead,
+      bBody || '<tr><td class="l dim" colspan="7">No BETs graded yet.</td></tr>');
     var sNote = any ? REC.slates + " graded slate" + (REC.slates === 1 ? "" : "s") + ". Only picks from the last run before each game's tip count. Flat 1u per pick; Kelly uses each pick's suggested stake. " +
       "Brier and log loss: lower is better; green means our probabilities beat FanDuel's no-vig line. CLV: points gained vs. the line at the last run before tip (picks seen in 2+ runs)." :
       "No graded picks yet. Picks from the last run before each game's tip get graded on the next /props run after the games finish.";
     if (REC.dropped_after_tip) sNote += " " + REC.dropped_after_tip + " picks were logged after their game started and don't count.";
-    html += board("Record by strategy", sNote, sHead, sBody);
+    html += board("Model picks (research, not bets)", "Top 5 of each model list, flat 1u for tracking only, no stake. " + sNote, sHead, sBody);
 
     var left = "", right = "";
     if (REC.by_cat.length) {
@@ -624,7 +650,7 @@ footer b { color: var(--ink); font-weight: 600; }
       right += board("Hit rate by situation", "Recommended side, all graded FanDuel props.", th([["Situation", "l"], ["Hit"], ["Props"]]),
         REC.insights.map(function (i) { return '<tr><td class="l">' + esc(i.label) + "</td><td>" + i.hit + "%</td><td>" + i.n + "</td></tr>"; }).join(""));
     }
-    var pHead = th([["", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["Final"], ["Units"]]);
+    var pHead = th([["", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["Final"], ["Mkt EV"], ["Units"]]);
     var groups = {};
     REC.recent.concat(REC.pending).forEach(function (r) {
       var k = r.date + "|" + r.strategy; (groups[k] = groups[k] || []).push(r);

@@ -445,12 +445,13 @@ def log_picks(rows, date):
                    "line": r.get("line"), "odds": r.get("fd_odds_rec"), "gap": r.get("pct_gap"),
                    "placeholder": r.get("placeholder"), "score": r.get("score"), "balanced": r.get("balanced"),
                    "learned": r.get("learned"), "our_prob": None if our is None else round(our, 4),
-                   "nv_prob": None if nv is None else round(nv, 4), "kelly_u": r.get("kelly_u"),
-                   "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id")}
+                   "nv_prob": None if nv is None else round(nv, 4), "kelly_u": None,   # model pick: research, no stake
+                   "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
+                   "oa_fair": r.get("oa_fair"), "oa_ev": r.get("oa_ev"), "fair_src": r.get("fair_src")}
             prev = old.get((date, pulled, strat, row["player"], row["market"], row["side"]))
             if prev and prev.get("result"):
                 row.update({k: prev[k] for k in ("result", "actual", "profit_u", "profit_kelly")})
-            if prev and prev.get("oa_fair"):
+            if prev and prev.get("oa_fair") and row.get("oa_fair") in (None, ""):
                 row.update({k: prev.get(k) for k in ("oa_fair", "oa_ev", "fair_src")})
             new.append(row)
     _write(LEDGER, keep + new, LEDGER_FIELDS)
@@ -811,16 +812,28 @@ def record():
             x["clv_unit"] = "% EV at 6:30 fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
+        x["group"] = "bet" if strat in BET_KEYS else "model"
         strategies.append(x)
-    uniq = _uniq(graded)
-    combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", label="All picks (each prop once)")
+    model_keys = {k for k, _ in STRATEGIES}
+    uniq_all = _uniq(graded)
+    uniq = _uniq([(r, v) for r, v in graded if r["strategy"] in model_keys])
+    combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", group="model",
+                    label="Model picks, each prop once (research)")
+    if any(r["strategy"] in BET_KEYS for r in ledger):
+        bu = _uniq([(r, v) for r, v in graded if r["strategy"] in BET_KEYS])
+        x = dict(_summ([r for r, _ in bu], [v for _, v in bu]), key="bets_all", group="bet", label="All BETs (market +EV)")
+        x["clv_unit"] = "% EV at 6:30 fair"
+        strategies.append(x)
+    o3 = [(r, v) for r, v in uniq if r["market"] == "3PM" and r.get("side") == "over"]
+    strategies.append(dict(_summ([r for r, _ in o3], [v for _, v in o3]), key="model_3pm_over", group="model",
+                           label="Model picks: 3PM overs"))
     by_cat = []
     for mk in MARKETS:
-        sub = [r for r, _ in uniq if r["market"] == mk and r["result"] in ("W", "L", "P")]
+        sub = [r for r, _ in uniq_all if r["market"] == mk and r["result"] in ("W", "L", "P")]
         if sub:
             s = _summ(sub)
             by_cat.append({"market": mk, "w": s["w"], "l": s["l"], "p": s["p"], "units": s["units"]})
-    both = [r for r, _ in uniq if r["result"] in ("W", "L") and _num(r.get("our_prob")) is not None
+    both = [r for r, _ in uniq_all if r["result"] in ("W", "L") and _num(r.get("our_prob")) is not None
             and _num(r.get("oa_fair")) is not None]
     oa = {"n": len(both), "min": OA_COMPARE_MIN,
           "n_by_source": {s: sum(1 for r in both if (r.get("fair_src") or "OddsAPI") == s) for s in ("Unabated", "OddsAPI")}}
