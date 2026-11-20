@@ -1062,17 +1062,17 @@ def main():
 def check_projection_match(first_page, offers, labels):
     """Item-3 guard on the player_id filter, after the first /props page: stop and ask before any fallback."""
     page = first_page.get("props", [])
-    keys = {(str(o["event_id"]), labels.get(o["market_id"], o["market_id"]), o["player_id"]) for o in offers.values()}
-    names = {(str(o["event_id"]), labels.get(o["market_id"], o["market_id"]), _name(o.get("player"))) for o in offers.values()}
+    # The filter returns every market for each FanDuel player, so test the player ids, not the markets.
+    ids = {o["player_id"] for o in offers.values()}
+    who = {_name(o.get("player")) for o in offers.values()}
     hit = 0
     for p in page:
         b = base_from_prop(p, labels)
-        k = (str(b["event_id"]), b["market"])
-        hit += (k + (b["player_id"],)) in keys or (k + (_name(b["player"]),)) in names
+        hit += b["player_id"] in ids or _name(b["player"]) in who
     total = (first_page.get("_pagination") or {}).get("total_items") or 0
     share_page = hit / len(page) if page else 0.0
     cover = min(total / len(offers), 1.0) if offers else 1.0
-    print(f"Player-id filter check (first /props page): {hit} of {len(page)} rows match a FanDuel line "
+    print(f"Player-id filter check (first /props page): {hit} of {len(page)} rows are FanDuel's players "
           f"({round(100 * share_page)}%); {total} projections for {len(offers)} FanDuel lines (up to {round(100 * cover)}% matched).")
     if offers and (share_page < 0.5 or cover < 0.5):
         sys.exit(f"Stopped after the first /props page: under 50% of FanDuel lines can match a projection, so the "

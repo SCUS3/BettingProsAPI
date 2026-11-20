@@ -76,6 +76,7 @@ Only `BP_API_KEY` is required; without the others the market check is skipped or
 | First run | Grade the previous slate | about 1.4 BettingPros requests per game, plus up to 8 single-game lookups |
 | 2:00 PM | `python3 bp_props.py --max-requests N`: full pull | about 5.7 requests per game + 1 |
 | After 2 PM | `python3 bp_value.py --board --go [--max-credits N]`: market check of every FanDuel line | 1 Unabated call; Odds API credits only for the fallback |
+| Noon to last tip | `python3 bp_value.py --watch`: free Unabated scan every 20 min; alerts only on new BETs and BETs whose market EV fell below 0 | 1 Unabated call per scan |
 | 6:30 PM | `python3 bp_props.py --reprice`: FanDuel lines from `/offers` only | about 2.4 requests per game |
 | 6:30 PM | `python3 bp_value.py --close --go`: CLV for each BET | 1 Unabated call |
 
@@ -103,6 +104,8 @@ python3 bp_props.py --location NJ      # sportsbook location for the FanDuel boo
 python3 bp_value.py --board                        # plan: cost of pricing every FanDuel line
 python3 bp_value.py --board --go --max-credits 4   # run: Unabated for the board, Odds API fallback up to 4 credits
 python3 bp_value.py --close --go                   # 6:30 PM: CLV for today's BETs
+python3 bp_value.py --watch                        # noon to last tip: alerts on new BETs and BETs gone below 0 EV
+python3 bp_value.py --board --go --board-file F    # price a saved Unabated board (no call)
 python3 bp_value.py --top 10                       # plan an Odds API check of the top 10 by Balanced only
 python3 bp_unabated.py --discover                  # Unabated discovery (no odds calls)
 python3 bp_unabated.py --status                    # what discovery found and whether Unabated is used
@@ -110,7 +113,7 @@ python3 bp_unabated.py --status                    # what discovery found and wh
 
 ## Market Check and BETs
 
-**Unabated (primary).** One props odds call returns the whole NBA board. For each FanDuel line, the fair probability is the **median of devigged (multiplicative) non-FanDuel sources pricing both sides at FanDuel's line**: DraftKings, BetMGM, Caesars, Fanatics and theScore US, plus the exchanges and prediction markets Novig, ProphetX, Kalshi and Polymarket. Pick'em apps (PrizePicks, Underdog, Pick6) and duplicate feeds are excluded, and live, alternate and partial-game lines are ignored. It needs 3+ sources. If the key ever returns the Unabated Line for props, that is used instead. A 401/403 switches to The Odds API automatically.
+**Unabated (primary).** Each `--board` run first refreshes discovery (free) so new players map, then one props odds call returns the whole NBA board. Every FanDuel line on it is priced, including lines BettingPros doesn't carry (no projection). For each FanDuel line, the fair probability is the **median of devigged (multiplicative) non-FanDuel sources pricing both sides at FanDuel's line**: DraftKings, BetMGM, Caesars, Fanatics and theScore US, plus the exchanges and prediction markets Novig, ProphetX, Kalshi and Polymarket. Pick'em apps (PrizePicks, Underdog, Pick6) and duplicate feeds are excluded, and live, alternate and partial-game lines are ignored. It needs 3+ sources. If the key ever returns the Unabated Line for props, that is used instead. A 401/403 switches to The Odds API automatically.
 
 **The Odds API (fallback).** Only for shortlist plays (top 10 by Balanced, real projections) that Unabated can't price, within an 8-credit daily aim and the credits you approve. FanDuel plus 9 US books counts as one region; the fair probability is the median of the non-FanDuel books at FanDuel's line, and needs 4+ books. Credits are tracked from the response headers in `odds_credits.json`, and runs stop before going under 50 for the month.
 

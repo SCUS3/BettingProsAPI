@@ -35,6 +35,8 @@ DISCOVERY = os.path.join(HERE, "unabated_discovery.json")
 STATE = os.path.join(HERE, "unabated_state.json")
 LAST_ODDS = os.path.join(HERE, ".unabated_last_odds")
 ODDS_INTERVAL = 5.0          # seconds between odds calls, per key
+ODDS_TIMEOUT = 90            # the full props board is a large response
+TIMEOUT = 30
 LEAGUE = "nba"
 # Consensus sources (names as /market/nba/props/sources lists them), used only when both over and under are
 # priced at FanDuel's line. Pick'em apps (PrizePicks, Underdog, Pick6) are left out: their prices aren't odds.
@@ -115,7 +117,7 @@ def get(path, params=None, odds=False, tries=3):
             _throttle()
         req = urllib.request.Request(url, headers={"X-Api-Key": k, "accept": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=ODDS_TIMEOUT if odds else TIMEOUT) as r:
                 body = r.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             text = e.read().decode("utf-8", errors="replace")[:300]
@@ -129,6 +131,11 @@ def get(path, params=None, odds=False, tries=3):
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"Unabated HTTP {e.code} on {path}: {text}")
+        except (TimeoutError, urllib.error.URLError) as e:
+            if attempt < tries - 1:
+                print(f"  Unabated {path}: {type(e).__name__} ({getattr(e, 'reason', e)}); retrying once more")
+                continue
+            raise RuntimeError(f"Unabated {path}: no response ({e})")
         try:
             env = json.loads(body) if body.strip() else {}
         except ValueError:
@@ -283,6 +290,46 @@ def fair_prices(picks, now=None):
         return {}, 0
     data = get(f"/market/{LEAGUE}/props/odds", {"betTypeId": bt_ids}, odds=True)
     return price_board(picks, data, d, now), 1
+
+
+def fetch_board(markets):
+    """The props odds board for these markets (one odds call)."""
+    d = load(DISCOVERY, {})
+    bt_ids = sorted({b["id"] for m in markets for b in d.get("bettypes", {}).get(m, [])})
+    return get(f"/market/{LEAGUE}/props/odds", {"betTypeId": bt_ids}, odds=True) if bt_ids else {}
+
+
+TEAM_FIX = {"UTH": "UTA", "PHO": "PHX", "NOR": "NOP", "NO": "NOP", "GS": "GSW", "NY": "NYK", "SA": "SAS"}
+
+
+def fd_lines(data, d=None, now=None):
+    """Every FanDuel main line on the board (pregame, full game, not alternate) for games still to tip:
+    [{player, market, line, over_odds, under_odds, teams, tip}]."""
+    d = d or load(DISCOVERY, {})
+    now = now or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    people = {str(x["id"]): _name(x) for x in _items((d.get("raw") or {}).get("people")) if x.get("id") is not None}
+    bt_tag = {str(b["id"]): t for t, v in d.get("bettypes", {}).items() for b in v}
+    full = {str(i) for i in d.get("full_game_period_ids") or [1]}
+    fd_id = str(d.get("fanduel_source_id"))
+    out = {}
+    for ctx, side in walk_sides((data or {}).get("odds") if isinstance(data, dict) else data):
+        if ctx.get("isLive") or ctx.get("betSubType") or str(ctx.get("periodTypeId")) not in full:
+            continue
+        if ctx.get("eventStart") and str(ctx["eventStart"]) <= now:
+            continue
+        who, tag, si = people.get(str(ctx.get("personId"))), bt_tag.get(str(ctx.get("betTypeId"))), str(ctx.get("sideIndex"))
+        if not who or not tag or si not in ("0", "1"):
+            continue
+        ln = next((x for x in _lines(side.get("marketSourceLines")) if str(x.get("marketSourceId")) == fd_id), None)
+        if not ln or ln.get("disabled") or ln.get("statusId") not in (None, 1) or ln.get("price") is None or ln.get("points") is None:
+            continue
+        name = str(ctx.get("eventName") or "")
+        codes = [TEAM_FIX.get(w, w) for w in name.replace("@", " ").split() if w.isupper() and 2 <= len(w) <= 3]
+        r = out.setdefault((who, tag), {"player": who, "market": tag, "line": float(ln["points"]), "teams": codes,
+                                        "tip": ctx.get("eventStart"), "event_name": name})
+        if float(ln["points"]) == r["line"]:
+            r["over_odds" if si == "0" else "under_odds"] = ln["price"]
+    return [r for r in out.values() if "over_odds" in r and "under_odds" in r]
 
 
 def _devig_over(o, u):

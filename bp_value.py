@@ -24,6 +24,7 @@ import json
 import os
 import statistics
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -391,7 +392,35 @@ def line_key(player, market, line):
     return f"{player}|{market}|{float(line):g}"
 
 
+def extra_rows(date, rows, data):
+    """FanDuel lines on Unabated's board that the BettingPros pull didn't carry, as no-projection rows mapped to
+    BettingPros' game ids by team (so they can be graded)."""
+    have = {(norm(r["player"]), r["market"]) for r in rows}
+    ev_teams = {}
+    for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
+        if r.get("event_id") and r.get("team"):
+            ev_teams.setdefault(str(r["event_id"]).split(".")[0], set()).add(U.TEAM_FIX.get(r["team"], r["team"]))
+    pulled = rows[0].get("pulled_at") if rows else bp_learn.utc_now()
+    out = []
+    for x in U.fd_lines(data):
+        if (norm(x["player"]), x["market"]) in have:
+            continue
+        ev = next((e for e, t in ev_teams.items() if t & set(x["teams"])), None)
+        side = "over" if x["over_odds"] >= x["under_odds"] else "under"
+        out.append({"player": x["player"], "team": "", "market": x["market"], "line": x["line"], "rec_side": side,
+                    "fd_odds_rec": x[side + "_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"],
+                    "price_is_fanduel": "True", "noproj": "True", "bp_proj": "", "event_id": ev or "", "tip": x["tip"],
+                    "pulled_at": pulled, "source_row": "unabated"})
+    return out
+
+
 def run_board(args):
+    if args.go and not args.board_file and U.key():
+        try:                                       # discovery refresh (free; no odds interval): current player ids
+            U.discover()
+            print("Unabated discovery refreshed (players, bet types, sources).")
+        except (U.Unavailable, RuntimeError) as e:
+            print(f"Unabated discovery refresh failed ({e}); using the saved discovery.")
     rows = board_rows(args.date)
     shortlist = load_picks(args.date, args.top or 10)
     ua_ok, ua_why = U.usable()
@@ -411,7 +440,17 @@ def run_board(args):
     ua = {}
     if ua_ok:
         try:
-            ua, _ = U.fair_prices([sp for r in rows for sp in side_picks(r)])
+            if args.board_file:                    # a saved board (no call): price it as it was when fetched
+                data = json.load(open(args.board_file))
+                print(f"  Using the saved Unabated board {args.board_file} (no call).")
+            else:
+                data = U.fetch_board(["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
+            extra = extra_rows(args.date, rows, data)
+            if extra:
+                print(f"  {len(extra)} FanDuel lines on Unabated's board that BettingPros doesn't carry: priced too (no projection).")
+                rows += extra
+            cands = [sp for r in rows for sp in side_picks(r)]
+            ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}))
             n_lines = sum(1 for r in rows if any((ua.get((r["player"], r["market"], sd)) or {}).get("fair_mult") is not None
                                                   for sd in ("over", "under")))
             print(f"  Unabated priced {n_lines} of {len(rows)} FanDuel lines ({U.MIN_SOURCES}+ sources at FanDuel's line).")
@@ -605,6 +644,130 @@ def run_close(args):
              if flagged else "No BET's market EV fell below 0."))
 
 
+# --------------------------------------------------------------------- watch
+WATCH_EVERY = 20 * 60        # seconds between scans
+WATCH_START_ET = 12          # noon ET
+
+
+def _et_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        return dt.datetime.now()
+
+
+def notify(msg):
+    """Terminal + log line, and a macOS notification when available."""
+    print(msg, flush=True)
+    try:
+        import subprocess
+        subprocess.run(["osascript", "-e", f'display notification {json.dumps(msg[:220])} with title "NBA props"'],
+                       capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
+def watch_scan(date, state):
+    """One free Unabated scan: new BETs (logged) and logged BETs whose market EV fell below 0 (or line moved).
+    Returns the number of games still to tip."""
+    data = U.fetch_board(["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
+    d = U.load(U.DISCOVERY, {})
+    have_csv = os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv"))
+    rows = board_rows(date) if have_csv else []
+    rows += extra_rows(date, rows, data) if have_csv else [
+        {"player": x["player"], "team": "", "market": x["market"], "line": x["line"], "rec_side": "over",
+         "fd_odds_rec": x["over_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"], "price_is_fanduel": "True",
+         "noproj": "True", "bp_proj": "", "event_id": "", "tip": x["tip"], "pulled_at": bp_learn.utc_now()} for x in U.fd_lines(data, d)]
+    ua = U.price_board([sp for r in rows for sp in side_picks(r)], data, d)
+    now = bp_learn.utc_now()
+    led = bp_learn._read(bp_learn.LEDGER)
+    logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
+              if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip", "") > now}
+    cap = bet_cap()[0]
+    new_rows = []
+    for r in rows:
+        for sd in ("over", "under"):
+            v = ua.get((r["player"], r["market"], sd))
+            k = f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"
+            if not qualifies(v) or k in logged or k in state["alerted"]:
+                continue
+            ps = proj_side(r)
+            tag = "+EV + proj agrees" if ps == sd else "+EV only"
+            stake = bet_kelly(v["fair_mult"], v["price_used"], cap)
+            form, dvp = side_context(r, sd)
+            mp = _f(r.get("model_prob"))
+            row = value_row(date, dict(r, pulled_at=now), "bet_agree" if ps == sd else "bet_only", sd, v, stake,
+                            None if mp is None or ps is None else (mp if ps == sd else 1 - mp))
+            row["line"] = r["line"]
+            new_rows.append(row)
+            state["alerted"][k] = v["ev_mult"]
+            notify(f"NEW BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
+                   f"{100 * v['ev_mult']:+.1f}% ({v.get('books')} sources{', exch' if v.get('exchange') else ''}); "
+                   f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K; tip {str(r.get('tip'))[11:16]}Z")
+    if new_rows:
+        led = [r for r in led] + new_rows
+        bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
+    # logged BETs: market EV now, at our line
+    picks = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]), "odds": float(r["odds"])}
+             for r in logged.values()]
+    now_v = U.price_board(picks, data, d) if picks else {}
+    for k, r in logged.items():
+        if k in state["dropped"]:
+            continue
+        v = now_v.get((r["player"], r["market"], r["side"])) or {}
+        fd_line = v.get("oa_fd_line")
+        if fd_line is not None and fd_line != float(r["line"]):
+            state["dropped"].append(k)
+            notify(f"BET LINE MOVED: {r['player']} {r['market']} {r['side']} {float(r['line']):g} -> FanDuel now {fd_line:g}")
+        elif v.get("ev_mult") is not None and v["ev_mult"] < 0:
+            state["dropped"].append(k)
+            notify(f"BET EV BELOW 0: {r['player']} {r['market']} {r['side']} {float(r['line']):g}: mkt EV now "
+                   f"{100 * v['ev_mult']:+.1f}% at {v['price_used']:+g} (bet {float(r['odds']):+g})")
+    tips = {x["tip"] for x in U.fd_lines(data, d) if x.get("tip") and x["tip"] > now}
+    return len(tips)
+
+
+def run_watch(args):
+    """Free Unabated scan every 20 minutes from noon ET until the last game's tip; alerts only on new BETs and
+    on logged BETs whose market EV fell below 0 (or whose FanDuel line moved). Start it once a day."""
+    ok, why = U.usable()
+    if not ok:
+        sys.exit(f"Unabated not usable: {why}")
+    path = os.path.join(HERE, f"watch_{args.date}.json")
+    try:
+        state = json.load(open(path))
+    except (OSError, ValueError):
+        state = {"alerted": {}, "dropped": []}
+    print(f"Watching {args.date}: one free Unabated scan every {args.every} min from {WATCH_START_ET}:00 ET until the last tip. "
+          f"Alerts: new BETs (logged) and BETs whose market EV fell below 0.", flush=True)
+    try:
+        U.discover()
+    except (U.Unavailable, RuntimeError) as e:
+        print(f"Discovery refresh failed ({e}); using the saved one.", flush=True)
+    while True:
+        et = _et_now()
+        if et.hour < WATCH_START_ET:
+            wait = ((WATCH_START_ET - et.hour) * 3600 - et.minute * 60 - et.second)
+            print(f"Waiting {wait // 60} min until {WATCH_START_ET}:00 ET.", flush=True)
+            time.sleep(max(wait, 1))
+            continue
+        try:
+            left = watch_scan(args.date, state)
+        except U.Unavailable as e:
+            notify(f"Watch stopped: Unabated key stopped working ({e}).")
+            return
+        except Exception as e:
+            print(f"{_et_now():%H:%M} scan failed ({e}); next in {args.every} min.", flush=True)
+            left = 1
+        json.dump(state, open(path, "w"), indent=1)
+        print(f"{_et_now():%H:%M} ET scan done; {left} tip times still ahead.", flush=True)
+        if left == 0:
+            print("All games have tipped. Watch done.", flush=True)
+            return
+        time.sleep(args.every * 60)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=bp_props.eastern_today())
@@ -614,17 +777,23 @@ def main():
     g.add_argument("--board", action="store_true", help="daily: one Unabated call prices every FanDuel line; BETs; "
                                                         "The Odds API only for the shortlist Unabated can't price")
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
+    g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from noon ET to the last tip; "
+                                                        "alerts on new BETs and BETs whose market EV fell below 0")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
     ap.add_argument("--max-credits", type=int, help="required with --go: most credits this run may spend")
     ap.add_argument("--budget", type=int, default=DAILY_CREDITS,
                     help=f"credit aim for the run (default {DAILY_CREDITS}); --top is cut to fit")
     ap.add_argument("--shortlist", type=int, default=10, help="--board: shortlist size (top N by Balanced)")
+    ap.add_argument("--every", type=int, default=WATCH_EVERY // 60, help="--watch: minutes between scans")
+    ap.add_argument("--board-file", help="--board: price a saved Unabated board JSON instead of calling")
     args = ap.parse_args()
     if args.board:
         args.top = args.shortlist
         return run_board(args)
     if args.close:
         return run_close(args)
+    if args.watch:
+        return run_watch(args)
 
     shortlist = load_picks(args.date, args.top)
     ua_ok, ua_why = U.usable()
