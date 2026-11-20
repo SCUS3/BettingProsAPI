@@ -21,3 +21,4 @@ value_*.json
 unabated_discovery.json
 unabated_state.json
 .unabated_last_odds
+unabated_probe_*.json

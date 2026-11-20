@@ -18,6 +18,7 @@ import argparse
 import email.utils
 import json
 import os
+import statistics
 import sys
 import time
 import urllib.error
@@ -35,6 +36,12 @@ STATE = os.path.join(HERE, "unabated_state.json")
 LAST_ODDS = os.path.join(HERE, ".unabated_last_odds")
 ODDS_INTERVAL = 5.0          # seconds between odds calls, per key
 LEAGUE = "nba"
+# Consensus sources (names as /market/nba/props/sources lists them), used only when both over and under are
+# priced at FanDuel's line. Pick'em apps (PrizePicks, Underdog, Pick6) are left out: their prices aren't odds.
+# Duplicate feeds are left out too (TheScore CA / TheScore (Fast); Polymarket only if Polymarket US is missing).
+BOOK_SOURCES = ["DraftKings", "BetMGM", "Caesars", "Fanatics", "TheScore US"]
+EXCHANGE_SOURCES = ["Novig", "Prophet Exchange", "Kalshi", "Polymarket US", "Polymarket"]
+MIN_SOURCES = 3
 # Player over/under single-game bet types (from /bettype; names are shared across sports, so match exactly
 # and require betOn=player, sides=ou, betRange=event, not a future). Some names have two ids (e.g. Points 73/275);
 # both go in the odds query, which is still one call.
@@ -215,7 +222,8 @@ def report(d):
     print(f"Unabated Line as a props source: {'yes (id ' + str(d['line_source_id']) + ')' if d.get('line_source_id') is not None else 'NOT FOUND (needs an odds call or a higher tier to confirm)'}")
     if d.get("unavailable"):
         print(f"Not in this key's tier: {', '.join(d['unavailable'])}")
-    print(f"Props usable for fair prices: {'yes' if d.get('props_ok') and d.get('line_source_id') is not None else 'no'}")
+    print("Fair price from Unabated: " + ("Unabated Line" if d.get("line_source_id") is not None else
+          f"median of devigged books/exchanges at FanDuel's line ({MIN_SOURCES}+ sources)" if d.get("props_ok") else "not available"))
 
 
 # ----------------------------------------------------------------- odds/fair
@@ -231,16 +239,20 @@ def usable():
         return False, "no discovery yet (run bp_unabated.py --discover)"
     if not d.get("props_ok"):
         return False, "discovery found no usable NBA props on this key"
-    if d.get("line_source_id") is None:
-        return False, "no Unabated Line source for props on this key"
     return True, ""
+
+
+def method():
+    d = load(DISCOVERY, {})
+    return "line" if d.get("line_source_id") is not None else "books"
 
 
 def walk_sides(node, ctx=None, live=False):
     """Yield (context, side) for every side carrying marketSourceLines, pregame only."""
     ctx = dict(ctx or {})
     if isinstance(node, dict):
-        for k in ("eventId", "eventName", "betTypeId", "periodTypeId", "personId", "sideIndex", "sideName", "teamId"):
+        for k in ("eventId", "eventName", "eventStart", "isLive", "betSubType", "betTypeId", "periodTypeId", "personId",
+                  "sideIndex", "sideName", "teamId"):
             if k in node:
                 ctx[k] = node[k]
         if "marketSourceLines" in node and not live:
@@ -260,61 +272,92 @@ def _lines(msl):
     return [x for x in msl or [] if isinstance(x, dict)]
 
 
-def fair_prices(picks):
-    """One props odds call for the picks' markets. Returns {pick key: result} for picks Unabated prices
-    (Unabated Line, devigged, at FanDuel's line). Raises Unavailable on 401/403."""
+def fair_prices(picks, now=None):
+    """One props odds call for the picks' markets. Fair probability per pick at FanDuel's line:
+    the Unabated Line (devigged) if the key has it, else the median of devigged non-FanDuel books and exchanges
+    pricing both sides at FanDuel's line (MIN_SOURCES+ required). Pregame, full game, main lines only.
+    Returns ({pick key: result}, calls). Raises Unavailable on 401/403."""
     d = load(DISCOVERY, {})
     bt_ids = sorted({b["id"] for p in picks for b in d.get("bettypes", {}).get(p["market"], [])})
     if not bt_ids:
         return {}, 0
     data = get(f"/market/{LEAGUE}/props/odds", {"betTypeId": bt_ids}, odds=True)
-    people = {}
-    for x in _items((d.get("raw") or {}).get("people")):
-        if x.get("id") is not None:
-            people[str(x["id"])] = norm(_name(x))
+    return price_board(picks, data, d, now), 1
+
+
+def _devig_over(o, u):
+    io, iu = (100 / (a + 100) if a > 0 else -a / (-a + 100) for a in (o, u))
+    return io / (io + iu)
+
+
+def price_board(picks, data, d, now=None):
+    now = now or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    people = {str(x["id"]): norm(_name(x)) for x in _items((d.get("raw") or {}).get("people")) if x.get("id") is not None}
     bt_tag = {str(b["id"]): t for t, v in d.get("bettypes", {}).items() for b in v}
-    full = {str(i) for i in d.get("full_game_period_ids") or []}
-    line_id, fd_id = str(d.get("line_source_id")), str(d.get("fanduel_source_id"))
-    board = {}                                   # (player, market) -> {source: {side: (points, price)}}
+    full = {str(i) for i in d.get("full_game_period_ids") or [1]}
+    names = {str(s["id"]): s["name"] for s in d.get("sources", [])}
+    fd_id, line_id = str(d.get("fanduel_source_id")), str(d.get("line_source_id"))
+    books = {i for i, n in names.items() if n in BOOK_SOURCES}
+    exch = {i for i, n in names.items() if n in EXCHANGE_SOURCES}
+    poly_us = next((i for i, n in names.items() if n == "Polymarket US"), None)
+    board = {}                                  # (player, market) -> {source id: {side: (points, price)}}
     for ctx, side in walk_sides((data or {}).get("odds") if isinstance(data, dict) else data):
-        if full and str(ctx.get("periodTypeId")) not in full:
+        if ctx.get("isLive") or ctx.get("betSubType") or str(ctx.get("periodTypeId")) not in full:
+            continue                            # live, alternate/milestone, or not full game
+        if ctx.get("eventStart") and str(ctx["eventStart"]) <= now:
             continue
-        tag, pid = bt_tag.get(str(ctx.get("betTypeId"))), ctx.get("personId")
-        si = str(ctx.get("sideIndex"))
-        if not tag or pid is None or si not in ("0", "1"):
-            continue
-        who = people.get(str(pid))
-        if not who:
+        tag, who, si = bt_tag.get(str(ctx.get("betTypeId"))), people.get(str(ctx.get("personId"))), str(ctx.get("sideIndex"))
+        if not tag or not who or si not in ("0", "1"):
             continue
         for ln in _lines(side.get("marketSourceLines")):
-            if ln.get("disabled") or ln.get("statusId") not in (None, 1) or ln.get("price") is None:
+            if ln.get("disabled") or ln.get("statusId") not in (None, 1) or ln.get("price") is None or ln.get("points") is None:
                 continue
-            src = str(ln.get("marketSourceId"))
-            if src not in (line_id, fd_id):
-                continue
-            board.setdefault((who, tag), {}).setdefault(src, {})["over" if si == "0" else "under"] = (ln.get("points"), ln["price"])
+            board.setdefault((who, tag), {}).setdefault(str(ln.get("marketSourceId")), {})["over" if si == "0" else "under"] = \
+                (float(ln["points"]), ln["price"])
     out = {}
     for p in picks:
-        b = board.get((norm(p["player"]), p["market"]), {})
-        ul, fd = b.get(line_id, {}), b.get(fd_id, {})
-        if "over" not in ul or "under" not in ul or ul["over"][0] != ul["under"][0]:
+        b = board.get((norm(p["player"]), p["market"]))
+        if not b:
             continue
-        point = ul["over"][0]
-        if point is None or float(point) != float(p["line"]):
-            out[(p["player"], p["market"], p["side"])] = {"fair_src": "Unabated", "fair_mult": None,
-                                                         "note": f"Unabated Line at {point:g}, FanDuel at {p['line']:g}"}
+        line = float(p["line"])
+        two = {src: sd for src, sd in b.items() if "over" in sd and "under" in sd and sd["over"][0] == sd["under"][0]}
+        fd = b.get(fd_id, {})
+        fd_line = fd.get(p["side"], (None, None))[0]
+        price = fd[p["side"]][1] if fd_line == line else p["odds"]
+        res = {"fair_src": "Unabated", "oa_fd_line": fd_line, "oa_fd_price": fd.get(p["side"], (None, None))[1],
+               "price_used": price, "fair_add": None, "ev_add": None}
+        if line_id in two:                      # Unabated Line, if this key ever returns it
+            if two[line_id]["over"][0] != line:
+                res.update(fair_mult=None, ev_mult=None, books=0, note=f"Unabated Line at {two[line_id]['over'][0]:g}")
+            else:
+                f = _devig_over(two[line_id]["over"][1], two[line_id]["under"][1])
+                f = f if p["side"] == "over" else 1 - f
+                res.update(fair_method="line", fair_mult=round(f, 4), ev_mult=round(f * _dec(price) - 1, 4), books=1,
+                           sources=["Unabated Line"], exchange=False, other_line_books=0)
+            out[(p["player"], p["market"], p["side"])] = res
             continue
-        io, iu = (100 / (a + 100) if a > 0 else -a / (-a + 100) for a in (ul["over"][1], ul["under"][1]))
-        f_over = io / (io + iu)
-        fair = f_over if p["side"] == "over" else 1 - f_over
-        fd_price = fd.get(p["side"], (None, None))
-        price = fd_price[1] if fd_price[0] is not None and float(fd_price[0]) == float(p["line"]) else p["odds"]
-        dec = 1 + (price / 100 if price > 0 else 100 / -price)
-        out[(p["player"], p["market"], p["side"])] = {
-            "fair_src": "Unabated", "fair_mult": round(fair, 4), "fair_add": None, "ev_mult": round(fair * dec - 1, 4),
-            "ev_add": None, "books": None, "other_line_books": 0, "price_used": price,
-            "oa_fd_line": fd_price[0], "oa_fd_price": fd_price[1], "line_vig": round(io + iu - 1, 4)}
-    return out, 1
+        use = [src for src in two if src in books or src in exch]
+        if poly_us in use:
+            use = [src for src in use if names.get(src) != "Polymarket"]
+        at = [src for src in use if two[src]["over"][0] == line]
+        other = [src for src in use if two[src]["over"][0] != line]
+        fairs = []
+        for src in at:
+            f = _devig_over(two[src]["over"][1], two[src]["under"][1])
+            fairs.append(f if p["side"] == "over" else 1 - f)
+        res.update(fair_method="books", books=len(at), sources=sorted(names.get(x, x) for x in at),
+                   exchange=any(x in exch for x in at), other_line_books=len(other))
+        if len(at) >= MIN_SOURCES:
+            f = statistics.median(fairs)
+            res.update(fair_mult=round(f, 4), ev_mult=round(f * _dec(price) - 1, 4))
+        else:
+            res.update(fair_mult=None, ev_mult=None, note=f"{len(at)} sources at FanDuel's line (needs {MIN_SOURCES})")
+        out[(p["player"], p["market"], p["side"])] = res
+    return out
+
+
+def _dec(a):
+    return 1 + (a / 100 if a > 0 else 100 / -a)
 
 
 def main():

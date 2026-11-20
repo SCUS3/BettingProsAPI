@@ -41,7 +41,7 @@ MIN_REMAINING = 50
 MIN_BOOKS = 3
 DAILY_CREDITS = 8          # aim per day; --top N is cut to the games with the most shortlist plays
 BET_MIN_EV = 0.02          # BET: market EV (multiplicative) at FanDuel's price, and
-BET_MIN_BOOKS = 4          #      at least this many other books at FanDuel's line
+BET_MIN_BOOKS = 3          #      at least this many other sources at FanDuel's line (either fair source)
 BET_KELLY_MAX = 2.5        # u; half-Kelly on the market's fair probability
 
 # Checked against https://the-odds-api.com/sports-odds-data/betting-markets.html (NBA player props, Over/Under).
@@ -287,9 +287,9 @@ def decide(date, shortlist, checked, results):
     rows, bets = [], []
     for p in shortlist:
         v = res.get((p["player"], p["market"], p["side"]))
-        # Unabated is one consensus line (no book count); The Odds API needs 4+ books at FanDuel's line.
+        # The Unabated Line counts as enough on its own; otherwise 3+ sources at FanDuel's line (either source).
         is_bet = bool(v and v.get("ev_mult") is not None and v["ev_mult"] >= BET_MIN_EV
-                      and (v.get("fair_src") == "Unabated" or (v.get("books") or 0) >= BET_MIN_BOOKS))
+                      and (v.get("fair_method") == "line" or (v.get("books") or 0) >= BET_MIN_BOOKS))
         r = p.get("row") or {}
         price = v["price_used"] if v else p["odds"]
         stake = bet_kelly(v["fair_mult"], price) if is_bet else 0.0
@@ -354,7 +354,9 @@ def main():
     games, cost, _, dropped = plan(shortlist, args.budget)
     print(f"{len(shortlist)} plays in {len(plan(shortlist)[0])} games.")
     if ua_ok:
-        print("Fair source 1: Unabated Line, one props odds call for the whole board (no credits; max 1 per 5 s).")
+        print("Fair source 1: Unabated, one props odds call for the whole board (no credits; max 1 per 5 s): " +
+              ("the Unabated Line." if U.method() == "line" else
+               f"median of devigged books + exchanges at FanDuel's line, {U.MIN_SOURCES}+ sources (no pick'em apps)."))
         print(f"Fair source 2 (fallback, only plays Unabated doesn't price): The Odds API, at most {cost} credits "
               f"(worst case; the exact cost is known after the Unabated call).")
     else:
@@ -436,7 +438,7 @@ def main():
         fair = "-" if v["fair_mult"] is None else f"{v['fair_mult']:.3f}"
         evs = "-" if v["ev_mult"] is None else f"{100 * v['ev_mult']:+.1f}%"
         ours = "-" if p.get("our_ev") is None else f"{100 * p['our_ev']:+.1f}%"
-        books = "-" if v.get("books") is None else str(v["books"])
+        books = "-" if v.get("books") is None else str(v["books"]) + ("x" if v.get("exchange") else "")
         note = "; ".join(x for x in (f"{v.get('other_line_books')} books on another line" if v.get("other_line_books") else "",
                                      v.get("note") or "",
                                      "" if v.get("oa_fd_line") in (None, p["line"]) else f"FanDuel now {v['oa_fd_line']:g}",
