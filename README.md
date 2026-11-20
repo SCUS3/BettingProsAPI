@@ -4,7 +4,7 @@ This repository contains a Python script that pulls the day's NBA player props f
 
 ## Description
 
-The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. Every prop gets two 0-100 ratings: a **score** (projection edge, expected value at FanDuel's price, and matchup) and a **balanced score** that checks it against recent form, market value, and BettingPros' bet rating. It also writes a Markdown note with three top-10 lists (by projection gap, by score, and by balanced score) plus, for each of the seven categories, a top 10 by projection gap and a top 10 by score, and prints the top 15 FanDuel-priced props to the terminal.
+The script finds the player prop markets for a slate, collects every prop with its BettingPros projection, recommended side, and FanDuel odds, and writes the results to a CSV ranked by percentage projection gap. Every prop gets two 0-100 ratings: a **score** (projection edge, expected value at FanDuel's price, and matchup) and a **balanced score** that checks it against recent form, market value, and BettingPros' bet rating. It also writes a Markdown note with three top-10 lists (by projection gap, by score, and by balanced score) plus, for each of the eight categories, a top 10 by projection gap and a top 10 by score, and prints the top 15 FanDuel-priced props to the terminal.
 
 Markets pulled by default (full game only):
 
@@ -18,7 +18,7 @@ Markets pulled by default (full game only):
 - **Balanced Score**: Blends the score with recent hit rate vs. the line, FanDuel's no-vig price, line vs. consensus, and BettingPros' bet rating.
 - **Three Top-10 Lists**: Separate rankings by raw projection gap, by score, and by balanced score.
 - **Kelly Stakes**: Suggested quarter-Kelly stake per prop (1u = 1% of bankroll).
-- **Top 10 by Category**: For each of the seven prop categories, a top 10 by projection gap and a top 10 by score.
+- **Top 10 by Category**: For each of the eight prop categories (PTS, REB, AST, 3PM, P+A, P+R, PRA, R+A), a top 10 by projection gap and a top 10 by score.
 - **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
 - **Fair Odds / Market EV**: Optional `--offers` mode adds FanDuel fair probability and market expected value per prop.
@@ -171,7 +171,7 @@ Each run also writes `bp_dashboard.html`, the **NBA Prop Board**: a single inter
 
 - a **Record** tab with each strategy's record, results by category, recent graded picks, and what the model has learned
 - a "strongest tonight" strip of props in the top 20 on gap, score, and balanced
-- a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA) with ranking by Gap, Score, or Balanced
+- a category picker (All, PTS, REB, AST, 3PM, P+A, P+R, PRA, R+A) with ranking by Gap, Score, or Balanced
 - tap-to-expand score breakdowns
 - a **Copy for Claude** button that copies the full slate as compact text for any Claude chat, led by a record summary: each strategy's W-L-P, units and ROI, the combined each-prop-once row, the last graded slate's picks with results and final stats, the model's sample count vs. the 60 it needs, and model vs. market Brier score
 

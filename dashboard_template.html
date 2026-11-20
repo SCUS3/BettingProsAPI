@@ -266,8 +266,8 @@ footer b { color: var(--ink); font-weight: 600; }
 (function () {
   var DATA = JSON.parse(document.getElementById("bp-data").textContent);
   var ROWS = DATA.rows;
-  var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"]];
-  var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists" };
+  var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"], ["R+A", "R+A"]];
+  var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists", "R+A": "Rebounds + Assists" };
   var RANKS = [["gap", "Gap"], ["score", "Score"], ["bal", "Balanced"], ["learned", "Learned"]];
   var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by your score: edge, FanDuel EV and matchup.", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
   var LIMITS = [[10, "Top 10"], [25, "Top 25"]];

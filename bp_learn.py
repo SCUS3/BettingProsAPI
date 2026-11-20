@@ -27,6 +27,7 @@ MODEL = os.path.join(HERE, "bp_model.json")
 HISTORY = os.path.join(HERE, "history")
 
 PICKS_PER_STRATEGY = 5
+MARKETS = ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A")
 STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", "Top 5 projection gap"),
               ("learned", "Top 5 learned")]
 MIN_TRAIN = 60            # player-games needed before the model is fit at all
@@ -47,7 +48,7 @@ FEATURE_LABELS = {
     "form": "Recent form vs. line", "market": "Market value", "implied": "Price (implied prob.)",
     "under": "Under side", "self_injured": "Player tagged DTD", "teammates_out": "Teammates ruled out",
     "teammates_dtd": "Teammates DTD", "form_x_teammates_out": "Form when teammates are out",
-    "threes": "Threes market", "combo": "Combo market (P+A, P+R, PRA)",
+    "threes": "Threes market", "combo": "Combo market (P+A, P+R, PRA, R+A)",
     "placeholder": "Placeholder projection", "starter": "Projected starter (Rotowire)",
 }
 
@@ -298,7 +299,7 @@ def features(r):
             1.0 if (r.get("rec_side") or "").lower() == "under" else 0.0,
             1.0 if inj and inj != "probable" else 0.0,
             tm_out, tm_dtd, form * tm_out,
-            1.0 if mk == "3PM" else 0.0, 1.0 if mk in ("P+A", "P+R", "PRA") else 0.0,
+            1.0 if mk == "3PM" else 0.0, 1.0 if mk in ("P+A", "P+R", "PRA", "R+A") else 0.0,
             1.0 if ph else 0.0,
             None if r.get("starter") in (None, "") else (1.0 if _truthy(r.get("starter")) else 0.0)]
 
@@ -637,7 +638,7 @@ def insights(rows, wt):
                                                    and d[0].get("rec_side") == "over"])
     line("Placeholder projections", [d for d in data if _truthy(d[0].get("placeholder"))])
     line("Real projections", [d for d in data if not _truthy(d[0].get("placeholder"))])
-    for mk in ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"):
+    for mk in MARKETS:
         line(f"{mk} props", [d for d in data if d[0].get("market") == mk])
     return out
 
@@ -695,7 +696,7 @@ def record():
     uniq = _uniq(graded)
     combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", label="All picks (each prop once)")
     by_cat = []
-    for mk in ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"):
+    for mk in MARKETS:
         sub = [r for r, _ in uniq if r["market"] == mk and r["result"] in ("W", "L", "P")]
         if sub:
             s = _summ(sub)

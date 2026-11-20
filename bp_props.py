@@ -14,7 +14,7 @@ Uses only the Python standard library. Output: bp_props_<date>.csv plus a
 top-15 printout.
 
 Markets pulled by default (full game only): points, rebounds, assists, threes,
-pts+ast, pts+reb, pts+reb+ast. Market and FanDuel book IDs are looked up once and
+pts+ast, pts+reb, pts+reb+ast, reb+ast. Market and FanDuel book IDs are looked up once and
 cached in bp_cache.json next to the script, so later runs skip those requests.
 
     python3 bp_props.py --list-markets     # show every NBA prop market and which ones are selected
@@ -99,7 +99,7 @@ CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_cache.json"
 
 MKT_CACHE_KEY = "nba_markets_v2"  # bump when classify() changes
 
-# The seven prop types to keep, described by their stat components.
+# The eight prop types to keep, described by their stat components.
 WANTED = {
     frozenset({"pts"}): "PTS",
     frozenset({"reb"}): "REB",
@@ -108,6 +108,7 @@ WANTED = {
     frozenset({"pts", "ast"}): "P+A",
     frozenset({"pts", "reb"}): "P+R",
     frozenset({"pts", "reb", "ast"}): "PRA",
+    frozenset({"reb", "ast"}): "R+A",
 }
 TOKEN_MAP = {
     "points": "pts", "pts": "pts",
@@ -116,7 +117,7 @@ TOKEN_MAP = {
     "threes": "3pm", "three": "3pm", "3pt": "3pm", "3pts": "3pm", "3-pt": "3pm", "3pm": "3pm",
     "3-pointers": "3pm", "pointers": "3pm", "3s": "3pm",
 }
-# Any of these in a market slug/label means it is not one of the seven.
+# Any of these in a market slug/label means it is not one of the eight.
 BLOCK = {"steals", "steal", "blocks", "block", "turnovers", "turnover", "double", "triple", "first",
          "attempted", "attempts", "attempt", "fantasy", "field", "free", "minutes", "quarter", "half",
          "alt", "alternate", "milestone", "race", "most", "stocks",
@@ -152,7 +153,7 @@ def find_fanduel(key, location, cache):
 
 
 def classify(m):
-    """Return the short tag (PTS, PRA, ...) if a market is one of the seven, else None."""
+    """Return the short tag (PTS, PRA, ...) if a market is one of the eight, else None."""
     if m.get("period") not in (None, "", "game"):
         return None
     meta = m.get("meta") or {}
@@ -171,7 +172,15 @@ def classify(m):
 def nba_markets(key, cache, refresh=False):
     """{market_id: (tag or None, label)} for every NBA player-prop market. Cached."""
     if MKT_CACHE_KEY in cache and not refresh:
-        return {int(k): tuple(v) for k, v in cache[MKT_CACHE_KEY].items()}
+        out = {int(k): tuple(v) for k, v in cache[MKT_CACHE_KEY].items()}
+        # A category added to WANTED after caching (e.g. R+A): tag it from its cached label, no request.
+        # Only categories no cached market has yet, so period markets the full classify() rejected stay out.
+        have = {t for t, _ in out.values() if t}
+        for mid, (tag, lbl) in out.items():
+            new = None if tag else classify({"slug": lbl})
+            if new and new not in have:
+                out[mid] = (new, lbl)
+        return out
     out, page = {}, 1
     while True:
         data = get("/markets", {"sport": "NBA", "limit": 50, "page": page}, key)
@@ -258,7 +267,8 @@ def pull_offer_metrics(key, event_ids, market_ids, book_id):
 
 
 CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("3PM", "Threes"),
-                  ("P+A", "Points + Assists"), ("P+R", "Points + Rebounds"), ("PRA", "Points + Rebounds + Assists")]
+                  ("P+A", "Points + Assists"), ("P+R", "Points + Rebounds"), ("PRA", "Points + Rebounds + Assists"),
+                  ("R+A", "Rebounds + Assists")]
 
 
 def write_top_by_market(rows, date, n=10):
@@ -505,7 +515,7 @@ def main():
     ap.add_argument("--date", default=eastern_today(),
                     help="slate date (defaults to today in Eastern time, so cloud machines on UTC still get the right night)")
     ap.add_argument("--location", default="NY")
-    ap.add_argument("--markets", default="", help="colon-delimited market ids (overrides the seven defaults)")
+    ap.add_argument("--markets", default="", help="colon-delimited market ids (overrides the eight defaults)")
     ap.add_argument("--list-markets", action="store_true", help="print NBA prop markets and exit")
     ap.add_argument("--refresh", action="store_true", help="re-fetch cached book and market IDs")
     ap.add_argument("--page-limit", type=int, default=20, help="20 for Free/Plus, 50 for Elite")

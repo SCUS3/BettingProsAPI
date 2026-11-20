@@ -10,6 +10,8 @@ Arguments from the user: `$ARGUMENTS`
 
 ## 1. Run the script
 
+**Ask before pulling** (rule in CLAUDE.md): before running anything that calls api.bettingpros.com, tell the user what will be called and the estimated request count, and wait for their OK, unless they pre-approved this run in their message. Estimate from local files: about 1 request per 20 props on the slate (the last CSV's row count for a date, or a full slate is ~15-25 pages), plus 1 for `/events`, plus grading if `bp_learn.pending_dates(today)` returns slates (about 18 for a first grade, 1 per missing pick on a regrade). `--from-csv` costs 0 requests and needs no permission.
+
 From the project root, run:
 
 ```bash
@@ -36,7 +38,7 @@ Read `bp_top10_<date>.md`, which the script writes. It has:
 1. **Top 10 by projection gap**: |projection - line| as a % of the line, nothing else.
 2. **Top 10 by your score**: the user's rules, `score` = 40% edge (gap in SDs) + 35% EV at FanDuel's price + 25% matchup, cut for injury.
 3. **Top 10 by balanced score**: `balanced` = 40% score + 25% recent form + 20% market value (no-vig price, FanDuel line vs. consensus) + 15% BettingPros bet rating.
-4. For each of the seven categories (PTS, REB, AST, 3PM, P+A, P+R, PRA): a top 10 by projection gap and a top 10 by your score.
+4. For each of the eight categories (PTS, REB, AST, 3PM, P+A, P+R, PRA, R+A): a top 10 by projection gap and a top 10 by your score.
 
 Every row also shows Form (recent hit rate vs. the line), Signals (how many of six factors lean the same way) and Kelly (quarter-Kelly stake, 1u = 1% of bankroll). For anything else (a player or team filter, extra columns such as `s_edge`, `s_ev`, `s_dvp`, `s_form`, `s_market`, `nv_edge`, `streak`), read `bp_props_<date>.csv` with a short Python snippet; don't print the whole file.
 
@@ -55,7 +57,7 @@ Show the three overall top-10 lists as compact tables:
 - **By your score:** player | market | side | line | FD | DvP | score | balanced | Kelly
 - **By balanced:** player | market | side | line | FD | form | score | balanced | signals | Kelly
 
-Then, for each of the seven categories, give the top 3 by gap and the top 3 by your score on one line each (player side line, gap %, score), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
+Then, for each of the eight categories, give the top 3 by gap and the top 3 by your score on one line each (player side line, gap %, score), and tell the user the full lists are in `bp_top10_<date>.md`. If a category is empty, say so.
 
 If the script printed "Graded <date>", start the report with a **Results** line: the running record from the printed Record block (W-L, units, Brier vs. market, CLV) by strategy and for "All picks", and how many picks didn't count because they were logged after tip. Mention any situation in the model's insights that stands out (for example, form when a teammate is ruled out) once it has a real sample.
 
