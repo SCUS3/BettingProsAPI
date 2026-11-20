@@ -68,6 +68,7 @@ python3 bp_props.py --refresh          # re-fetch cached book and market IDs
 python3 bp_props.py --from-csv         # re-score today's saved CSV, no API requests
 python3 bp_props.py --grade 2026-11-18 # grade a finished slate and re-learn
 python3 bp_props.py --no-grade         # skip automatic grading this run
+python3 bp_props.py --measure          # 3 requests: slate prop counts with/without the FanDuel filter and default ev_threshold
 ```
 
 ## Output

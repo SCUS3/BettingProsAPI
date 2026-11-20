@@ -51,6 +51,7 @@ def eastern_today():
 
 BASE = "https://api.bettingpros.com/v3"
 REQUESTS_MADE = 0
+PULL_LOG = []         # one entry per /props page this run: rows returned vs. _pagination totals (saved to history/)
 MAX_PICK_LOOKUPS = 8   # per slate per run: single game+market lookups for picks the FanDuel pull missed
 
 
@@ -208,29 +209,38 @@ def implied(american):
     return 100 / (a + 100) if a > 0 else -a / (-a + 100)
 
 
+def props_params(date, book_id, market_ids, limit, page=1, event_id=None, ev_threshold=False):
+    params = {
+        "sport": "NBA",
+        "limit": limit,
+        "page": page,
+        "include_injured": "true",
+        "sort": "diff",
+    }
+    if not ev_threshold:
+        params["ev_threshold"] = "false"   # return everything, not just the default EV band
+    if event_id:
+        params["event_id"] = event_id
+    else:
+        params["date"] = date
+    if book_id is not None:
+        params["book_id"] = book_id
+    if market_ids:
+        params["market_id"] = market_ids
+    return params
+
+
 def pull_props(key, date, book_id, market_ids, page_limit, event_id=None):
     """Props for a date (or one game with event_id; the API rejects both). book_id=None = any book."""
     props, page = [], 1
     while True:
-        params = {
-            "sport": "NBA",
-            "limit": page_limit,
-            "page": page,
-            "include_injured": "true",
-            "ev_threshold": "false",   # return everything, not just the default EV band
-            "sort": "diff",
-        }
-        if event_id:
-            params["event_id"] = event_id
-        else:
-            params["date"] = date
-        if book_id is not None:
-            params["book_id"] = book_id
-        if market_ids:
-            params["market_id"] = market_ids
+        params = props_params(date, book_id, market_ids, page_limit, page, event_id)
         data = get("/props", params, key)
         props.extend(data.get("props", []))
         pag = data.get("_pagination", {})
+        PULL_LOG.append({"date": None if event_id else date, "event_id": event_id, "book_id": book_id, "page": page,
+                         "rows": len(data.get("props", [])), "total_items": pag.get("total_items"),
+                         "total_pages": pag.get("total_pages")})
         if page >= pag.get("total_pages", 1):
             break
         page += 1
@@ -522,6 +532,8 @@ def main():
     ap.add_argument("--offers", action="store_true", help="also pull FanDuel fair odds / market EV")
     ap.add_argument("--no-grade", action="store_true", help="skip grading finished slates this run")
     ap.add_argument("--grade", metavar="DATE", help="only grade the saved slate for DATE, re-learn, and exit")
+    ap.add_argument("--measure", action="store_true",
+                    help="3 requests: slate prop counts (total_items) with the FanDuel filter, without it, and with the default ev_threshold")
     ap.add_argument("--from-csv", action="store_true",
                     help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
@@ -570,6 +582,10 @@ def main():
 
     # Grade finished slates (yesterday's picks etc.), then re-learn from every graded prop.
     to_grade = [args.grade] if args.grade else ([] if args.no_grade else bp_learn.pending_dates(args.date)[-3:])
+    if args.measure:
+        measure(key, args.date, fd, market_ids)
+        return
+
     tag_ids = {tag: mid for mid, (tag, _) in markets.items() if tag}
     for d in to_grade:
         finals = bp_learn.known_finals(d)
@@ -598,6 +614,17 @@ def main():
     pulled_at = bp_learn.utc_now()
     events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
     tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
+    started = sorted(t for t in tips.values() if t and t <= pulled_at)
+    if started:
+        print(f"Warning: {len(started)} of {len(tips)} games had already tipped at this pull; their lines are thinned "
+              f"and their picks don't count. Pull before the first tip ({min(t for t in tips.values() if t)} UTC).")
+    with_props = {p.get("event_id") for p in props}
+    bp_learn.save_pull_log(args.date, pulled_at, {
+        "pulled_at": pulled_at, "requests": REQUESTS_MADE, "pages": PULL_LOG,
+        "props_rows": len(props), "fanduel_book_id": fd, "markets": market_ids,
+        "events": [{"id": e.get("id"), "tip": tips.get(e.get("id")), "started": bool(tips.get(e.get("id")) and tips[e.get("id")] <= pulled_at),
+                    "props": sum(1 for p in props if p.get("event_id") == e.get("id"))} for e in events],
+        "events_without_props": len([e for e in events if e.get("id") not in with_props])})
     rw_players = bp_rotowire.fetch()                  # public page, not an API request
     print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
     bp_learn.save_rotowire(rw_players, args.date, pulled_at)
@@ -669,6 +696,18 @@ def main():
         })
 
     finish(rows, args.date, snapshot=True, rw_players=rw_players)
+
+def measure(key, date, fd, market_ids):
+    """One-off: total_items for the slate three ways (limit=1, so 1 request each). Saved to history/."""
+    out = {"date": date, "at": bp_learn.utc_now(), "markets": market_ids}
+    for name, book, evt in (("fanduel", fd, False), ("all_books", None, False), ("fanduel_default_ev_threshold", fd, True)):
+        pag = get("/props", props_params(date, book, market_ids, 1, ev_threshold=evt), key).get("_pagination", {})
+        out[name] = pag.get("total_items")
+        print(f"{name:30} total_items {pag.get('total_items')}")
+    out["requests"] = REQUESTS_MADE
+    bp_learn.save_pull_log(date, out["at"], out, prefix="measure_")
+    print(f"Saved to history/{date}/. Requests used: {REQUESTS_MADE}")
+
 
 DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard_template.html")
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")

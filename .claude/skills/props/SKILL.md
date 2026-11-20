@@ -20,7 +20,7 @@ python3 bp_props.py [--date YYYY-MM-DD] [--offers]
 
 - Add `--date` only if the user gave a date (or "tomorrow", which you convert to a date in Eastern time).
 - Add `--offers` only if the user said "offers", "EV" or "fair odds". It costs extra requests (one per game).
-- Plan on two runs a day for closing line value: one around 2 PM ET when lines post and one around 6:30 PM ET before the first tip. Always report the "requests used this run" number so the user can confirm two pulls plus grading fit under 100 a day.
+- Plan on two runs a day for closing line value: the first around 2 PM ET, before the earliest tip (a pull after a game tips gets thinned lines for that game, and its picks and props don't count or train the model), and one around 6:30 PM ET. Check the earliest tip in the last CSV's `tip` column (UTC). If the script prints "Warning: N of M games had already tipped", tell the user. Each pull saves its pagination totals and per-game prop counts to `history/<date>/pull_<time>.json`. Always report the "requests used this run" number so the user can confirm two pulls plus grading fit under 100 a day.
 - Run it before tip-off: each run logs its top 5 picks per strategy (balanced, your score, gap, learned). For each game, only picks from the last run before that game's tip count; anything logged after a game starts never counts.
 - The script automatically grades earlier slates first (about 18 requests per slate, at most 3 slates per run) and re-learns from the results. To skip that, add `--no-grade`. To grade a single slate, use `--grade YYYY-MM-DD`.
 - Each live run also reads Rotowire's public lineups page once (no API request). If it prints "Rotowire lineups: unavailable", say so; it falls back to missing-props detection.

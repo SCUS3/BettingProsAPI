@@ -213,6 +213,13 @@ def save_rotowire(players, date, pulled):
         json.dump(players, f)
 
 
+def save_pull_log(date, pulled, data, prefix="pull_"):
+    """Pagination and per-game counts for one pull (audit trail for missing props)."""
+    os.makedirs(os.path.join(HISTORY, date), exist_ok=True)
+    with open(os.path.join(HISTORY, date, prefix + pulled.replace("-", "").replace(":", "") + ".json"), "w") as f:
+        json.dump(data, f, indent=1)
+
+
 def load_rotowire(date, before=None):
     """Latest saved Rotowire snapshot for `date` (taken at or before `before`, if given)."""
     paths = sorted(glob.glob(os.path.join(HISTORY, date, "rotowire_*.json")))
