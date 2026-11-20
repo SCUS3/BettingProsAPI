@@ -32,7 +32,9 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
               ("learned", "Top 5 learned")]
 # Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
-VALUE_STRATEGIES = [("bet", "BET plays (Mkt EV +2%, 4+ books)"), ("watch", "Watch list (shortlist, not bet)")]
+VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
+                    ("watch", "Watch list (shortlist, not bet)")]
+BET_KEYS = {"bet_agree", "bet_only"}
 VALUE_KEYS = {k for k, _ in VALUE_STRATEGIES}
 MIN_TRAIN = 60            # player-games needed before the model is fit at all
 TRUST_N = 400             # model weight = n / (n + TRUST_N), then capped:
@@ -44,7 +46,8 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
-                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src"]
+                 "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
+                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -481,6 +484,9 @@ def counted_flags(ledger):
             counted.append(True)
             if r["date"] not in closing:
                 closing[r["date"]] = closing_lines(r["date"])
+            if _num(r.get("clv_ev")) is not None:          # EV of the bet at the 6:30 Unabated fair price, in %
+                clv.append(round(100 * _num(r["clv_ev"]), 2))
+                continue
             cl, bl = closing[r["date"]].get((str(r.get("event_id")).split(".")[0], r["player"], r["market"])), _num(r.get("line"))
             clv.append(None if cl is None or bl is None or cl[0] <= p else
                        ((cl[1] - bl) if r.get("side") == "over" else (bl - cl[1])))
@@ -787,7 +793,12 @@ def record():
         sub = [(r, v) for r, v in graded if r["strategy"] == strat]
         if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
-        strategies.append(dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label))
+        x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
+        if strat in BET_KEYS:
+            x["clv_unit"] = "% EV at 6:30 fair"
+            x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
+                                  and _num(r["close_mkt_ev"]) < 0)
+        strategies.append(x)
     uniq = _uniq(graded)
     combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", label="All picks (each prop once)")
     by_cat = []

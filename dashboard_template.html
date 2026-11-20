@@ -389,7 +389,8 @@ footer b { color: var(--ink); font-weight: 600; }
       var k = key(r), open = state.open === k;
       var cells = {
         rk: i + 1,
-        player: (r.decision === "BET" ? '<span class="chip bet">BET</span>' : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
+        player: (r.decision === "BET" ? '<span class="chip bet" title="' + esc(r.bet_tag || "") + '">BET' + (r.bet_side && r.bet_side !== r.side ? " " + (r.bet_side === "over" ? "O" : "U") : "") + (r.bet_tag === "+EV only" ? " ·EV" : "") + "</span>" +
+          (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
         proj: r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
@@ -427,6 +428,8 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
     if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
+    if (r.decision === "BET") f.push("<b>BET " + esc(r.bet_side) + "</b> (" + esc(r.bet_tag) + "): market EV " + (r.bet_ev > 0 ? "+" : "") + Math.round(r.bet_ev * 1000) / 10 + "%, stake " + num(r.bet_kelly) + "u" +
+      (r.close_clv != null ? "; 6:30 CLV " + (r.close_clv > 0 ? "+" : "") + Math.round(r.close_clv * 1000) / 10 + "%, market EV now " + (r.close_mkt_ev > 0 ? "+" : "") + Math.round(r.close_mkt_ev * 1000) / 10 + "%" : ""));
     if (r.oa_ev != null) f.push("Market check (" + esc(r.fair_src || "OddsAPI") + ") <b>fair " + Math.round(r.oa_fair * 1000) / 10 + "%, EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%</b>" + (r.oa_books ? " from " + r.oa_books + " books" : "") + "; our EV " + (r.ev == null ? "–" : (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%"));
     if (r.note) f.push("Line <b>" + esc(r.note) + "</b> (gap, EV and Kelly use FanDuel's)");
     if (r.ph) f.push("<b>Placeholder projection</b>: no edge claimed, EV at FanDuel's no-vig price" + (r.demoted ? ", ranked below real projections" : ", +EV price"));
@@ -473,7 +476,7 @@ footer b { color: var(--ink); font-weight: 600; }
     var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
     if (last) {
       out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
-      ["bet", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
+      ["bet_agree", "bet_only", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
         var g = R.recent.concat(R.pending).filter(function (r) { return r.date === last && r.strategy === st; })
           .sort(function (a, b) { return a.rank - b.rank; });
         if (!g.length) return;
@@ -491,11 +494,17 @@ footer b { color: var(--ink); font-weight: 600; }
   function slateText() {
     var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", DATA.kelly_note || "", ""];
     out = out.concat(recordText());
-    var bets = ROWS.filter(function (r) { return r.decision === "BET"; }), watch = ROWS.filter(function (r) { return r.decision === "watch"; });
+    var bets = DATA.bets || [], watch = ROWS.filter(function (r) { return r.decision === "watch"; });
+    function p1(v) { return v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%"; }
     if (bets.length || watch.length) {
-      out.push("BET (shortlist plays with market EV >= +2% and 4+ books at FanDuel's line; stake = half-Kelly on market fair prob):");
+      out.push("BET (market EV >= +2% at FanDuel's line; 3+ sources Unabated or 4+ books Odds API; stake = half-Kelly on fair prob):");
       if (!bets.length) out.push("  none today");
-      bets.forEach(function (r, i) { out.push("  BET " + line(r, i).replace(/ \| [\d.]+u$/, "") + " | stake " + num(r.bet_kelly) + "u"); });
+      bets.forEach(function (b, i) {
+        out.push("  " + (i + 1) + ". BET [" + b.tag + "] " + b.player + " " + b.market + " " + (b.side === "over" ? "O " : "U ") + num(b.line) + " " + odds(b.price) +
+          " | mkt EV " + p1(b.ev) + " | fair " + b.fair + " (" + b.src + ", " + b.n + " sources" + (b.exchange ? ", exchange" : "") + ")" +
+          " | form " + (b.form == null ? "–" : Math.round(b.form * 100) + "%") + " | DvP " + (b.dvp == null ? "–" : b.dvp) + " | stake " + num(b.stake) + "u" +
+          (b.close && b.close.mkt_ev != null ? " | 6:30 CLV " + p1(b.close.clv_ev) + ", mkt EV now " + p1(b.close.mkt_ev) + (b.close.mkt_ev < 0 ? " FLAG" : "") : ""));
+      });
       out.push("Watch (shortlist, not bet): " + watch.map(function (r) { return r.player + " " + r.market + " " + sideTxt(r) + (r.oa_ev != null ? " (mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%)" : ""); }).join("; "), "");
     }
     [["bal", "balanced"], ["score", "score"], ["gap", "projection gap"]].forEach(function (x) {
@@ -541,7 +550,7 @@ footer b { color: var(--ink); font-weight: 600; }
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
-  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet: "BET plays", watch: "Watch list" };
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", watch: "Watch list" };
   function renderRecord() {
     var el = document.getElementById("view-record");
     var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });
@@ -550,7 +559,8 @@ footer b { color: var(--ink); font-weight: 600; }
       if (a == null || b == null) return '<span class="dim">–</span>';
       return '<span class="' + (a < b ? "pos" : a > b ? "neg" : "") + '">' + a.toFixed(3) + '</span> <span class="dim">/ ' + b.toFixed(3) + "</span>";
     }
-    function clvTxt(x) { return x.clv == null ? '<span class="dim">–</span>' : units(x.clv).replace("u<", " pts<") + ' <span class="dim">(' + x.clv_n + ")</span>"; }
+    function clvTxt(x) { return x.clv == null ? '<span class="dim">–</span>' : units(x.clv).replace("u<", (x.clv_unit ? "% EV<" : " pts<")) + ' <span class="dim">(' + x.clv_n + ")</span>" +
+      (x.ev_below_0 ? ' <span class="neg">' + x.ev_below_0 + " fell below 0</span>" : ""); }
     var sHead = th([["Strategy", "l"], ["W-L-P"], ["Hit"], ["Units"], ["ROI"], ["Kelly units", "hide-sm"],
       ["Brier ours / mkt", "hide-sm"], ["Log loss ours / mkt", "hide-sm"], ["CLV", "hide-sm"]]);
     function sRow(x, strong) {
@@ -614,7 +624,7 @@ footer b { color: var(--ink); font-weight: 600; }
     var keys = Object.keys(groups).sort(function (a, b) { return a < b ? 1 : -1; });
     var dates = []; keys.forEach(function (k) { var d = k.split("|")[0]; if (dates.indexOf(d) < 0) dates.push(d); });
     dates.slice(0, 3).forEach(function (d) {
-      ["bet", "watch", "bal", "learned", "score", "gap"].forEach(function (st) {
+      ["bet_agree", "bet_only", "watch", "bal", "learned", "score", "gap"].forEach(function (st) {
         var g = groups[d + "|" + st]; if (!g) return;
         g.sort(function (a, b) { return a.rank - b.rank; });
         left += board(d + " · " + STRAT_LABEL[st], null, pHead, g.map(pickRow).join(""));

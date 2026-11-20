@@ -323,7 +323,7 @@ def price_board(picks, data, d, now=None):
         two = {src: sd for src, sd in b.items() if "over" in sd and "under" in sd and sd["over"][0] == sd["under"][0]}
         fd = b.get(fd_id, {})
         fd_line = fd.get(p["side"], (None, None))[0]
-        price = fd[p["side"]][1] if fd_line == line else p["odds"]
+        price = fd[p["side"]][1] if fd_line == line else p.get("odds")
         res = {"fair_src": "Unabated", "oa_fd_line": fd_line, "oa_fd_price": fd.get(p["side"], (None, None))[1],
                "price_used": price, "fair_add": None, "ev_add": None}
         if line_id in two:                      # Unabated Line, if this key ever returns it
@@ -332,7 +332,7 @@ def price_board(picks, data, d, now=None):
             else:
                 f = _devig_over(two[line_id]["over"][1], two[line_id]["under"][1])
                 f = f if p["side"] == "over" else 1 - f
-                res.update(fair_method="line", fair_mult=round(f, 4), ev_mult=round(f * _dec(price) - 1, 4), books=1,
+                res.update(fair_method="line", fair_mult=round(f, 4), ev_mult=None if price is None else round(f * _dec(price) - 1, 4), books=1,
                            sources=["Unabated Line"], exchange=False, other_line_books=0)
             out[(p["player"], p["market"], p["side"])] = res
             continue
@@ -349,7 +349,7 @@ def price_board(picks, data, d, now=None):
                    exchange=any(x in exch for x in at), other_line_books=len(other))
         if len(at) >= MIN_SOURCES:
             f = statistics.median(fairs)
-            res.update(fair_mult=round(f, 4), ev_mult=round(f * _dec(price) - 1, 4))
+            res.update(fair_mult=round(f, 4), ev_mult=None if price is None else round(f * _dec(price) - 1, 4))
         else:
             res.update(fair_mult=None, ev_mult=None, note=f"{len(at)} sources at FanDuel's line (needs {MIN_SOURCES})")
         out[(p["player"], p["market"], p["side"])] = res

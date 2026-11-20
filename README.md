@@ -192,9 +192,9 @@ This project is for research and entertainment. Projections are not guarantees, 
 ## Daily flow
 
 1. 2 PM ET: `python3 bp_props.py --max-requests N` (BettingPros full pull).
-2. `python3 bp_value.py --top 10` plans the market check of the shortlist (top 10 by Balanced, real projections only) within about 8 credits a day; `--go --max-credits N` runs it once approved.
-3. BET = shortlist play with market EV +2% or more and 4+ other books at FanDuel's line; the rest are "watch". Both are logged (strategies `bet` / `watch`) and show on the board and in Copy for Claude. BET stakes are half-Kelly on the market's fair probability.
-4. 6:30 PM ET: `python3 bp_props.py --reprice` (BettingPros `/offers` only) for CLV.
+2. `python3 bp_value.py --board --go`: one free Unabated call prices every FanDuel main line (median of devigged books and exchanges at FanDuel's line, 3+ sources). The Odds API only for shortlist plays Unabated can't price (`--max-credits`, 4+ books).
+3. BET = market EV +2% or more at FanDuel's line; stake = half-Kelly on the fair probability. Tagged "+EV + proj agrees" or "+EV only" (BettingPros' projection on the other side or none), with form and DvP; both are logged (`bet_agree` / `bet_only`) so the record shows which does better. Shortlist plays that aren't BETs are `watch`.
+4. 6:30 PM ET: `python3 bp_props.py --reprice`, then `python3 bp_value.py --close --go`: a second free Unabated call logs CLV for each BET (EV of the bet at the 6:30 fair price) and flags BETs whose market EV fell below 0.
 
 ## Fair-price sources
 

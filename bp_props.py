@@ -617,15 +617,19 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         lines.append("")
     else:
         lines += ["No graded picks yet.", ""]
-    bets = [r for r in rows if r.get("decision") == "BET"]
+    bets = value_bets(date)
     watch = [r for r in rows if r.get("decision") == "watch"]
     if bets or watch:
-        lines += ["## BET", "", "2 PM shortlist (top 10 by Balanced, real projections) checked against the market (The Odds API): "
-                  "BET = market EV +2% or more (multiplicative devig) with 4+ other books at FanDuel's line. "
-                  "Stake = half-Kelly on the market's fair probability.", ""]
-        lines += [f"- BET {r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])} {fmt(r['fd_odds_rec'])}: market EV "
-                  f"{100 * r['oa_ev']:+.1f}% ({r.get('fair_src') or 'OddsAPI'}), our EV {100 * (r.get('model_ev') or 0):+.1f}%, stake {fmt(r['bet_kelly'])}u"
-                  for r in bets] or ["- No BET plays today."]
+        lines += ["## BET", "", "Every FanDuel line priced against the market (Unabated consensus of devigged books and exchanges; "
+                  "The Odds API only for shortlist plays Unabated can't price). BET = market EV +2% or more at FanDuel's line "
+                  "with 3+ sources (Unabated) or 4+ books (The Odds API). Stake = half-Kelly on the fair probability. "
+                  "Tag: '+EV + proj agrees' when BettingPros' projection is on the same side, else '+EV only'.", ""]
+        lines += [f"- BET [{b['tag']}] {b['player']} {b['market']} {b['side']} {fmt(b['line'])} {fmt(b['price'])}: market EV "
+                  f"{100 * b['ev']:+.1f}%, fair {b['fair']} ({b['src']}, {b['n']} sources{', exchange' if b['exchange'] else ''}); "
+                  f"form {'-' if b['form'] is None else str(round(100 * b['form'])) + '%'}, DvP {'-' if b['dvp'] is None else fmt(b['dvp'])}; "
+                  f"stake {fmt(b['stake'])}u" + (f"; 6:30 CLV {100 * b['close']['clv_ev']:+.1f}%, market EV now "
+                  f"{100 * b['close']['mkt_ev']:+.1f}%" + (" FLAG" if b['close']['mkt_ev'] < 0 else "")
+                  if b.get("close") and b["close"].get("mkt_ev") is not None else "") for b in bets] or ["- No BET plays today."]
         lines += ["", "Watch (not bets): " + "; ".join(
             f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * r['oa_ev']:+.1f}%)" if r.get("oa_ev") is not None else "")
             for r in watch), ""]
@@ -1169,15 +1173,43 @@ DASH_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashbo
 DASH_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_dashboard.html")
 
 
-def attach_value(rows, date):
-    """The Odds API value check (bp_value.py) on rows it covered: oa_fair, oa_ev, oa_books."""
+def load_value(date):
     try:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), f"value_{date}.json")) as f:
-            val = json.load(f)
+            return json.load(f)
     except (OSError, ValueError):
-        val = {}
+        return {}
+
+
+def value_bets(date):
+    """BETs from the day's value check (bp_value.py --board), best market EV first."""
+    out = []
+    for k, e in load_value(date).items():
+        if e.get("decision") != "BET" or "sides" not in e:
+            continue
+        player, market, line = k.split("|")
+        v = e["sides"].get(e["bet_side"]) or {}
+        out.append({"player": player, "market": market, "side": e["bet_side"], "line": float(line), "price": e.get("bet_price"),
+                    "ev": e.get("bet_ev"), "fair": v.get("fair_mult"), "src": v.get("fair_src"), "n": v.get("books"),
+                    "exchange": bool(v.get("exchange")), "tag": e.get("tag"), "form": e.get("form"), "dvp": e.get("dvp"),
+                    "stake": e.get("bet_kelly"), "close": e.get("close")})
+    return sorted(out, key=lambda b: -(b["ev"] or 0))
+
+
+def attach_value(rows, date):
+    """The day's market check (bp_value.py) on each row: oa_fair, oa_ev, fair_src, oa_books for the row's side,
+    and the BET / watch decision for the line (a BET can be on the other side of the row)."""
+    val = load_value(date)
     for r in rows:
         line = _num(r.get("line"))
+        e = val.get(f"{r.get('player')}|{r.get('market')}|{line:g}") if line is not None else None
+        if e and "sides" in e:
+            v = e["sides"].get(r.get("rec_side")) or {}
+            r.update(oa_fair=v.get("fair_mult"), oa_ev=v.get("ev_mult"), oa_books=v.get("books"),
+                     fair_src=v.get("fair_src"), decision=e.get("decision"), bet_kelly=e.get("bet_kelly"),
+                     bet_side=e.get("bet_side"), bet_tag=e.get("tag"), bet_ev=e.get("bet_ev"),
+                     close_mkt_ev=(e.get("close") or {}).get("mkt_ev"), close_clv=(e.get("close") or {}).get("clv_ev"))
+            continue
         v = val.get(f"{r.get('player')}|{r.get('market')}|{r.get('rec_side')}|{line:g}") if line is not None else None
         r["oa_fair"] = v.get("fair_mult") if v else None
         r["oa_ev"] = v.get("ev_mult") if v else None
@@ -1213,6 +1245,8 @@ def write_dashboard(rows, date, kelly_note=""):
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
             "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
+            "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
+            "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),
             "fair_src": r.get("fair_src") or None,
             "ev": n(r.get("model_ev")), "oa_ev": n(r.get("oa_ev")), "oa_fair": n(r.get("oa_fair")), "oa_books": r.get("oa_books"),
         })
@@ -1224,7 +1258,7 @@ def write_dashboard(rows, date, kelly_note=""):
     except Exception:
         updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
     payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
-               "disabled": sorted(DISABLED), "kelly_note": kelly_note,
+               "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "record": bp_learn.record()}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
