@@ -220,6 +220,19 @@ def save_pull_log(date, pulled, data, prefix="pull_"):
         json.dump(data, f, indent=1)
 
 
+def last_pull_log(date, kind="full"):
+    """The latest saved pull log of `kind` for `date` (game list and tip times), or None."""
+    for path in sorted(glob.glob(os.path.join(HISTORY, date, "pull_*.json")), reverse=True):
+        try:
+            with open(path) as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if d.get("kind", "full") == kind and d.get("events"):
+            return d
+    return None
+
+
 def load_rotowire(date, before=None):
     """Latest saved Rotowire snapshot for `date` (taken at or before `before`, if given)."""
     paths = sorted(glob.glob(os.path.join(HISTORY, date, "rotowire_*.json")))

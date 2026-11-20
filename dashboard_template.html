@@ -289,7 +289,9 @@ footer b { color: var(--ink); font-weight: 600; }
   function sideTxt(r) { return (r.side === "over" ? "O " : r.side === "under" ? "U " : "") + num(r.line); }
   function key(r) { return r.player + "|" + r.market + "|" + r.side; }
   // Placeholder projections without a +EV price rank below every real projection.
-  function tier(a, b) { return (a.demoted ? 1 : 0) - (b.demoted ? 1 : 0); }
+  // No-projection FanDuel lines rank after every projected prop (they claim no edge).
+  function tierOf(r) { return r.noproj ? 2 : r.demoted ? 1 : 0; }
+  function tier(a, b) { return tierOf(a) - tierOf(b); }
   var SORT = {
     gap: function (a, b) { return tier(a, b) || Math.abs(b.gap || 0) - Math.abs(a.gap || 0); },
     score: function (a, b) { return tier(a, b) || (b.score || 0) - (a.score || 0); },
@@ -299,7 +301,7 @@ footer b { color: var(--ink); font-weight: 600; }
 
   function pool(cat) {
     return ROWS.filter(function (r) {
-      return r.score != null && (cat === "ALL" || r.market === cat) && !(state.hideDtd && r.inj);
+      return r.bal != null && (cat === "ALL" || r.market === cat) && !(state.hideDtd && r.inj);
     });
   }
   function ranked(cat, by, n) { return pool(cat).slice().sort(SORT[by]).slice(0, n); }
@@ -384,12 +386,12 @@ footer b { color: var(--ink); font-weight: 600; }
         rk: i + 1,
         player: '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
-        proj: r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
+        proj: r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
         odds: odds(r.odds),
         dvp: r.dvp == null ? "" : r.dvp,
         form: r.form == null ? '<span class="dim">–</span>' : Math.round(r.form * 100) + "%",
-        score: '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
+        score: r.score == null ? '<span class="dim">–</span>' : '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
         learned: r.learned == null ? "" : '<span class="pill ' + tone(r.learned) + '">' + r.learned + "</span>",
         kelly: r.kelly ? num(r.kelly) + "u" : '<span class="dim">0u</span>'
@@ -415,6 +417,8 @@ footer b { color: var(--ink); font-weight: 600; }
     if (r.rw) f.push("Rotowire <b>" + esc(r.rw) + "</b>");
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
+    if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
+    if (r.note) f.push("Line <b>" + esc(r.note) + "</b> (gap, EV and Kelly use FanDuel's)");
     if (r.ph) f.push("<b>Placeholder projection</b>: no edge claimed, EV at FanDuel's no-vig price" + (r.demoted ? ", ranked below real projections" : ", +EV price"));
     f.push("Signals <b>" + esc(r.sig || "") + "</b>");
     return '<div class="label">Score parts (0–100)</div><div class="parts">' +
@@ -433,7 +437,8 @@ footer b { color: var(--ink); font-weight: 600; }
   // Copy for Claude: the full slate as compact text
   function line(r, i) {
     return (i + 1) + ". " + r.player + (r.team ? " (" + r.team + ")" : "") + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) +
-      " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal +
+      (r.noproj ? " | no BettingPros projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
+      (r.note ? " | " + r.note : "") +
       (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
       " | " + (r.kelly || 0) + "u" + (r.inj ? " | " + r.inj : "");
   }

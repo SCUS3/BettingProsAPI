@@ -1,7 +1,7 @@
 ---
 name: props
 description: Pull a day's NBA player props from BettingPros (priced at FanDuel) with bp_props.py and summarize the best plays. Use when the user asks for tonight's props, best bets, edges, or runs /props, optionally with a date, a player/team, or "offers".
-argument-hint: "[YYYY-MM-DD] [offers] [player or team filter]"
+argument-hint: "[YYYY-MM-DD] [reprice] [player or team filter]"
 ---
 
 # NBA props run
@@ -15,12 +15,14 @@ Arguments from the user: `$ARGUMENTS`
 From the project root, run:
 
 ```bash
-python3 bp_props.py [--date YYYY-MM-DD] [--offers]
+python3 bp_props.py [--date YYYY-MM-DD] --max-requests N     # 2 PM full pull
+python3 bp_props.py [--date YYYY-MM-DD] --reprice [--max-requests N]   # 6:30 PM re-price
 ```
 
 - Add `--date` only if the user gave a date (or "tomorrow", which you convert to a date in Eastern time).
-- Add `--offers` only if the user said "offers", "EV" or "fair odds". It costs extra requests (one per game).
-- Plan on two runs a day for closing line value: the first around 2 PM ET, before the earliest tip (a pull after a game tips gets thinned lines for that game, and its picks and props don't count or train the model), and one around 6:30 PM ET. Check the earliest tip in the last CSV's `tip` column (UTC). If the script prints "Warning: N of M games had already tipped", tell the user. Each pull saves its pagination totals and per-game prop counts to `history/<date>/pull_<time>.json`. Always report the "requests used this run" number so the user can confirm two pulls plus grading fit under 100 a day.
+- **Two runs a day.** The 2 PM ET full pull gets BettingPros projections from `/props` with no book filter and every FanDuel main line from one `/offers` query across all games (`book_id=10`, condensed), joined on game + player + market. Gap, side, EV, Kelly and placeholder status are recomputed at FanDuel's own line and price; when FanDuel's line differs from BettingPros', both show (`line_note`). FanDuel lines with no projection stay on the board, ranked after every projected prop on form, DvP and market value only, with no edge, Kelly or logged pick. The 6:30 PM ET `--reprice` run re-prices from `/offers` only; its picks are the ones that count, and it reports lines that moved and lines pulled since 2 PM (late scratches).
+- **Cost.** Per game, roughly 5-6 `/props` pages + 2-3 `/offers` pages for the full pull (a 4-game slate: about 33 requests), and 2-3 per game for the re-price. Each run fetches page 1 of each endpoint first, prints the exact estimate, and stops before the rest if it is over `--max-requests`. Always pass `--max-requests` set to what the user approved. Show the user the running request count (since the last midnight-UTC reset) before each step.
+- Run times: the first around 2 PM ET, before the earliest tip (a pull after a game tips gets thinned lines for that game, and its picks and props don't count or train the model), and one around 6:30 PM ET. Check the earliest tip in the last CSV's `tip` column (UTC). If the script prints "Warning: N of M games had already tipped", tell the user. Each pull saves its pagination totals and per-game prop counts to `history/<date>/pull_<time>.json`. Always report the "requests used this run" number so the user can confirm two pulls plus grading fit under 100 a day.
 - Run it before tip-off: each run logs its top 5 picks per strategy (balanced, your score, gap, learned). For each game, only picks from the last run before that game's tip count; anything logged after a game starts never counts.
 - The script automatically grades earlier slates first (about 18 requests per slate, at most 3 slates per run) and re-learns from the results. To skip that, add `--no-grade`. To grade a single slate, use `--grade YYYY-MM-DD`.
 - Each live run also reads Rotowire's public lineups page once (no API request). If it prints "Rotowire lineups: unavailable", say so; it falls back to missing-props detection.

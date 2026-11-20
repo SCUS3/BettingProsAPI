@@ -8,7 +8,8 @@ Usage:
     # (never paste the key into chat; .env is git-ignored)
     python3 bp_props.py                    # today's slate
     python3 bp_props.py --date 2026-11-19  # another date
-    python3 bp_props.py --offers           # also pull FanDuel fair odds / market EV per game (more requests)
+    python3 bp_props.py --max-requests 45  # 2 PM full pull: /props (all books) + /offers (FanDuel) + /events
+    python3 bp_props.py --reprice          # 6:30 PM: FanDuel's current lines from /offers only, reusing 2 PM projections
 
 Uses only the Python standard library. Output: bp_props_<date>.csv plus a
 top-15 printout.
@@ -248,32 +249,239 @@ def pull_props(key, date, book_id, market_ids, page_limit, event_id=None):
     return props
 
 
-def pull_offer_metrics(key, event_ids, market_ids, book_id):
-    """Map (event, market, player_id, side) -> FanDuel fair_probability / market_ev from /offers."""
+def pages_left(first):
+    return max(((first or {}).get("_pagination") or {}).get("total_pages", 1) - 1, 0)
+
+
+def check_budget(more, budget, what):
+    """Stop before going over --max-requests (page 1s already spent tell us the rest)."""
+    total = REQUESTS_MADE + more
+    print(f"Request estimate for this {what}: {total} ({REQUESTS_MADE} so far + {more} more pages)")
+    if budget is not None and total > budget:
+        sys.exit(f"Stopped: the {what} needs about {total} requests, over --max-requests {budget}. "
+                 f"{REQUESTS_MADE} used so far this run.")
+
+
+def fetch_pages(path, params, key, list_key, first):
+    """Every page of a paginated endpoint, starting from an already-fetched page 1."""
+    items, data, page = [], first, 1
+    while True:
+        items += data.get(list_key, [])
+        pag = data.get("_pagination") or {}
+        PULL_LOG.append({"path": path, "page": page, "rows": len(data.get(list_key, [])),
+                         "total_items": pag.get("total_items"), "total_pages": pag.get("total_pages")})
+        if page >= pag.get("total_pages", 1):
+            return items
+        page += 1
+        time.sleep(0.4)
+        data = get(path, dict(params, page=page), key)
+
+
+def offers_params(event_ids, market_ids, book_id, limit):
+    return {"sport": "NBA", "event_id": ":".join(str(e) for e in sorted(event_ids)), "market_id": market_ids,
+            "book_id": book_id, "condense": "true", "limit": limit}
+
+
+def parse_fd_offers(offers, fd):
+    """{(event_id, market_id, player_id): offer} with FanDuel's current main line and price per side."""
     out = {}
-    for ev in event_ids:
-        page = 1
-        while True:
-            data = get("/offers", {"sport": "NBA", "event_id": ev, "market_id": market_ids,
-                                   "book_id": book_id, "limit": 50, "page": page}, key)
-            for off in data.get("offers", []):
-                for sel in off.get("selections", []):
-                    side = (sel.get("selection") or sel.get("label") or "").lower()
-                    for bk in sel.get("books", []):
-                        if bk.get("id") != book_id:
-                            continue
-                        for ln in bk.get("lines", []):
-                            if not ln.get("main"):
-                                continue
-                            m = ln.get("metrics") or {}
-                            out[(off.get("event_id"), off.get("market_id"), str(off.get("player_id")), side)] = (
-                                m.get("fair_probability"), m.get("market_ev"))
-            pag = data.get("_pagination", {})
-            if page >= pag.get("total_pages", 1):
-                break
-            page += 1
-            time.sleep(0.4)
+    for off in offers:
+        parts = off.get("participants") or []
+        p0 = parts[0] if parts else {}
+        rec = {"event_id": off.get("event_id"), "market_id": off.get("market_id"), "player_id": str(off.get("player_id") or ""),
+               "player": p0.get("name"), "team": (p0.get("player") or {}).get("team")}
+        for sel in off.get("selections") or []:
+            side = (sel.get("selection") or sel.get("label") or "").lower()
+            if side not in ("over", "under"):
+                continue
+            for bk in sel.get("books") or []:
+                if bk.get("id") != fd:
+                    continue
+                for ln in bk.get("lines") or []:
+                    if ln.get("main") and ln.get("active", True) and not ln.get("is_off") and not ln.get("replaced"):
+                        m = ln.get("metrics") or {}
+                        rec[side] = {"line": ln.get("line"), "odds": ln.get("cost"),
+                                     "fair": m.get("fair_probability"), "mev": m.get("market_ev")}
+        if "over" in rec or "under" in rec:
+            out[(rec["event_id"], rec["market_id"], rec["player_id"])] = rec
     return out
+
+
+PERF_WINDOWS = {"form_l5": "last_5", "form_l10": "last_10", "form_l20": "last_20", "form_season": "season", "form_h2h": "h2h"}
+# Book-agnostic BettingPros data per prop, kept in the CSV so the 6:30 re-price can reuse it.
+BASE_FIELDS = ["player", "player_id", "team", "injury", "market", "event_id", "bp_proj", "bp_rec_side", "bp_line", "bp_book",
+               "bp_win_prob", "bp_ev", "bp_rating", "market_prob", "market_ev", "opp_rank_raw", "dvp_softness",
+               "consensus_line", "consensus_odds", "perf", "streak", "is_scored", "actual"]
+
+
+def base_from_prop(p, labels):
+    part = p.get("participant") or {}
+    pl = part.get("player") or {}
+    proj = p.get("projection") or {}
+    over, under = p.get("over") or {}, p.get("under") or {}
+    rec = proj.get("recommended_side")
+    side = over if rec == "over" else under if rec == "under" else over
+    rank = ((p.get("extra") or {}).get("opposition_rank") or {}).get("rank")
+    perf = p.get("performance") or {}
+    scored = p.get("scoring") or {}
+    return {
+        "player": part.get("name"), "player_id": str(part.get("id") or ""), "team": pl.get("team"),
+        "injury": pl.get("injury_status"), "market": labels.get(p.get("market_id"), p.get("market_id")),
+        "event_id": p.get("event_id"), "bp_proj": proj.get("value"), "bp_rec_side": rec,
+        "bp_line": side.get("line"), "bp_book": side.get("book"),
+        "bp_win_prob": first(proj.get("probability"), side.get("probability")),
+        "bp_ev": first(proj.get("expected_value"), side.get("expected_value")),
+        "bp_rating": first(proj.get("bet_rating"), side.get("bet_rating")),
+        "market_prob": proj.get("market_probability"), "market_ev": proj.get("market_expected_value"),
+        "opp_rank_raw": rank, "dvp_softness": (31 - rank) if rank else None,     # BettingPros 1 = toughest -> 1 = softest
+        "consensus_line": first(side.get("consensus_line"), over.get("consensus_line")),
+        "consensus_odds": side.get("consensus_odds"),
+        "perf": json.dumps({w: perf[w] for w in PERF_WINDOWS.values() if isinstance(perf.get(w), dict)}),
+        "streak": f"{perf.get('streak')} {perf.get('streak_type')}" if perf.get("streak") else None,
+        "is_scored": scored.get("is_scored"), "actual": scored.get("actual") if scored.get("is_scored") else None,
+    }
+
+
+def _perf(base):
+    try:
+        return json.loads(base.get("perf") or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def _form_side(perf, side):
+    out = {}
+    for col, win in PERF_WINDOWS.items():
+        w = perf.get(win) or {}
+        n = (w.get("over") or 0) + (w.get("under") or 0)
+        out[col] = f"{w.get(side) or 0}-{n}" if n and side else None
+    return out
+
+
+def price_row(base, offer, tip, pulled_at, fd):
+    """One board row: BettingPros' projection (if any) against FanDuel's own line and price.
+    Side, gap, win chance, EV and placeholder status are all recomputed at FanDuel's line."""
+    proj = _num(base.get("bp_proj"))
+    bp_line, bp_side = _num(base.get("bp_line")), base.get("bp_rec_side") or None
+    o, u = offer.get("over") or {}, offer.get("under") or {}
+    line = _num(first(o.get("line"), u.get("line")))
+    perf = _perf(base)
+    noproj = proj is None
+    if not noproj and line is not None and proj != line:
+        side = "over" if proj > line else "under"
+    else:                                   # no projection, or projection exactly on FanDuel's line: lean on form
+        fo, fu = form_score(_form_side(perf, "over"))[0], form_score(_form_side(perf, "under"))[0]
+        if fo is not None or fu is not None:
+            side = "over" if (fo or 0) >= (fu or 0) else "under"
+        elif o.get("odds") is not None or u.get("odds") is not None:    # no form either: the longer price
+            side = "over" if (_num(o.get("odds")) or -9999) >= (_num(u.get("odds")) or -9999) else "under"
+        else:
+            side = None
+    sel = o if side == "over" else u if side == "under" else {}
+    if sel.get("line") is not None and _num(sel.get("line")) != line:
+        line = _num(sel.get("line"))       # the two sides can sit on different lines; use the bet's own
+    same = (not noproj and bp_line is not None and line == bp_line and side == bp_side)
+    diff = None if noproj or line is None else round(proj - line, 2)
+    odds = _num(sel.get("odds"))
+    row = {
+        "player": base.get("player") or offer.get("player"), "team": base.get("team") or offer.get("team"),
+        "injury": base.get("injury") or None, "market": base.get("market"), "rec_side": side, "line": line,
+        "fd_odds_rec": odds, "price_book": fd, "price_is_fanduel": odds is not None,
+        "bp_proj": proj, "diff": diff, "pct_gap": round(100 * diff / line, 1) if diff is not None and line else None,
+        "bp_line": bp_line, "line_note": "" if noproj or bp_line is None or bp_line == line else f"FD {fmt(line)} vs BP {fmt(bp_line)}",
+        "noproj": noproj,
+        # BettingPros' win chance and rating are for its own line and side; its EV also for its own book's price.
+        "bp_win_prob": base.get("bp_win_prob") if same else None,
+        "bp_ev": base.get("bp_ev") if same and str(base.get("bp_book")) == str(fd) else None,
+        "bp_rating": base.get("bp_rating") if same else None,
+        "market_prob": base.get("market_prob"), "market_ev": base.get("market_ev"),
+        "fd_fair_prob": sel.get("fair"), "fd_market_ev": sel.get("mev"),
+        "implied_prob": round(implied(odds), 4) if odds is not None else None,
+        "opp_rank_raw": base.get("opp_rank_raw"), "dvp_softness": _num(base.get("dvp_softness")),
+        "over_odds": _num(o.get("odds")) if o and u and o.get("line") == u.get("line") else None,
+        "under_odds": _num(u.get("odds")) if o and u and o.get("line") == u.get("line") else None,
+        "consensus_line": base.get("consensus_line"), "consensus_odds": base.get("consensus_odds"),
+        **_form_side(perf, side),
+        "streak": base.get("streak"), "is_scored": base.get("is_scored"), "actual": base.get("actual"),
+        "event_id": base.get("event_id") or offer.get("event_id"), "tip": tip, "pulled_at": pulled_at,
+        "player_id": base.get("player_id") or offer.get("player_id"), "bp_rec_side": bp_side, "bp_book": base.get("bp_book"),
+        "perf": base.get("perf") or "{}", "line_moved": False,
+    }
+    return row
+
+
+def _tip(tips, ev):
+    if ev in (None, ""):
+        return None
+    try:
+        return tips.get(ev) or tips.get(int(float(ev)))
+    except (TypeError, ValueError):
+        return tips.get(ev)
+
+
+def _name(s):
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def build_rows(bases, offers, labels, tips, pulled_at, fd):
+    """Join FanDuel offers to BettingPros projections on game + player + market (player id, then name).
+    Projections without a FanDuel line stay in the CSV (not on the board) for re-pricing and learning."""
+    by_name = {(k[0], k[1], _name(b.get("player"))): k for k, b in bases.items()}
+    used, rows = set(), []
+    for (ev, mid, pid), off in offers.items():
+        mk = labels.get(mid, mid)
+        k = (str(ev), mk, pid)
+        if k not in bases:
+            k = by_name.get((str(ev), mk, _name(off.get("player"))), k)
+        base = bases.get(k) or {"market": mk, "event_id": ev, "player": off.get("player"), "team": off.get("team"),
+                                "player_id": pid}
+        used.add(k)
+        r = price_row(base, off, _tip(tips, ev), pulled_at, fd)
+        old_line = _num(base.get("line_seen"))
+        r["line_moved"] = old_line is not None and old_line != r["line"]
+        rows.append(r)
+    missing = 0
+    for k, b in bases.items():
+        if k in used:
+            continue
+        missing += 1
+        ev = b.get("event_id")
+        r = price_row(b, {}, _tip(tips, ev), pulled_at, fd)
+        r.update(rec_side=b.get("bp_rec_side") or None, line=_num(b.get("bp_line")), price_book=None, price_is_fanduel=False,
+                 fd_odds_rec=None, line_note="no FanDuel line")
+        bl = _num(b.get("bp_line"))
+        if r["bp_proj"] is not None and bl:
+            r["diff"] = round(r["bp_proj"] - bl, 2)
+            r["pct_gap"] = round(100 * r["diff"] / bl, 1)
+        r.update(_form_side(_perf(b), r["rec_side"]))
+        rows.append(r)
+    return rows, missing
+
+
+def warn_started(tips, pulled_at):
+    """Games still to tip (only these are priced); warn when some have started."""
+    upcoming = {int(e) for e, t in tips.items() if e and (not t or t > pulled_at)}
+    started = [t for e, t in tips.items() if t and t <= pulled_at]
+    if started:
+        first_tip = min(t for t in tips.values() if t)
+        print(f"Warning: {len(started)} of {len(tips)} games had already tipped at this pull; they're skipped "
+              f"(lines thinned, picks wouldn't count). Pull before the first tip ({first_tip} UTC).")
+    return upcoming
+
+
+def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows, kind="full"):
+    fd_rows = [r for r in rows if r["price_is_fanduel"]]
+    per_game = {}
+    for r in fd_rows:
+        g = per_game.setdefault(str(r["event_id"]), {"fanduel_lines": 0, "with_projection": 0})
+        g["fanduel_lines"] += 1
+        g["with_projection"] += 0 if r["noproj"] else 1
+    bp_learn.save_pull_log(date, pulled_at, {
+        "kind": kind, "pulled_at": pulled_at, "requests": REQUESTS_MADE, "pages": PULL_LOG,
+        "props_rows": len(props), "fanduel_offers": len(offers), "board_rows": len(fd_rows),
+        "fanduel_book_id": fd, "markets": market_ids, "per_game": per_game,
+        "events": [{"id": e.get("id"), "tip": tips.get(e.get("id")),
+                    "started": bool(tips.get(e.get("id")) and tips[e.get("id")] <= pulled_at)} for e in events]})
 
 
 CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("3PM", "Threes"),
@@ -286,7 +494,7 @@ def write_top_by_market(rows, date, n=10):
     out = f"bp_top10_{date}.md"
     def cell(v):
         return "" if v is None else fmt(v)
-    fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None]
+    fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
     head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Kelly | Injury |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
@@ -331,6 +539,23 @@ def write_top_by_market(rows, date, n=10):
     lines += table(ranked(fd, lambda r: r["score"]), "score")
     lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
     lines += table(ranked(fd, lambda r: r["balanced"]), "balanced")
+    np_rows = [r for r in rows if r["price_is_fanduel"] and r.get("noproj") and r.get("balanced") is not None]
+    lines += ["## 4. FanDuel lines without a BettingPros projection", "",
+              f"{len(np_rows)} lines. Ranked on form, matchup and market value only: no edge, EV or Kelly, never a logged pick.", ""]
+    if np_rows:
+        lines += ["| # | Player | Market | Side | Line | FD odds | DvP | Form | Market | Ranking | Injury |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for i, r in enumerate(ranked(np_rows, lambda r: r["balanced"])[:n], 1):
+            form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
+            lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]), cell(r["line"]),
+                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), form, cell(r.get("s_market")),
+                                            cell(r["balanced"]), cell(r["injury"])]) + " |")
+        lines.append("")
+    diffs = [r for r in fd if r.get("line_note")]
+    if diffs:
+        lines += ["## FanDuel line differs from BettingPros' line", "",
+                  "Gap, side, EV and Kelly use FanDuel's line; BettingPros' win chance and rating are dropped for these.", ""]
+        lines += [f"- {r['player']} {r['market']} {r['rec_side']}: {r['line_note']}" for r in ranked(diffs, lambda r: r["balanced"])[:15]]
+        lines.append("")
     lines += ["---", "", "# Each category: top 10 by projection gap and top 10 by your score", ""]
     for tag, name in CATEGORY_ORDER:
         group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
@@ -404,7 +629,7 @@ def score_row(r):
         dec = 1 + (odds / 100 if odds > 0 else 100 / -odds)
         evs.append(p * dec - 1)
     # Blend in published EVs when present. BettingPros' EV comes from its projection, so placeholders skip it;
-    # FanDuel market EV (--offers) is price-only and applies to every prop.
+    # FanDuel market EV (from /offers) is price-only and applies to every prop.
     for k in (("fd_market_ev",) if placeholder else ("fd_market_ev", "bp_ev")):
         v = _num(r.get(k))
         if v is not None:
@@ -421,7 +646,7 @@ def score_row(r):
 
     mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
     score = (W_EDGE * s_edge + W_EV * s_ev + W_DVP * s_dvp) * mult
-    # Placeholders rank below every real projection unless the price alone is +EV (FanDuel market EV > 0, via --offers).
+    # Placeholders rank below every real projection unless the price alone is +EV (FanDuel market EV > 0, from /offers).
     mev = _num(r.get("fd_market_ev"))
     demoted = placeholder and not (mev is not None and mev > 0)
     r.update(placeholder=placeholder, ph_demoted=demoted, model_prob=round(p, 3), model_ev=None if ev is None else round(ev, 3),
@@ -430,8 +655,12 @@ def score_row(r):
 
 
 def ranked(rows, key):
-    """Sort descending by key, with demoted placeholders after every real projection."""
-    return sorted(rows, key=lambda r: (bool(r.get("ph_demoted")) and r.get("ph_demoted") not in ("False", ""), -(key(r) or 0)))
+    """Sort descending by key: real projections, then demoted placeholders, then lines with no projection."""
+    def tier(r):
+        if bp_learn._truthy(r.get("noproj")):
+            return 2
+        return 1 if bp_learn._truthy(r.get("ph_demoted")) else 0
+    return sorted(rows, key=lambda r: (tier(r), -(key(r) or 0)))
 
 
 # ------------------------------------------------- balancing algorithms
@@ -471,8 +700,8 @@ def market_score(r):
         nv_edge = p - fair
         parts.append(_clamp01((nv_edge + 0.05) / 0.15))  # -5 pts -> 0, +10 pts -> 1
     line, cons, proj = _num(r.get("line")), _num(r.get("consensus_line")), _num(r.get("bp_proj"))
-    if line is not None and cons is not None and proj is not None:
-        sd = 1.1 * math.sqrt(max(proj, line, 0.5))
+    if line is not None and cons is not None:
+        sd = 1.1 * math.sqrt(max(proj if proj is not None else line, line, 0.5))
         better = (cons - line) if side == "over" else (line - cons)    # + = FanDuel line is friendlier
         parts.append(_clamp01(0.5 + better / sd / 0.6))
     return (None if nv_edge is None else round(nv_edge, 3)), (sum(parts) / len(parts) * 100 if parts else 50.0)
@@ -499,6 +728,30 @@ def kelly_units(r):
     b = odds / 100 if odds > 0 else 100 / -odds
     f = (p * (b + 1) - 1) / b
     return round(min(max(f / 4 * 100, 0.0), 2.5), 1)
+
+
+W_NP_FORM, W_NP_DVP, W_NP_MKT = 0.25, 0.25, 0.20   # no projection: form, matchup and market value only (renormalized)
+
+
+def noproj_row(r):
+    """A FanDuel line BettingPros has no projection for: ranked on form, DvP and market value only.
+    No edge, EV, score or Kelly, never a logged pick, and listed after every projected prop."""
+    side = (r.get("rec_side") or "").lower()
+    r.update(placeholder=False, ph_demoted=False, model_prob=None, model_ev=None, s_edge=None, s_ev=None, score=None,
+             s_bp=None, kelly_u=None, learned_prob=None, learned=None)
+    if side not in ("over", "under"):
+        r.update(s_dvp=None, form_rate=None, s_form=None, nv_edge=None, s_market=None, signals=None, balanced=None)
+        return r
+    soft = _num(r.get("dvp_softness"))
+    s_dvp = 50.0 if soft is None else ((30 - soft) if side == "over" else (soft - 1)) / 29 * 100
+    rate, s_form = form_score(r)
+    _, s_mkt = market_score(r)
+    mult = INJURY_MULT.get((r.get("injury") or "").strip().lower(), 0.85)
+    bal = (W_NP_FORM * s_form + W_NP_DVP * s_dvp + W_NP_MKT * s_mkt) / (W_NP_FORM + W_NP_DVP + W_NP_MKT) * mult
+    agree = sum(x >= 60 for x in (s_dvp, s_form, s_mkt))
+    r.update(s_dvp=round(s_dvp), form_rate=rate, s_form=round(s_form), nv_edge=None, s_market=round(s_mkt),
+             signals=f"{agree}/3", balanced=round(bal))
+    return r
 
 
 def balance_row(r):
@@ -529,7 +782,10 @@ def main():
     ap.add_argument("--list-markets", action="store_true", help="print NBA prop markets and exit")
     ap.add_argument("--refresh", action="store_true", help="re-fetch cached book and market IDs")
     ap.add_argument("--page-limit", type=int, default=20, help="20 for Free/Plus, 50 for Elite")
-    ap.add_argument("--offers", action="store_true", help="also pull FanDuel fair odds / market EV")
+    ap.add_argument("--reprice", action="store_true",
+                    help="6:30 PM: re-price the last full pull at FanDuel's current lines (/offers only, no grading)")
+    ap.add_argument("--max-requests", type=int, default=None,
+                    help="stop (after the page-1 requests that measure the run) if this run would use more than this")
     ap.add_argument("--no-grade", action="store_true", help="skip grading finished slates this run")
     ap.add_argument("--grade", metavar="DATE", help="only grade the saved slate for DATE, re-learn, and exit")
     ap.add_argument("--measure", action="store_true",
@@ -547,7 +803,8 @@ def main():
             sys.exit(f"{path} not found. Run without --from-csv first.")
         for r in rows:
             r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
-            for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness"):
+            r["noproj"] = r.get("noproj") == "True"
+            for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness", "bp_line"):
                 r[k] = _num(r.get(k))
         finish(rows, args.date)
         return
@@ -585,6 +842,9 @@ def main():
     if args.measure:
         measure(key, args.date, fd, market_ids)
         return
+    if args.reprice:
+        reprice(key, args, fd, market_ids, labels)
+        return
 
     tag_ids = {tag: mid for mid, (tag, _) in markets.items() if tag}
     for d in to_grade:
@@ -610,91 +870,81 @@ def main():
         print_record()
         return
 
-    props = pull_props(key, args.date, fd, market_ids, args.page_limit)
+    # 2 PM full pull: /events, then page 1 of /offers (FanDuel) and /props (all books) to learn the page counts,
+    # stop if the run would go over --max-requests, else fetch the rest and join on game + player + market.
     pulled_at = bp_learn.utc_now()
     events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
     tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
-    started = sorted(t for t in tips.values() if t and t <= pulled_at)
-    if started:
-        print(f"Warning: {len(started)} of {len(tips)} games had already tipped at this pull; their lines are thinned "
-              f"and their picks don't count. Pull before the first tip ({min(t for t in tips.values() if t)} UTC).")
-    with_props = {p.get("event_id") for p in props}
-    bp_learn.save_pull_log(args.date, pulled_at, {
-        "pulled_at": pulled_at, "requests": REQUESTS_MADE, "pages": PULL_LOG,
-        "props_rows": len(props), "fanduel_book_id": fd, "markets": market_ids,
-        "events": [{"id": e.get("id"), "tip": tips.get(e.get("id")), "started": bool(tips.get(e.get("id")) and tips[e.get("id")] <= pulled_at),
-                    "props": sum(1 for p in props if p.get("event_id") == e.get("id"))} for e in events],
-        "events_without_props": len([e for e in events if e.get("id") not in with_props])})
+    upcoming = warn_started(tips, pulled_at)
+    off_params = offers_params(upcoming, market_ids, fd, args.page_limit)
+    prop_params = props_params(args.date, None, market_ids, args.page_limit)
+    first_off = get("/offers", dict(off_params, page=1), key) if upcoming else {"offers": []}
+    first_props = get("/props", dict(prop_params, page=1), key)
+    left = pages_left(first_off) + pages_left(first_props)
+    check_budget(left, args.max_requests, "full pull")
+    offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd) if upcoming else {}
+    props = fetch_pages("/props", prop_params, key, "props", first_props)
+    bases = {}
+    for p in props:
+        b = base_from_prop(p, labels)
+        bases[(str(b["event_id"]), b["market"], b["player_id"])] = b
+    rows, missing = build_rows(bases, offers, labels, tips, pulled_at, fd)
+    save_pull(args.date, pulled_at, fd, market_ids, events, tips, props, offers, rows)
     rw_players = bp_rotowire.fetch()                  # public page, not an API request
     print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
     bp_learn.save_rotowire(rw_players, args.date, pulled_at)
+    n_fd = sum(1 for r in rows if r["price_is_fanduel"])
+    print(f"FanDuel lines: {n_fd} ({sum(1 for r in rows if r['price_is_fanduel'] and r['noproj'])} without a BettingPros projection); "
+          f"BettingPros projections: {len(bases)}")
+    finish(rows, args.date, snapshot=True, rw_players=rw_players)
 
-    offer_metrics = {}
-    if args.offers and props:
-        events = sorted({p["event_id"] for p in props})
-        mids = market_ids
-        offer_metrics = pull_offer_metrics(key, events, mids, fd)
 
-    rows = []
-    for p in props:
-        part = p.get("participant", {}) or {}
-        pl = part.get("player", {}) or {}
-        proj = p.get("projection", {}) or {}
-        over, under = p.get("over", {}) or {}, p.get("under", {}) or {}
-        rec = proj.get("recommended_side")
-        side = over if rec == "over" else under if rec == "under" else {}
-        line = side.get("line") if side else over.get("line")
-        val, diff = proj.get("value"), proj.get("diff")
-        pct = round(100 * diff / line, 1) if (diff is not None and line) else None
-        rank = ((p.get("extra") or {}).get("opposition_rank") or {}).get("rank")
-        fair, mev = offer_metrics.get((p.get("event_id"), p.get("market_id"), str(part.get("id")), rec or ""), (None, None))
-        perf = p.get("performance") or {}
-        def form(win):
-            w = perf.get(win) or {}
-            hits, n = w.get(rec or "", 0) or 0, (w.get("over", 0) or 0) + (w.get("under", 0) or 0)
-            return f"{hits}-{n}" if n else None
-        both_fd = over.get("book") == fd and under.get("book") == fd
-        scored = p.get("scoring") or {}
-        rows.append({
-            "player": part.get("name"),
-            "team": pl.get("team"),
-            "injury": pl.get("injury_status"),
-            "market": labels.get(p.get("market_id"), p.get("market_id")),
-            "rec_side": rec,
-            "line": line,
-            "fd_odds_rec": side.get("odds") if side else None,
-            "price_book": side.get("book") if side else None,
-            "price_is_fanduel": (side.get("book") == fd) if side else None,
-            "bp_proj": val,
-            "diff": diff,
-            "pct_gap": pct,
-            "bp_win_prob": first(proj.get("probability"), side.get("probability")),
-            "bp_ev": first(proj.get("expected_value"), side.get("expected_value")),
-            "bp_rating": first(proj.get("bet_rating"), side.get("bet_rating")),
-            "market_prob": proj.get("market_probability"),
-            "market_ev": proj.get("market_expected_value"),
-            "fd_fair_prob": fair,                             # from /offers (--offers)
-            "fd_market_ev": mev,                              # from /offers (--offers)
-            "implied_prob": round(implied(side.get("odds")), 4) if side and side.get("odds") is not None else None,
-            "opp_rank_raw": rank,                             # BettingPros: 1 = toughest
-            "dvp_softness": (31 - rank) if rank else None,    # converted: 1 = softest
-            "over_odds": over.get("odds") if both_fd else None,      # both FanDuel sides -> no-vig fair prob
-            "under_odds": under.get("odds") if both_fd else None,
-            "consensus_line": side.get("consensus_line"),
-            "consensus_odds": side.get("consensus_odds"),
-            "form_l5": form("last_5"),                        # rec-side hits - games vs this line
-            "form_l10": form("last_10"),
-            "form_l20": form("last_20"),
-            "form_season": form("season"),
-            "form_h2h": form("h2h"),
-            "streak": f"{perf.get('streak')} {perf.get('streak_type')}" if perf.get("streak") else None,
-            "is_scored": scored.get("is_scored"),            # for back-testing later
-            "actual": scored.get("actual") if scored.get("is_scored") else None,
-            "event_id": p.get("event_id"),
-            "tip": tips.get(p.get("event_id")),               # game start, UTC
-            "pulled_at": pulled_at,                           # when this run pulled the lines, UTC
-        })
-
+def reprice(key, args, fd, market_ids, labels):
+    """6:30 PM re-price: FanDuel's current lines from /offers only, reusing the last full pull's projections.
+    Picks logged by this run are the ones that count for games that haven't tipped."""
+    path = f"bp_props_{args.date}.csv"
+    try:
+        with open(path, newline="") as f:
+            old = list(csv.DictReader(f))
+    except OSError:
+        sys.exit(f"{path} not found: run the full pull first.")
+    if not old or "bp_line" not in old[0]:
+        sys.exit(f"{path} is from the old pull format; run the full pull first.")
+    tips = {}
+    for r in old:
+        if r.get("event_id") and r.get("tip"):
+            tips[int(float(r["event_id"]))] = r["tip"]
+    log = bp_learn.last_pull_log(args.date)
+    for e in (log or {}).get("events", []):
+        if e.get("id") and e.get("tip"):
+            tips[e["id"]] = e["tip"]
+    pulled_at = bp_learn.utc_now()
+    upcoming = warn_started(tips, pulled_at)
+    if not upcoming:
+        sys.exit("Every game has tipped; nothing to re-price.")
+    off_params = offers_params(upcoming, market_ids, fd, args.page_limit)
+    first_off = get("/offers", dict(off_params, page=1), key)
+    check_budget(pages_left(first_off), args.max_requests, "re-price")
+    offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd)
+    bases = {}
+    for r in old:
+        if r.get("event_id") and int(float(r["event_id"])) in upcoming:
+            b = {k: r.get(k) for k in BASE_FIELDS}
+            b["line_seen"] = r.get("line") if r.get("price_is_fanduel") == "True" else None
+            bases.setdefault((str(int(float(r["event_id"]))), r["market"], r.get("player_id") or ""), b)
+    rows, _ = build_rows(bases, offers, labels, tips, pulled_at, fd)
+    before = {(r["event_id"], r["market"], r["player"]) for r in old if r.get("price_is_fanduel") == "True"
+              and r.get("event_id") and int(float(r["event_id"])) in upcoming}
+    now = {(str(r["event_id"]), r["market"], r["player"]) for r in rows if r["price_is_fanduel"]}
+    gone = sorted(before - now)
+    moved = sum(1 for r in rows if r.get("line_moved"))
+    save_pull(args.date, pulled_at, fd, market_ids, [{"id": e} for e in sorted(upcoming)], tips, [], offers, rows, kind="reprice")
+    rw_players = bp_rotowire.fetch()
+    print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
+    bp_learn.save_rotowire(rw_players, args.date, pulled_at)
+    print(f"Re-priced {len(now)} FanDuel lines; {moved} moved since the full pull; "
+          f"{len(gone)} pulled since then (late scratches or lines taken down)" +
+          (": " + ", ".join(f"{p} {m}" for _, m, p in gone[:12]) + (" ..." if len(gone) > 12 else "") if gone else ""))
     finish(rows, args.date, snapshot=True, rw_players=rw_players)
 
 def measure(key, date, fd, market_ids):
@@ -724,7 +974,7 @@ def write_dashboard(rows, date):
         return _num(v)
     data = []
     for r in rows:
-        if not r["price_is_fanduel"] or r.get("score") is None:
+        if not r["price_is_fanduel"] or r.get("balanced") is None:
             continue
         data.append({
             "player": r["player"], "team": r["team"], "inj": r["injury"] or None, "market": r["market"],
@@ -737,6 +987,7 @@ def write_dashboard(rows, date):
             "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
             "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
             "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
+            "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
         })
     d = dt.date.fromisoformat(date)
     try:
@@ -782,6 +1033,10 @@ def finish(rows, date, snapshot=False, rw_players=None):
     bp_learn.add_teammate_context(rows, date, rw_players)
     model = bp_learn.load_model()
     for r in rows:
+        r["noproj"] = bp_learn._truthy(r.get("noproj"))
+        if r["noproj"]:
+            noproj_row(r)
+            continue
         score_row(r)
         balance_row(r)
         bp_learn.learned_row(r, model)
@@ -789,11 +1044,12 @@ def finish(rows, date, snapshot=False, rw_players=None):
     rows[:] = ranked(rows, lambda r: abs(r["pct_gap"] or 0))
     out = f"bp_props_{date}.csv"
     with open(out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["player"])
+        fields = list(dict.fromkeys(k for r in rows for k in r)) or ["player"]
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
     if snapshot and rows:
-        bp_learn.save_snapshot(rows, date, list(rows[0].keys()))
+        bp_learn.save_snapshot(rows, date, fields)
 
     note = write_top_by_market(rows, date)
     dash = write_dashboard(rows, date)

@@ -21,7 +21,7 @@ Markets pulled by default (full game only):
 - **Top 10 by Category**: For each of the eight prop categories (PTS, REB, AST, 3PM, P+A, P+R, PRA, R+A), a top 10 by projection gap and a top 10 by score.
 - **FanDuel Pricing**: Shows the FanDuel odds for the recommended side and the implied probability.
 - **Matchup Context**: Includes opponent defense-vs-position rank (converted so 1 = softest matchup) and injury status.
-- **Fair Odds / Market EV**: Optional `--offers` mode adds FanDuel fair probability and market expected value per prop.
+- **Every FanDuel line**: the 2 PM pull joins BettingPros projections (`/props`, all books) to every FanDuel main line (`/offers`), and re-scores each prop at FanDuel's own line and price, including FanDuel's fair probability and market EV. A 6:30 PM `--reprice` refreshes FanDuel's lines from `/offers` only.
 - **Request Budgeting**: Caches book and market IDs in `bp_cache.json` and backs off on rate limits, so runs fit inside the daily API allowance.
 - **Self-Learning Record**: Logs the top picks of each strategy every slate, grades them automatically after the games, tracks the record and units, and re-learns how much each factor (including teammates being ruled out) actually predicts a win.
 - **Interactive Dashboard**: One page with every list, filters, score breakdowns, and a copy-to-Claude button.
@@ -59,7 +59,8 @@ You need a BettingPros API key. Free/Plus keys allow 100 requests per day and 20
 ```bash
 python3 bp_props.py                    # today's slate (Eastern time)
 python3 bp_props.py --date 2026-11-19  # a specific date
-python3 bp_props.py --offers           # add FanDuel fair odds / market EV (more requests)
+python3 bp_props.py --max-requests 45  # 2 PM full pull; stops after page 1s if the run would need more
+python3 bp_props.py --reprice          # 6:30 PM re-price from /offers only (picks from this run count)
 python3 bp_props.py --list-markets     # show every NBA prop market and which are selected
 python3 bp_props.py --markets 156:157  # pick markets by ID
 python3 bp_props.py --page-limit 50    # Elite keys
@@ -93,7 +94,9 @@ Each row shows line, projection, gap, FanDuel odds, matchup, recent form, score,
 | `bp_proj`, `diff`, `pct_gap` | BettingPros projection and gap from the line |
 | `fd_odds_rec`, `implied_prob` | FanDuel odds for the recommended side and implied probability |
 | `bp_win_prob`, `bp_ev`, `bp_rating` | BettingPros probability, EV, and rating (Plus/Elite keys only) |
-| `fd_fair_prob`, `fd_market_ev` | FanDuel fair probability and market EV (`--offers` only) |
+| `fd_fair_prob`, `fd_market_ev` | FanDuel fair probability and market EV for the recommended side (from `/offers`) |
+| `bp_line`, `line_note` | BettingPros' line for its projection, and a note when FanDuel's line differs (gap, EV and Kelly use FanDuel's) |
+| `noproj` | FanDuel line with no BettingPros projection: ranked on form, DvP and market value only, no edge or Kelly, never a pick |
 | `dvp_softness` | Opponent defense vs. position, 1 = softest |
 | `model_prob`, `model_ev` | Estimated win chance for the recommended side and EV at FanDuel's odds |
 | `s_edge`, `s_ev`, `s_dvp` | The three score parts, each 0-100 |
@@ -144,7 +147,7 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 
 ```
 /props                 # tonight's slate, summarized
-/props offers          # include FanDuel fair odds / EV
+/props reprice         # 6:30 PM re-price from /offers
 /props 2026-11-19      # a specific date
 /props Celtics         # filter to a player or team
 ```
