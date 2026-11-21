@@ -658,8 +658,8 @@ def _et_now():
 
 
 def notify(msg):
-    """Terminal + log line, and a macOS notification when available."""
-    print(msg, flush=True)
+    """Terminal + log line (ET time-stamped), and a macOS notification when available."""
+    print(f"[{_et_now():%H:%M}] {msg}", flush=True)
     try:
         import subprocess
         subprocess.run(["osascript", "-e", f'display notification {json.dumps(msg[:220])} with title "NBA props"'],
@@ -687,6 +687,8 @@ def watch_scan(date, state):
     cap = bet_cap()[0]
     new_rows = []
     for r in rows:
+        if r.get("tip") and str(r["tip"]) <= now:        # game already tipped: never log it
+            continue
         for sd in ("over", "under"):
             v = ua.get((r["player"], r["market"], sd))
             k = f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"
@@ -741,6 +743,11 @@ def run_watch(args):
         state = {"alerted": {}, "dropped": []}
     print(f"Watching {args.date}: one free Unabated scan every {args.every} min from {WATCH_START_ET}:00 ET until the last tip. "
           f"Alerts: new BETs (logged) and BETs whose market EV fell below 0.", flush=True)
+    try:                                                  # keep the Mac awake while watching (sleep skipped scans)
+        import subprocess
+        subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+    except OSError:
+        print("caffeinate unavailable: scans pause if the computer sleeps.", flush=True)
     try:
         U.discover()
     except (U.Unavailable, RuntimeError) as e:
