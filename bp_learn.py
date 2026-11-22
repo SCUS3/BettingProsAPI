@@ -462,8 +462,8 @@ def counted_flags(ledger):
     """counted[i] = True when ledger row i came from the last run before its game's tip.
     clv[i] = closing-line value in points for counted rows seen in an earlier pre-tip run."""
     runs, cover = {}, {}
-    for r in ledger:
-        if r.get("pulled_at"):
+    for r in ledger:                  # runs = real pulls; watch/board BET rows carry their own scan time
+        if r.get("pulled_at") and r.get("strategy") not in VALUE_KEYS:
             runs.setdefault(r["date"], set()).add(r["pulled_at"])
     for d in runs:
         cover[d] = run_coverage(d)

@@ -56,6 +56,11 @@ DAILY_LIMIT = 100       # Free/Plus requests per UTC day (resets 7 PM ET in wint
 REQUEST_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bp_requests.json")
 PULL_LOG = []         # one entry per /props page this run: rows returned vs. _pagination totals (saved to history/)
 MAX_PICK_LOOKUPS = 8   # per slate per run: single game+market lookups for picks the FanDuel pull missed
+RUN_CAP = None         # --max-requests: hard stop for this run, checked before every request
+
+
+class RunCapReached(RuntimeError):
+    pass
 
 
 def get(path, params, key, retries=3):
@@ -64,6 +69,8 @@ def get(path, params, key, retries=3):
     url = f"{BASE}{path}?{urllib.parse.urlencode(params)}"
     for attempt in range(retries):
         req = urllib.request.Request(url, headers={"x-api-key": key, "accept": "application/json"})
+        if RUN_CAP is not None and REQUESTS_MADE >= RUN_CAP:
+            raise RunCapReached(f"--max-requests {RUN_CAP} reached; request not sent")
         try:
             REQUESTS_MADE += 1
             _count_request()
@@ -951,6 +958,8 @@ def main():
     ap.add_argument("--from-csv", action="store_true",
                     help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
+    global RUN_CAP
+    RUN_CAP = args.max_requests
 
     if args.from_csv:
         path = f"bp_props_{args.date}.csv"
@@ -1007,15 +1016,24 @@ def main():
     tag_ids = {tag: mid for mid, (tag, _) in markets.items() if tag}
     for d in to_grade:
         finals = bp_learn.known_finals(d)
+        capped = False
         if bp_learn.events_without_finals(d, finals):   # first grade of the slate (or a game had no finals yet)
-            finals.update(bp_learn.finals_from(pull_props(key, d, fd, market_ids, args.page_limit), labels))
+            try:
+                finals.update(bp_learn.finals_from(pull_props(key, d, fd, market_ids, args.page_limit), labels))
+            except RunCapReached as e:
+                print(f"Grading {d}: {e}; grading what is known.")
+                capped = True
         # FanDuel can pull a line before the game ends, which drops it from the FanDuel-filtered pull:
         # look up each still-missing pick's game and market with no book filter (1 request each).
         scored = set()
-        for ev, mk in bp_learn.missing_pick_markets(d, finals)[:MAX_PICK_LOOKUPS]:
+        for ev, mk in ([] if capped else bp_learn.missing_pick_markets(d, finals)[:MAX_PICK_LOOKUPS]):
             if mk not in tag_ids or not ev:
                 continue
-            got = bp_learn.finals_from(pull_props(key, d, None, str(tag_ids[mk]), args.page_limit, event_id=ev), labels)
+            try:
+                got = bp_learn.finals_from(pull_props(key, d, None, str(tag_ids[mk]), args.page_limit, event_id=ev), labels)
+            except RunCapReached as e:
+                print(f"Grading {d}: {e}; remaining lookups left for the next run.")
+                break
             if got:
                 scored.add((ev, mk))
             finals.update(got)
