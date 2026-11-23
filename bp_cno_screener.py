@@ -129,16 +129,18 @@ def settings(text, plays, devig=None, min_books=None, max_odds=None):
     except (OSError, ValueError):
         hist = []
     last = hist[-1] if hist else {}
+    fallback = lambda k: last.get(k) if last.get(k) is not None else FIXED[k]   # no settings shown: same as last paste
     st = {"at": L.utc_now(), "ev_header": ev_header(text),
-          "devig": devig if devig is not None else FIXED["devig"],
-          "min_books": min_books if min_books is not None else FIXED["min_books"],
-          "max_odds": max_odds if max_odds is not None else FIXED["max_odds"],
+          "devig": devig if devig is not None else fallback("devig"),
+          "min_books": min_books if min_books is not None else fallback("min_books"),
+          "max_odds": max_odds if max_odds is not None else fallback("max_odds"),
           "assumed": [k for k, v in (("devig", devig), ("min_books", min_books), ("max_odds", max_odds)) if v is None],
           "rows_min_books": min((p["books"] for p in plays if p.get("books") is not None), default=None),
           "rows_max_odds": max((p["odds"] for p in plays), default=None)}
     warn = []
+    shown = {k for k, v in (("devig", devig), ("min_books", min_books), ("max_odds", max_odds)) if v is not None} | {"ev_header"}
     for k in ("ev_header", "devig", "min_books", "max_odds"):
-        if last and last.get(k) is not None and st.get(k) is not None and str(last.get(k)) != str(st.get(k)):
+        if k in shown and last and last.get(k) is not None and st.get(k) is not None and str(last.get(k)) != str(st.get(k)):
             warn.append(f"{k} changed: {last.get(k)} -> {st.get(k)}")
     if st["min_books"] is not None and st["rows_min_books"] is not None and st["rows_min_books"] < int(st["min_books"]):
         warn.append(f"a row has {st['rows_min_books']} books, under your min books {st['min_books']}")
