@@ -597,7 +597,29 @@ def missing_pick_markets(date, finals):
     return out
 
 
-def grade_date(date, finals, scored_markets=()):
+def finals_from_box(date, box):
+    """Final stats from public box scores (bp_boxscore) for every pre-tip prop and ledger pick on `date`.
+    Returns ({prop_key: actual}, {prop_key of players who did not play}, [unmatched player names])."""
+    import bp_boxscore as BX
+    out, dnp, unmatched = {}, set(), []
+    rows = [(r.get("event_id"), r.get("market"), r.get("player")) for r in _gradable(pre_tip_rows(date))]
+    rows += [(r.get("event_id"), r.get("market"), r.get("player")) for r in _read(LEDGER) if r["date"] == date]
+    for ev, mk, pl in rows:
+        k = prop_key(ev, mk, pl)
+        p = BX.lookup(box, pl)
+        if p is None:
+            if pl not in unmatched:
+                unmatched.append(pl)
+            continue
+        v = BX.stat(p, mk)
+        if v is not None:
+            out[k] = v
+        elif not p.get("played"):
+            dnp.add(k)
+    return out, dnp, unmatched
+
+
+def grade_date(date, finals, scored_markets=(), voids=()):
     """Grade the slate for `date` against final stats ({prop_key: actual}).
     Learning rows come from each game's last pre-tip snapshot. A pick is void ('V', no action) when its
     game and market (in `scored_markets`) have final stats but the player has none (did not play).
@@ -623,7 +645,8 @@ def grade_date(date, finals, scored_markets=()):
         actual = finals.get(prop_key(r.get("event_id"), r.get("market"), r.get("player")))
         res = grade(r.get("side"), r.get("line"), actual)
         if res is None:
-            if actual in (None, "") and (r.get("event_id"), r.get("market")) in scored_markets:
+            if actual in (None, "") and ((r.get("event_id"), r.get("market")) in scored_markets or
+                                         prop_key(r.get("event_id"), r.get("market"), r.get("player")) in voids):
                 r["result"], r["actual"], r["profit_u"], r["profit_kelly"] = "V", "", 0.0, 0.0
                 n_picks += 1
             else:

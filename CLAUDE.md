@@ -12,7 +12,8 @@ tip-time (`/events`) checks, regrades, market or book lookups, and one-off diagn
 - Exception: the user may pre-approve a specific call in their message; that approval covers only
   that call, not later ones.
 - No permission needed: reading local files (CSVs, `history/`, `bp_cache.json`, ledgers, saved raw
-  responses), re-scoring with `--from-csv` (0 requests), and reading the public RotoWire page.
+  responses), re-scoring with `--from-csv` (0 requests), reading the public RotoWire page, and public box
+  scores from ESPN / NBA.com (`bp_boxscore.py`; `--grade DATE --max-requests 0` grades with no BettingPros calls).
 
 The daily limit is 100 requests (Free/Plus) and resets at midnight UTC (7 PM ET in winter, 8 PM in summer).
 Never print, cat or echo `.env` or the API key.

@@ -40,6 +40,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
 import bp_rotowire  # noqa: E402  (projected lineups and injuries)
+import bp_boxscore  # noqa: E402  (final box scores: ESPN, NBA.com fallback)
 
 
 def eastern_today():
@@ -1017,7 +1018,19 @@ def main():
     for d in to_grade:
         finals = bp_learn.known_finals(d)
         capped = False
-        if bp_learn.events_without_finals(d, finals):   # first grade of the slate (or a game had no finals yet)
+        voids = set()
+        try:                                             # public box scores first: ESPN, NBA.com fallback (0 BettingPros requests)
+            box = bp_boxscore.finals(d)
+            got, voids, unmatched = bp_learn.finals_from_box(d, box)
+            finals.update({k: v for k, v in got.items() if k not in finals})
+            print(f"Box scores {d}: {len(box['games'])} final games ({', '.join(sorted(set(box['source'].values()))) or 'none'}), "
+                  f"{len(got)} props with finals, {len(voids)} did not play"
+                  + (f"; not final yet: {', '.join(box['unfinished'])}" if box.get("unfinished") else "")
+                  + (f"; no box-score match: {', '.join(unmatched[:8])}" if unmatched else ""))
+        except Exception as e:
+            print(f"Box scores {d} unavailable ({e}); BettingPros finals only.")
+        if bp_learn.events_without_finals(d, finals):   # a game no box score covers: BettingPros slate pull
+            print(f"Grading {d}: BettingPros fallback for games without box scores.")
             try:
                 finals.update(bp_learn.finals_from(pull_props(key, d, fd, market_ids, args.page_limit), labels))
             except RunCapReached as e:
@@ -1027,7 +1040,7 @@ def main():
         # look up each still-missing pick's game and market with no book filter (1 request each).
         scored = set()
         for ev, mk in ([] if capped else bp_learn.missing_pick_markets(d, finals)[:MAX_PICK_LOOKUPS]):
-            if mk not in tag_ids or not ev:
+            if mk not in tag_ids or not ev or any(k.startswith(f"{ev}|{mk}|") for k in voids):
                 continue
             try:
                 got = bp_learn.finals_from(pull_props(key, d, None, str(tag_ids[mk]), args.page_limit, event_id=ev), labels)
@@ -1037,7 +1050,7 @@ def main():
             if got:
                 scored.add((ev, mk))
             finals.update(got)
-        n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored)
+        n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored, voids)
         print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))
     if to_grade or not os.path.exists(bp_learn.MODEL):
         m = bp_learn.fit_model()

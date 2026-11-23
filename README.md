@@ -73,7 +73,7 @@ Only `BP_API_KEY` is required; without the others the market check is skipped or
 
 | Time (ET) | Step | Cost |
 | --- | --- | --- |
-| First run | Grade the previous slate | about 1.4 BettingPros requests per game, plus up to 8 single-game lookups |
+| First run | Grade the previous slate | 0 BettingPros requests (ESPN / NBA.com box scores); BettingPros only for a game no box score covers |
 | 2:00 PM | `python3 bp_props.py --max-requests N`: full pull | about 5.7 requests per game + 1 |
 | After 2 PM | `python3 bp_value.py --board --go [--max-credits N]`: market check of every FanDuel line | 1 Unabated call; Odds API credits only for the fallback |
 | Noon to last tip | `python3 bp_value.py --watch`: free Unabated scan every 20 min; alerts only on new BETs and BETs whose market EV fell below 0 | 1 Unabated call per scan |
@@ -180,7 +180,7 @@ Every run logs the top 5 picks from four strategies (balanced, your score, proje
 - **Per-game cutoff**: a strategy pick counts only if it came from the last run before that game's tip that priced the game. BET and watch decisions count when logged before tip and are never replaced by a later run.
 - **Scoreboard**: W-L-P, hit rate, units and ROI, Kelly units, Brier score and log loss vs. FanDuel's no-vig probability, and CLV (line points for strategies; EV at the 6:30 fair price for BETs, with the count that fell below 0).
 - **Market comparison**: after 50 graded picks with both, the record compares our probability with the market's, per fair-price source.
-- **Grading**: final stats from BettingPros. Saved stats are reused, and picks whose FanDuel line was taken down are looked up by game and market (1 request each, at most 8 per slate). A player who didn't play is graded **V** (void).
+- **Grading** (`bp_boxscore.py`): final stats from public box scores, ESPN first and NBA.com as the fallback, so grading costs 0 BettingPros requests and covers lines BettingPros never carried. Checked against BettingPros on 11/20: 149 of 149 props matched. BettingPros is the fallback only for a game no box score covers (≈1.4 requests per game, plus up to 8 single game+market lookups). Box scores are saved to `history/<date>/boxscore_<date>.json`. A player the box score lists as not playing is graded **V** (void). `--max-requests` is a hard stop checked before every request.
 - **Learning**: every graded prop goes into `bp_graded.csv`, with each player-game counted once. An L2-regularized logistic regression learns how much each factor predicts the side hitting (edge, EV, matchup, form, market value, price, side, injury, teammates out, market type, placeholder, projected starter). It starts at 60 player-games, is validated on later slates against Balanced, and is capped at 50% weight until it beats Balanced on 100+ held-out player-games (then 80%).
 - **Teammates out**: a rotation regular (points props in recent slates averaging 9.5+, or props tonight with no PTS line under 9.5) counts as out when Rotowire lists him Out, even if his props are still posted, or when he has no props and Rotowire doesn't list him as playing.
 
