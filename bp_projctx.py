@@ -2,7 +2,8 @@
 Display and tagging only: it never changes a BET decision.
 
     3PM / P+R (real projections): "BP proj 2.3 (gap +0.80 vs 1.5) · proj agrees"   tag: agrees / disagrees
-    PTS/REB/AST/P+A/PRA (side leans): "BP lean: over" (+ "agrees"/"disagrees")   tag: lean agrees / lean disagrees
+    PTS/REB/AST/P+A/PRA (side leans): "BP proj 23.0 (gap -1.50 vs 24.5) · lean under, agrees (lean only)"
+                                                                                  tag: lean agrees / lean disagrees
     not in the pull: "–"                                                          tag: none
 """
 import csv
@@ -40,7 +41,9 @@ def context(date, player, market, side, line):
         tag = "agrees" if ps == side else "disagrees" if ps else "on the line"
         return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · proj {tag}", "tag": tag, "proj": proj, "gap": gap}
     lean = ps or r.get("bp_lean") or None
+    gap = round(proj - line, 2)
     if not lean:
-        return {"text": "BP lean: none (projection on the line)", "tag": "none", "proj": proj, "gap": None}
+        return {"text": f"BP proj {proj:g} (on the line {line:g}; lean only)", "tag": "none", "proj": proj, "gap": gap}
     tag = "lean agrees" if lean == side else "lean disagrees"
-    return {"text": f"BP lean: {lean} ({tag.split()[1]})", "tag": tag, "proj": proj, "gap": None}
+    return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · lean {lean}, {tag.split()[1]} (lean only)",
+            "tag": tag, "proj": proj, "gap": gap}
