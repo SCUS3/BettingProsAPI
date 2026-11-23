@@ -498,13 +498,14 @@ footer b { color: var(--ink); font-weight: 600; }
     var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
     if (last) {
       out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
-      ["bet_agree", "bet_only", "cno", "cno_scr", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
+      ["bet_agree", "bet_only", "cno", "cno_scr", "cno_scr_sub", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
         var g = R.recent.concat(R.pending).filter(function (r) { return r.date === last && r.strategy === st; })
           .sort(function (a, b) { return a.rank - b.rank; });
         if (!g.length) return;
         out.push(STRAT_LABEL[st] + ":");
         g.forEach(function (r) {
           out.push("  " + r.rank + ". " + r.player + " " + r.market + " " + (r.side === "over" ? "o" : "u") + r.line + " " + odds(Number(r.odds)) +
+            (/disagrees$/.test(r.proj_tag || "") ? " 🔴 BP disagrees" : /agrees$/.test(r.proj_tag || "") ? " 🟢 BP agrees" : "") +
             " → " + (r.result || "pending") + (r.actual !== "" && r.actual != null ? " (final " + r.actual + ")" : "") +
             (r.profit_u !== "" && r.profit_u != null ? " " + signed(Number(r.profit_u), "u") : ""));
         });
@@ -578,18 +579,24 @@ footer b { color: var(--ink); font-weight: 600; }
       '</div><div class="scroll"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div></section>";
   }
   function th(cols) { return cols.map(function (c) { return '<th class="' + (c[1] || "") + '" scope="col">' + c[0] + "</th>"; }).join(""); }
+  function projDot(r) {                 // BettingPros projection vs. the play's side (display only)
+    var t = r.proj_tag || "";
+    if (/agrees$/.test(t) && !/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "agrees") + '" style="color:#1a9a4a">●</span>';
+    if (/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "disagrees") + '" style="color:#d03a2f">●</span>';
+    return "";
+  }
   function pickRow(r) {
     var res = r.result ? '<span class="res ' + r.result + '">' + r.result + "</span>" : '<span class="res pend">·</span>';
     var side = (r.side === "over" ? "O " : "U ") + num(Number(r.line));
     var ev = r.oa_ev === "" || r.oa_ev == null ? null : Number(r.oa_ev);
     var isBet = r.strategy === "bet_agree" || r.strategy === "bet_only";
     var evCell = ev == null ? '<span class="dim">–</span>' : '<span class="' + (ev > 0 ? "pos" : ev < 0 ? "neg" : "") + '">' + (ev > 0 ? "+" : "") + Math.round(ev * 1000) / 10 + "%</span>";
-    return "<tr" + (!isBet && ev != null && ev < 0 ? ' class="dimrow"' : "") + "><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" +
+    return "<tr" + (!isBet && ev != null && ev < 0 ? ' class="dimrow"' : "") + "><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" + projDot(r) +
       (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
-  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", half: "HALF BET", watch: "Watch list" };
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", cno_scr_sub: "CNO screener (under +2%)", half: "HALF BET", watch: "Watch list" };
   function renderRecord() {
     var el = document.getElementById("view-record");
     var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });
