@@ -1,0 +1,286 @@
+"""CrazyNinja +EV screener paste -> its own "CNO screener" record (no API calls).
+
+    python3 bp_value.py --cno-paste screener.txt        # or "-" to read stdin
+    python3 bp_value.py --cno-paste screener.txt --dry  # parse and show, log nothing
+
+The paste can be the screener table copied from the browser: tab-separated rows, or one play per block of lines
+(blank line between plays). Each play needs a recognised NBA player, a prop (points, rebounds, assists, threes,
+P+A, P+R, PRA), Over/Under and a line, FanDuel's American odds and an EV%. Fair odds or a fair % are used when
+present; otherwise the fair probability is backed out of EV% and FanDuel's price. Rows for other sports, other
+books, game lines or alternate/unknown props are dropped and counted.
+
+Logged as strategy "cno_scr" at ¼K on the fair probability with the same caps (1.25u per BET until 50 graded BETs
+show positive CLV; 1.5u per player, 3.5u per game, counted within this record). Graded from box scores and given
+closing CLV by the watch like the other records. Plays already logged for the day aren't logged twice.
+"""
+import csv
+import glob
+import os
+import re
+
+import bp_learn as L
+from bp_rotowire import norm
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+KEY = "cno_scr"
+
+# longest phrases first: combos before singles
+MARKETS = [
+    (r"pts\s*\+\s*reb\s*\+\s*ast|points\s*\+\s*rebounds\s*\+\s*assists|p\s*\+\s*r\s*\+\s*a|\bpra\b", "PRA"),
+    (r"pts\s*\+\s*ast|points\s*\+\s*assists|p\s*\+\s*a\b", "P+A"),
+    (r"pts\s*\+\s*reb|points\s*\+\s*rebounds|p\s*\+\s*r\b", "P+R"),
+    (r"reb\s*\+\s*ast|rebounds\s*\+\s*assists|r\s*\+\s*a\b", "R+A"),
+    (r"three[\s-]*point(?:er)?s?(?:\s*made)?|threes|3[\s-]*pt(?:s)?(?:\s*made)?|3pm|3-pointers", "3PM"),
+    (r"\bpoints\b|\bpts\b", "PTS"),
+    (r"\brebounds\b|\breb\b", "REB"),
+    (r"\bassists\b|\bast\b", "AST"),
+]
+SKIP_WORDS = r"alt(?:ernate)?\b|milestone|1st\s*(?:half|quarter)|1h\b|1q\b|first\s*(?:half|quarter)|double[\s-]*double|triple|steals|blocks|turnovers|moneyline|spread|total\s+points"
+AMER = re.compile(r"(?<![\w.])([+-]\d{3,5})(?![\d.%])")
+EVP = re.compile(r"(-?\d+(?:\.\d+)?)\s*%")
+SIDE = re.compile(r"\b(over|under|o|u)\s*(\d+(?:\.\d)?)\b", re.I)
+
+
+def known_players(date):
+    names = set()
+    for path in [os.path.join(HERE, f"bp_props_{date}.csv"), L.LEDGER, L.GRADED] + glob.glob(os.path.join(HERE, "bp_props_*.csv"))[-5:]:
+        try:
+            for r in csv.DictReader(open(path)):
+                if r.get("player"):
+                    names.add(r["player"])
+        except OSError:
+            pass
+    try:
+        import bp_unabated as U
+        d = U.load(U.DISCOVERY, {})
+        for p in U._items((d.get("raw") or {}).get("people")):
+            nm = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
+            if nm:
+                names.add(nm)
+    except Exception:
+        pass
+    return sorted(names, key=lambda n: -len(n))
+
+
+def _records(text):
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    tabbed = [ln for ln in lines if "\t" in ln]
+    if len(tabbed) >= max(1, len([ln for ln in lines if ln.strip()]) // 2):
+        return [ln.replace("\t", " | ") for ln in lines if ln.strip()]
+    blocks, cur = [], []
+    for ln in lines:
+        if ln.strip():
+            cur.append(ln.strip())
+        elif cur:
+            blocks.append(" | ".join(cur))
+            cur = []
+    if cur:
+        blocks.append(" | ".join(cur))
+    full = [ln for ln in lines if ln.strip()]
+    if len(full) >= 2 and sum(1 for ln in full if EVP.search(ln) and AMER.search(ln)) >= max(2, len(full) - 1):
+        return full                                            # one play per line (each has odds and EV%)
+    return blocks
+
+
+def _dec(a):
+    a = float(a)
+    return 1 + (a / 100 if a > 0 else 100 / -a)
+
+
+MIN_EV = 0.02        # same bar as our other +EV records
+
+
+def _when(txt, date):
+    """'Today at 8:00 PM' / 'Tomorrow at 7:30 PM' / 'Nov 23 at 7:00 PM' (ET) -> UTC ISO tip, or None."""
+    import datetime as dt
+    m = re.search(r"(today|tomorrow|[A-Z][a-z]{2}\s+\d{1,2})\s+at\s+(\d{1,2}):(\d{2})\s*([AP]M)", txt or "", re.I)
+    if not m:
+        return None
+    base = dt.date.fromisoformat(date)
+    day = m.group(1).lower()
+    if day == "tomorrow":
+        base += dt.timedelta(days=1)
+    elif day != "today":
+        try:
+            base = dt.datetime.strptime(f"{m.group(1)} {base.year}", "%b %d %Y").date()
+        except ValueError:
+            return None
+    h = int(m.group(2)) % 12 + (12 if m.group(4).upper() == "PM" else 0)
+    t = dt.datetime.combine(base, dt.time(h, int(m.group(3))))
+    try:
+        from zoneinfo import ZoneInfo
+        t = t.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(dt.timezone.utc)
+    except Exception:
+        t = (t + dt.timedelta(hours=5)).replace(tzinfo=dt.timezone.utc)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _table(text):
+    """Header-aware: the screener's own table (tab or 2+ space separated, header with 'Bet Name' and 'Sportsbook')."""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    split = lambda ln: [c.strip() for c in re.split(r"\t|\s{2,}", ln.strip())]
+    hi = next((i for i, ln in enumerate(lines) if "bet name" in ln.lower() and "sportsbook" in ln.lower()), None)
+    if hi is None:
+        return None
+    head = [h.lower() for h in split(lines[hi])]
+    col = lambda *names: next((i for i, h in enumerate(head) if any(n in h for n in names)), None)
+    idx = {"ev": col("ev%"), "date": col("date"), "league": col("league"), "sport": col("sport"), "event": col("event"),
+           "market": col("market"), "bet": col("bet name"), "odds": head.index("odds") if "odds" in head else col("odds"),
+           "book": col("sportsbook"), "fair": col("fair"), "books": col("books")}
+    out = []
+    for ln in lines[hi + 1:]:
+        cells = split(ln)
+        n_missing = len(head) - len(cells)     # blank cells (Calc, Extra) collapse when split on spaces
+        get = {}
+        for k, i in idx.items():
+            if i is None:
+                continue
+            j = i - (n_missing if i > col("ev%") and n_missing > 0 else 0)
+            get[k] = cells[j] if 0 <= j < len(cells) else ""
+        out.append(get)
+    return out
+
+
+def parse(text, date):
+    """-> (plays, dropped {reason: n}). play = {player, market, side, line, odds, ev, fair, books, tip, raw}."""
+    tbl = _table(text)
+    if tbl is not None:
+        return _parse_table(tbl, date)
+    return _parse_loose(text, date)
+
+
+def _parse_table(tbl, date):
+    names = {norm(n): n for n in known_players(date)}
+    now = L.utc_now()
+    plays, dropped = [], {}
+    drop = lambda why: dropped.__setitem__(why, dropped.get(why, 0) + 1)
+    for g in tbl:
+        if (g.get("league") or g.get("sport", "")).upper().find("NBA") < 0:
+            drop("not NBA")
+            continue
+        if "fanduel" not in (g.get("book") or "").lower():
+            drop("not FanDuel")
+            continue
+        mk_txt = (g.get("market") or "").lower()
+        if re.search(SKIP_WORDS, mk_txt) or not mk_txt.startswith("player"):
+            drop("not a main player prop")
+            continue
+        mk = next((m for pat, m in MARKETS if re.search(pat, mk_txt)), None)
+        sm = SIDE.search(g.get("bet") or "")
+        if not mk or not sm:
+            drop("prop not recognised")
+            continue
+        player_txt = (g.get("bet") or "")[:sm.start()].strip()
+        player = names.get(norm(player_txt), player_txt)
+        try:
+            odds = float(g.get("odds"))
+            ev = float(str(g.get("ev")).rstrip("%")) / 100
+        except (TypeError, ValueError):
+            drop("no FanDuel odds or EV%")
+            continue
+        try:
+            fair = 1 / _dec(float(g.get("fair")))
+        except (TypeError, ValueError):
+            fair = (1 + ev) / _dec(odds)
+        tip = _when(g.get("date"), date)
+        if tip and tip <= now:
+            drop("game already started")
+            continue
+        if ev < MIN_EV:
+            drop(f"EV below +{100 * MIN_EV:g}%")
+            continue
+        try:
+            books = int(g.get("books"))
+        except (TypeError, ValueError):
+            books = None
+        plays.append({"player": player, "market": mk, "side": "over" if sm.group(1).lower().startswith("o") else "under",
+                      "line": float(sm.group(2)), "odds": odds, "ev": round(ev, 4), "fair": round(fair, 4), "books": books,
+                      "tip": tip, "event": g.get("event"), "raw": " | ".join(f"{k}={v}" for k, v in g.items())[:200]})
+    return plays, dropped
+
+
+def _parse_loose(text, date):
+    names = known_players(date)
+    nmap = {norm(n): n for n in names}
+    plays, dropped = [], {}
+    drop = lambda why: dropped.__setitem__(why, dropped.get(why, 0) + 1)
+    for rec in _records(text):
+        low = rec.lower()
+        if re.search(r"\b(nfl|ncaa[fb]?|cbb|cfb|mlb|nhl|wnba|soccer|tennis|ufc|mma|euroleague)\b", low):
+            drop("not NBA")
+            continue
+        if "fanduel" not in low and not re.search(r"\bfd\b", low):
+            drop("not FanDuel")
+            continue
+        if re.search(SKIP_WORDS, low):
+            drop("not a main player prop")
+            continue
+        mk = next((m for pat, m in MARKETS if re.search(pat, low)), None)
+        if not mk:
+            drop("prop not recognised")
+            continue
+        nrec = norm(rec)
+        player = next((nmap[k] for k in nmap if k and re.search(rf"\b{re.escape(k)}\b", nrec)), None)
+        if not player:
+            drop("player not recognised")
+            continue
+        sm = SIDE.search(rec)
+        if not sm:
+            drop("no over/under line")
+            continue
+        side = "over" if sm.group(1).lower().startswith("o") else "under"
+        line = float(sm.group(2))
+        ev = EVP.search(rec)
+        odds = [float(x) for x in AMER.findall(rec)]
+        if not odds or not ev:
+            drop("no FanDuel odds or EV%")
+            continue
+        fd = odds[0]
+        evv = float(ev.group(1)) / 100
+        fair = None
+        if len(odds) > 1:                                       # second American price = fair odds
+            fair = 1 / _dec(odds[1])
+        fp = re.search(r"fair[^|%]*?(\d{1,2}(?:\.\d+)?)\s*%", low)
+        if fair is None and fp:
+            fair = float(fp.group(1)) / 100
+        if fair is None:
+            fair = (1 + evv) / _dec(fd)
+        bm = re.search(r"(\d+)\s*books?\b|books?\s*[:=]?\s*(\d+)", low)
+        books = int(bm.group(1) or bm.group(2)) if bm else None
+        plays.append({"player": player, "market": mk, "side": side, "line": line, "odds": fd, "ev": round(evv, 4),
+                      "fair": round(fair, 4), "books": books, "raw": rec[:200]})
+    return plays, dropped
+
+
+def log(plays, date):
+    """Log new plays as 'cno_scr' rows (¼K on fair prob, same caps). Returns rows logged."""
+    import bp_value as V
+    led = L._read(L.LEDGER)
+    k = lambda r: (r["player"], r["market"], r["side"], str(V._f(r.get("line"))))
+    have = {k(r) for r in led if r["date"] == date and r["strategy"] == KEY}
+    board = {}
+    try:
+        for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
+            board.setdefault(r["player"], r)
+    except OSError:
+        pass
+    now = L.utc_now()
+    new = [p for p in sorted(plays, key=lambda p: -p["ev"]) if (p["player"], p["market"], p["side"], str(float(p["line"]))) not in have]
+    rows_ctx = [dict(board.get(p["player"], {}), player=p["player"]) for p in new]
+    gkey = V.game_resolver(rows_ctx + [r for r in led if r["date"] == date])
+    cap = V.bet_cap()[0]
+    logged = [r for r in led if r["date"] == date and r["strategy"] == KEY]
+    cands = V.apply_exposure([{"player": p["player"], "game": gkey(c), "ev": p["ev"],
+                               "stake": V.bet_kelly(p["fair"], p["odds"], cap)} for p, c in zip(new, rows_ctx)], logged, gkey)
+    out = []
+    for p, c, x in zip(new, rows_ctx, cands):
+        if x["stake"] <= 0:
+            continue
+        out.append({"date": date, "pulled_at": now, "tip": p.get("tip") or c.get("tip") or "", "strategy": KEY, "rank": None,
+                    "player": p["player"], "team": c.get("team"), "market": p["market"], "side": p["side"], "line": p["line"],
+                    "odds": p["odds"], "our_prob": p["fair"], "nv_prob": p["fair"], "kelly_u": x["stake"],
+                    "event_id": c.get("event_id") or "", "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",
+                    "sources": p["books"], "cap_note": x["cap"]})
+    if out:
+        L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
+    return out

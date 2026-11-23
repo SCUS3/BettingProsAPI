@@ -455,12 +455,13 @@ def daily_counts(date):
     k = lambda r: (r["player"], r["market"], r["side"], str(_f(r.get("line"))))
     u = {k(r) for r in led if r["strategy"] in bp_learn.BET_KEYS}
     c = {k(r) for r in led if r["strategy"] in bp_learn.CNO_KEYS}
-    return len(u), len(c), len(u & c), len(c - u)
+    sc = {k(r) for r in led if r["strategy"] in bp_learn.SCREENER_KEYS}
+    return len(u), len(c), len(u & c), len(c - u), len(sc)
 
 
 def counts_line(date):
-    u, c, both, only = daily_counts(date)
-    return f"{date}: Unabated BETs {u}, CNO +EV {c}, both {both}, CNO-only {only}"
+    u, c, both, only, sc = daily_counts(date)
+    return f"{date}: Unabated BETs {u}, CNO +EV {c}, both {both}, CNO-only {only}" + (f", CNO screener {sc}" if sc else "")
 
 
 def run_board(args):
@@ -781,8 +782,8 @@ def run_close(args):
     """6:30 PM: one Unabated call to log CLV for today's BETs still to tip; flag any whose market EV fell below 0."""
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
-    bets = [r for r in led if r["date"] == args.date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS
-            and r.get("tip", "") > now]
+    bets = [r for r in led if r["date"] == args.date
+            and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS and r.get("tip", "") > now]
     if not bets:
         sys.exit("No BETs for games still to tip.")
     ok, why = U.usable()
@@ -961,7 +962,7 @@ def watch_scan(date, state, close_before=None):
     if close_before:                                     # last scan before these games tip: closing line
         state.setdefault("closed", [])
         led = bp_learn._read(bp_learn.LEDGER)
-        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS
+        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS
                    and now < r.get("tip", "") <= close_before]        # a later scan before tip overwrites: last one wins
         if closing:
             cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
@@ -1071,6 +1072,26 @@ def parse_placed(text):
     return {"name": name, "market": market, "side": side, "line": line, "odds": odds, "stake": stake}
 
 
+def run_cno_paste(args):
+    import bp_cno_screener as S
+    text = sys.stdin.read() if args.cno_paste == "-" else open(args.cno_paste).read()
+    plays, dropped = S.parse(text, args.date)
+    print(f"CNO screener paste: {len(plays)} NBA FanDuel player props kept"
+          + (f"; dropped {sum(dropped.values())} ({', '.join(f'{k} {v}' for k, v in sorted(dropped.items()))})" if dropped else ""))
+    for p in plays:
+        print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {p['odds']:+g}: CNO EV {100 * p['ev']:+.1f}%, "
+              f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else ""))
+    if args.dry or not plays:
+        return
+    rows = S.log(plays, args.date)
+    notip = sum(1 for r in rows if not r.get("tip"))
+    print(f"Logged {len(rows)} as 'CNO screener' (¼K on fair prob, caps applied)"
+          + (f"; {notip} have no tip time (player not on today's BettingPros board) and won't count until matched" if notip else "")
+          + ". " + counts_line(args.date))
+    for r in rows:
+        print(f"  {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: {r['kelly_u']}u ¼K{cap_text(r['cap_note'])}")
+
+
 def run_placed(args):
     """Log a bet the user actually placed and match it to the day's logged BET (or CrazyNinja row), else off-board."""
     try:
@@ -1115,9 +1136,12 @@ def main():
     g.add_argument("--board", action="store_true", help="daily: one Unabated call prices every FanDuel line; BETs; "
                                                         "The Odds API only for the shortlist Unabated can't price")
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
+    g.add_argument("--cno-paste", metavar="FILE", help="CrazyNinja +EV screener text (file, or - for stdin): "
+                                                         "NBA FanDuel player props -> 'CNO screener' record (no API calls)")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
+    ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
     ap.add_argument("--max-credits", type=int, help="required with --go: most credits this run may spend")
     ap.add_argument("--budget", type=int, default=DAILY_CREDITS,
@@ -1135,6 +1159,8 @@ def main():
         return run_watch(args)
     if args.placed:
         return run_placed(args)
+    if args.cno_paste:
+        return run_cno_paste(args)
 
     shortlist = load_picks(args.date, args.top)
     ua_ok, ua_why = U.usable()

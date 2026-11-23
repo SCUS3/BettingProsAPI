@@ -27,3 +27,4 @@ watch_*.log
 sim/
 cno_cache.json
 bp_placed.csv
+cno_api_state.json

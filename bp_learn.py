@@ -33,8 +33,9 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
-                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV")]
+                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener")]
 BET_KEYS = {"bet_agree", "bet_only"}
+SCREENER_KEYS = {"cno_scr"}   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}        # CrazyNinja +EV: median worst-case EV >= +2%, ¼K on CNO's fair probability (own record)
 PLACED = os.path.join(HERE, "bp_placed.csv")      # what the user actually bet (bp_value.py --placed)
 PLACED_FIELDS = ["date", "placed_at", "player", "market", "side", "line", "odds", "stake_u", "match", "rule_stake",
@@ -541,11 +542,12 @@ def log_value_decisions(date, rows):
     run can only add BETs); watch rows for the same pull are refreshed."""
     pulled = {r.get("pulled_at") for r in rows}
     old = _read(LEDGER)
-    cls = lambda st: "bet" if st in BET_KEYS else "cno" if st in CNO_KEYS else st
+    cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    have = {key(r) for r in old if r["date"] == date and r.get("strategy") in BET_KEYS | CNO_KEYS}
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS
+    have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
-    new = [r for r in rows if not (r.get("strategy") in BET_KEYS | CNO_KEYS and key(r) in have)]
+    new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
     _write(LEDGER, ledger + new, LEDGER_FIELDS)
 
 
@@ -919,11 +921,12 @@ def record():
         if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
-        x["group"] = "bet" if strat in BET_KEYS else "cno" if strat in CNO_KEYS else "model"
+        x["group"] = ("bet" if strat in BET_KEYS else "cno" if strat in CNO_KEYS else
+                      "screener" if strat in SCREENER_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)

@@ -62,6 +62,13 @@ def main():
           f"≈{p['pull_est']} BettingPros requests, re-price ≈{p['reprice_est']}. Start --watch right after the pull.")
     for tip, name, st in p["list"]:
         print(f"  {et(tip):%I:%M %p} ET  {name}  {st}")
+    try:                                   # weekly, free GET of CrazyNinja's API page
+        import bp_cno_watch
+        msg = bp_cno_watch.check()
+        if msg:
+            print(msg)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

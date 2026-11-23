@@ -80,7 +80,7 @@ Keep it short and factual. These are projections, not guarantees; add no further
 
 ## Daily flow
 
-0. **Morning:** `python3 bp_schedule.py` (free): earliest tip, suggested first pull time (earliest tip - 90 min), request estimate. Tell the user and ask for the pull at that time.
+0. **Morning:** `python3 bp_schedule.py` (free): earliest tip, suggested first pull time (earliest tip - 90 min), request estimate. Tell the user and ask for the pull at that time. Once a week it also checks CrazyNinja's API page (free GET); if it prints "NEW endpoint" or odds wording, tell the user an odds endpoint may have appeared.
 1. **First BettingPros full pull** at earliest tip - 90 min (ask first, with the budget math). Shortlist = top 10 by Balanced, real projections only.
 2. **Market check of the whole board:** `python3 bp_value.py --board` (plan, no call), then ask; after the OK, `python3 bp_value.py --board --go [--max-credits N]`. It first refreshes Unabated discovery (free; current player ids), then one Unabated props odds call (free; 1 per 5 s) prices both sides of every FanDuel main line in the 7 markets, including FanDuel lines BettingPros doesn't carry (no projection, so "+EV only"): fair = median of devigged books + exchanges at FanDuel's line (3+ sources; pick'em apps excluded). The Odds API is used only for shortlist plays Unabated can't price, and only with `--max-credits` the user approved (4+ books required there).
 3. **BET** = market EV >= +2% at FanDuel's line with 3+ sources (Unabated) or 4+ books (The Odds API), **and** CrazyNinja's median worst-case EV > 0 (flag "no CNO check" if CNO is down); CrazyNinja +EV (median worst-case ≥ +2%) is logged as its own record; stake = quarter-Kelly (¼K, 1u = 1% of bankroll) on the fair probability, capped at 1.25u until 50 graded BETs show positive average CLV (then 2.5u), and by exposure caps: 1.5u per player (all props) and 3.5u per game, scaled down proportionally when they bind; report "capped: player" / "capped: game" next to the stake. Each BET is tagged "+EV + proj agrees" (BettingPros' projection is on the same side) or "+EV only" (other side or no projection), with form and DvP for the bet side. Both kinds are kept and logged as separate ledger strategies (`bet_agree`, `bet_only`); shortlist plays that aren't BETs are `watch`. Re-score with `python3 bp_props.py --from-csv` so the board and Copy for Claude show them.
@@ -100,4 +100,8 @@ Every finished slate with no live pull gets simmed with `bp_sim.py` (model picks
 ## Boosts
 
 `python3 bp_boost.py "<player>" <market> <over|under> <FanDuel price> --boost <pct> --type profit|all` plans; add `--go` after the user's OK (one free Unabated odds call). Report the CrazyNinja boosted EV, lowest source and ¼K stake.
+
+## CrazyNinja screener paste
+
+When the user pastes CrazyNinja's +EV screener text, save it to a scratch file and run `python3 bp_value.py --cno-paste <file> --dry` first, then without `--dry` to log (no API calls). It keeps NBA player props at FanDuel with EV >= +2% whose game hasn't started (tip from the screener's "Today at 8:00 PM"), and logs them as the "CNO screener" record (¼K on fair prob, same caps). Report kept vs. dropped by reason.
 
