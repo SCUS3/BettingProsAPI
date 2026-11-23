@@ -213,3 +213,9 @@ The repo includes a `/props` skill for [Claude Code](https://claude.com/claude-c
 ## Notes
 
 This project is for research and entertainment. Projections and market prices are not guarantees, so bet responsibly.
+
+## Simulating a slate you didn't pull (`bp_sim.py`, research only)
+
+`python3 bp_sim.py --date YYYY-MM-DD --max-requests N` pulls that date's FanDuel props from BettingPros (≈1.5 requests per game; ask first), scores them with the same model and grades the model picks from box scores. Re-running without `--max-requests` reuses the saved pull (0 requests). It writes only to `sim/` (`sim/sim_ledger.csv`): the real ledger, graded props, model, Kelly cap and dashboard are untouched.
+
+Limits: the lines are the last ones BettingPros kept (near closing), not the 2 PM prices; BettingPros' form windows for a past date already include that game, so the sim removes it from every window and drops last-1, head-to-head and the streak; market BETs aren't simulated (no historical Unabated consensus).

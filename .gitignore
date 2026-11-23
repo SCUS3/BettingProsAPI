@@ -24,3 +24,4 @@ unabated_state.json
 unabated_probe_*.json
 watch_*.json
 watch_*.log
+sim/
