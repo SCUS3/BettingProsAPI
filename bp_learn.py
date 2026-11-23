@@ -945,7 +945,7 @@ def record():
     o3 = [(r, v) for r, v in uniq if r["market"] == "3PM" and r.get("side") == "over"]
     strategies.append(dict(_summ([r for r, _ in o3], [v for _, v in o3]), key="model_3pm_over", group="model",
                            label="Projection model: 3PM overs"))
-    strategies += sim_record_rows() + placed_record_rows()
+    strategies += sim_record_rows()          # placed_record_rows() kept but unused: the record is the system's BETs only
     by_cat = []
     for mk in MARKETS:
         sub = [r for r, _ in uniq_all if r["market"] == mk and r["result"] in ("W", "L", "P")]

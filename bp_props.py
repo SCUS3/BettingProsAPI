@@ -1386,7 +1386,7 @@ def print_record():
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("mine", "My bets"),
+    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]
@@ -1399,9 +1399,7 @@ def print_record():
             unit = "% EV" if x.get("clv_unit") else " pts"
             clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
             k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno") else ""
-            extra = (f"ROI {x['roi']:+}%  rule {x['rule_stake']}u vs mine {x['my_stake']}u" if g == "mine" and x["roi"] is not None
-                     else f"rule {x.get('rule_stake')}u vs mine {x.get('my_stake')}u" if g == "mine" else "")
-            print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}  {extra}".rstrip())
+            print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}".rstrip())
 
 
 def finish(rows, date, snapshot=False, rw_players=None):

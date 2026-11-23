@@ -469,7 +469,7 @@ footer b { color: var(--ink); font-weight: 600; }
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["mine", "My bets (my price and stake):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       if (!rs.length) return;
@@ -477,8 +477,7 @@ footer b { color: var(--ink); font-weight: 600; }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
           (G[0] === "bet" || G[0] === "cno" ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
-          (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") +
-          (x.key === "mine" ? " | rule stake " + x.rule_stake + "u vs my stake " + x.my_stake + "u" + (x.off_board ? " | " + x.off_board + " off-board" : "") : ""));
+          (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
     var C = R.calibration || {};
@@ -603,7 +602,7 @@ footer b { color: var(--ink); font-weight: 600; }
     }
     var bHead = th([["Group", "l"], ["W-L-P"], ["Hit"], ["Flat units"], ["ROI"], ["¼K units", "hide-sm"], ["CLV", "hide-sm"]]);
     function bRow(x) {
-      var strong = /_all$/.test(x.key) || x.key === "mine";
+      var strong = /_all$/.test(x.key);
       return '<tr><td class="l"><span class="player">' + (strong ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p +
         "</td><td>" + pct(x.hit) + "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm">' + units(x.kelly_units) +
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
@@ -616,17 +615,14 @@ footer b { color: var(--ink); font-weight: 600; }
     var GROUPS = [
       ["bet", "BETs: Unabated market +EV", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
       ["cno", "CrazyNinja +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
-      ["mine", "My bets", "What you actually placed (bp_value.py --placed), at your price and stake. CLV vs. the closing fair price.", true],
       ["model", "BettingPros Projection Model (research)", "Top 5 of each model list. " + sNote, false],
       ["sim", "Sims (research, separate)", "Days you didn't pull, simmed from near-closing lines with that game removed from form. Never mixed into the records above.", false]];
     GROUPS.forEach(function (G) {
       var rs = rowsOf(G[0]);
       if (G[0] === "model" && REC.combined) rs = rs.concat([REC.combined]);
-      if (!rs.length && (G[0] === "mine" || G[0] === "sim")) return;
+      if (!rs.length && G[0] === "sim") return;
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
-      if (G[0] === "mine" && rs[0]) note += " Rule stake " + rs[0].rule_stake + "u vs. my stake " + rs[0].my_stake + "u" +
-        (rs[0].off_board ? "; " + rs[0].off_board + " off-board" : "") + (rs[0].pending ? "; " + rs[0].pending + " pending" : "") + ".";
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');
     });
 

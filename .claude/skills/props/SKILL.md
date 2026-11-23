@@ -97,10 +97,6 @@ Every finished slate with no live pull gets simmed with `bp_sim.py` (model picks
 - After the OK: `python3 bp_sim.py --backfill --go --max-requests <approved>` (newest dates first, hard stop) or `python3 bp_sim.py --date YYYY-MM-DD --max-requests N` for one date.
 - `python3 bp_sim.py --record` prints the sim record (0 requests). Report it apart from the real record and say it's a sim: near-closing lines, form with that game removed, no market BETs.
 
-## Bets the user placed
-
-When the user says what they bet, log each with `python3 bp_value.py --placed "<player> <market> <o|u><line> <price> <stake>u"` (no API calls). It matches the logged BET or logs it off-board. Ask what they placed before logging; never guess.
-
 ## Boosts
 
 `python3 bp_boost.py "<player>" <market> <over|under> <FanDuel price> --boost <pct> --type profit|all` plans; add `--go` after the user's OK (one free Unabated odds call). Report the CrazyNinja boosted EV, lowest source and ¼K stake.
