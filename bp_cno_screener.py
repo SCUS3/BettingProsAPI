@@ -305,7 +305,7 @@ def _with_proj(plays, date):
     import bp_projctx as P
     for p in plays:
         c = P.context(date, p["player"], p["market"], p["side"], p["line"])
-        p.update(proj_note=c["text"], proj_tag=c["tag"])
+        p.update(proj_note=c["text"], proj_tag=c["tag"], proj_raw=c.get("proj"), proj_cal=c.get("proj_cal", c.get("proj")))
     return plays
 
 
@@ -391,7 +391,8 @@ def log(plays, date, st=None, key=KEY):
                     "odds": p["odds"], "our_prob": p["fair"], "nv_prob": p["fair"], "kelly_u": x["stake"],
                     "event_id": c.get("event_id") or "", "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",
                     "sources": p["books"], "cap_note": x["cap"], "proj_tag": p.get("proj_tag"),
-                    "proj_note": p.get("proj_note"), "scr_settings": settings_text(st) if st else ""})
+                    "proj_note": p.get("proj_note"), "scr_settings": settings_text(st) if st else "",
+                    "bp_proj_raw": p.get("proj_raw"), "bp_proj_cal": p.get("proj_cal")})
     if out:
         L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
     return out

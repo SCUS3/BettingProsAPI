@@ -385,8 +385,14 @@ def side_context(r, side):
 
 
 def proj_side(r):
-    """BettingPros' side at FanDuel's line, or None with no real projection."""
-    return None if r.get("noproj") == "True" or not r.get("bp_proj") else r.get("rec_side")
+    """BettingPros' side at FanDuel's line, or None with no real projection. 3PM/P+R use the calibrated projection."""
+    if r.get("noproj") in ("True", True) or r.get("bp_proj") in (None, ""):
+        return None
+    if r.get("market") in ("3PM", "P+R") and _f(r.get("line")) is not None:
+        import bp_calib
+        cal, line = bp_calib.calibrate(r["market"], _f(r["bp_proj"])), _f(r["line"])
+        return "over" if cal > line else "under" if cal < line else None
+    return r.get("rec_side")
 
 
 def line_key(player, market, line):
@@ -708,8 +714,15 @@ def value_row(date, r, strategy, side, v, stake, our_prob, cno="unset"):
             "learned": r.get("learned"), "our_prob": our_prob, "nv_prob": v.get("fair_mult"), "kelly_u": stake,
             "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
             "oa_fair": v.get("fair_mult"), "oa_ev": v.get("ev_mult"), "fair_src": v.get("fair_src"),
-            "sources": v.get("books"),
+            "sources": v.get("books"), **_proj_fields(r),
             **(cno_fields(side, v, cno) if strategy in bp_learn.BET_KEYS | bp_learn.CNO_KEYS else {})}
+
+
+def _proj_fields(r):
+    """Raw and calibrated BettingPros projection for the ledger (calibration applies to 3PM/P+R only)."""
+    import bp_calib
+    raw = _f(r.get("bp_proj"))
+    return {"bp_proj_raw": raw, "bp_proj_cal": bp_calib.calibrate(r.get("market"), raw) if raw is not None else None}
 
 
 

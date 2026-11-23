@@ -105,11 +105,12 @@ def scan(data, d, date, now):
         if c["market"] in PROJ_MARKETS:
             pc = P.context(date, c["player"], c["market"], c["side"], c["line"])
             if pc["tag"] != "agrees":
-                continue                                  # market + projection: the projection must agree at the rung
-            c["key"], c["proj_note"] = "alt_proj", pc["text"]
+                continue                                  # market + projection: the calibrated projection must agree
+            c["key"] = "alt_proj"
         else:
             c["key"] = "alt_mkt"
-            c["proj_note"] = P.context(date, c["player"], c["market"], c["side"], c["line"])["text"]
+            pc = P.context(date, c["player"], c["market"], c["side"], c["line"])
+        c["proj_note"], c["proj_raw"], c["proj_cal"] = pc["text"], pc.get("proj"), pc.get("proj_cal", pc.get("proj"))
         out.append(c)
     return out
 
@@ -136,6 +137,7 @@ def log(date, cands, now):
                      "odds": c["odds"], "our_prob": c["fair"], "nv_prob": c["fair"], "kelly_u": stake, "oa_fair": c["fair"],
                      "oa_ev": c["ev"], "fair_src": "Unabated alt rung", "sources": c["books"], "cno_ev": c["cno"]["median_ev"],
                      "cno_min_ev": c["cno"]["min_ev"], "proj_note": c.get("proj_note"),
+                     "bp_proj_raw": c.get("proj_raw"), "bp_proj_cal": c.get("proj_cal"),
                      "cap_note": f"alt (FanDuel main {c['main']:g})" if c.get("main") is not None else "alt"})
     if rows:
         L._write(L.LEDGER, led + rows, L.LEDGER_FIELDS)

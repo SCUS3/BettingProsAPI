@@ -56,11 +56,14 @@ def context(date, player, market, side, line):
         return {"text": f"– (no projection; as of {asof})", "tag": "none", "proj": None, "gap": None}
     proj, line = float(r["bp_proj"]), float(line)
     ps = "over" if proj > line else "under" if proj < line else None
-    if market in REAL:
-        gap = round(proj - line, 2)
-        tag = "agrees" if ps == side else "disagrees" if ps else "on the line"
-        return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')} · as of {asof}", "tag": tag,
-                "proj": proj, "gap": gap}
+    if market in REAL:                                  # calibrated projection decides the side (bp_calib)
+        import bp_calib
+        cal = bp_calib.calibrate(market, proj)
+        gap = round(cal - line, 2)
+        cs = "over" if cal > line else "under" if cal < line else None
+        tag = "agrees" if cs == side else "disagrees" if cs else "on the line"
+        return {"text": f"BP proj raw {proj:g} → calibrated {cal:g} (gap {gap:+.2f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')}"
+                        f" · as of {asof}", "tag": tag, "proj": proj, "proj_cal": cal, "gap": gap}
     lean = ps or r.get("bp_lean") or None
     gap = round(proj - line, 2)
     if not lean:

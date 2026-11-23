@@ -1328,6 +1328,12 @@ def attach_value(rows, date):
         r["bet_kelly"] = v.get("bet_kelly") if v else None        # quarter-Kelly on the market's fair probability
 
 
+def _calib(market, proj):
+    import bp_calib
+    p = _num(proj)
+    return bp_calib.calibrate(market, p) if p is not None and market in bp_calib.MARKETS else None
+
+
 def write_dashboard(rows, date, kelly_note=""):
     """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
     try:
@@ -1344,6 +1350,7 @@ def write_dashboard(rows, date, kelly_note=""):
         data.append({
             "player": r["player"], "team": r["team"], "inj": r["injury"] or None, "market": r["market"],
             "side": r["rec_side"], "line": n(r["line"]), "proj": n(r["bp_proj"]), "gap": n(r["pct_gap"]),
+            "proj_cal": n(_calib(r.get("market"), r.get("bp_proj"))),
             "odds": n(r["fd_odds_rec"]), "dvp": n(r["dvp_softness"]), "form": n(r.get("form_rate")),
             "score": r["score"], "bal": r.get("balanced"), "kelly": n(r.get("kelly_u")), "sig": r.get("signals"),
             "s_edge": r.get("s_edge"), "s_ev": r.get("s_ev"), "s_dvp": r.get("s_dvp"), "s_form": r.get("s_form"),

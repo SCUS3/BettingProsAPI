@@ -396,7 +396,8 @@ footer b { color: var(--ink); font-weight: 600; }
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") +
           (r.pick ? '<span class="chip pick" title="Model pick (' + esc(r.pick) + '): research, not a bet">model pick</span>' : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
-        proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" : num(r.proj),
+        proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" :
+          (r.proj_cal != null && r.proj_cal !== r.proj ? '<span title="BettingPros raw projection → calibrated (actual ÷ projection on graded props)">' + num(r.proj) + ' <span class="dim">→</span> ' + num(r.proj_cal) + "</span>" : num(r.proj)),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
         odds: odds(r.odds),
         dvp: r.dvp == null ? "" : r.dvp,
