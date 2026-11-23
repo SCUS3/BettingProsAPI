@@ -86,3 +86,11 @@ Keep it short and factual. These are projections, not guarantees; add no further
 4. **6:30 PM ET:** `python3 bp_props.py --reprice` (BettingPros `/offers`), then `python3 bp_value.py --close` (plan) and, after the OK, `--close --go`: a second free Unabated call that logs CLV for each BET still to tip (EV of the bet taken at the 6:30 fair price) and flags any BET whose market EV at FanDuel's current price fell below 0. No Odds API call unless the user asks.
 
 Report the BET plays first (tag, line, price, market EV, fair source and count, exchange included, form, DvP, stake; at 6:30 the CLV and any flag), then the watch list, then the usual lists.
+
+## Sims for days without a live pull (research, kept separate)
+
+Every finished slate with no live pull gets simmed with `bp_sim.py` (model picks only, written to `sim/`, never the real ledger, model, Kelly cap or dashboard). Each sim pull uses BettingPros requests (≈1.5 per game), so ask first like any other call.
+
+- At each /props run, check `python3 bp_sim.py --backfill` (plan only, 0 requests: lists unpulled dates and estimates). If yesterday or another date is unpulled, offer to sim it with the requests left after the day's flow (2 PM pull, 6:30 re-price). Show used today, the day's flow estimate, and what's left for sims.
+- After the OK: `python3 bp_sim.py --backfill --go --max-requests <approved>` (newest dates first, hard stop) or `python3 bp_sim.py --date YYYY-MM-DD --max-requests N` for one date.
+- `python3 bp_sim.py --record` prints the sim record (0 requests). Report it apart from the real record and say it's a sim: near-closing lines, form with that game removed, no market BETs.
