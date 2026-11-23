@@ -26,7 +26,9 @@ import bp_boxscore as BX
 from bp_rotowire import norm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OVER_PACE, UNDER_PACE = 0.35, 0.70
+OVER_PACE, UNDER_PACE = 0.25, 0.80      # strong flags only (alerts); every player's snapshot is logged regardless
+MIN_HALF_MIN = 12                        # overs: at least 12 first-half minutes
+MIN_LINE = {"PTS": 14.5, "REB": 6.5, "AST": 4.5, "3PM": 2.5, "P+A": 20.5, "P+R": 20.5, "PRA": 20.5}
 FOUL_FLAG, MARGIN_FLAG = 3, 20
 PARTS = {"PTS": ("PTS",), "REB": ("REB",), "AST": ("AST",), "3PM": ("3PM",), "P+A": ("PTS", "AST"),
          "P+R": ("PTS", "REB"), "PRA": ("PTS", "REB", "AST")}
@@ -116,6 +118,9 @@ def half_box(game_id):
 
 
 def off_pace(date, game, lines):
+    """Every player with a pregame FanDuel line: first-half stat, pace, minutes, fouls, margin and skip flags.
+    alert = a strong flag (overs: <=25% of the line with 12+ minutes; unders: >=80% but still under the line;
+    lines at or above MIN_LINE). Unders already over the line at half ('decided') are never alerts."""
     box = half_box(game["id"])
     out = []
     for key, p in box.items():
@@ -126,21 +131,35 @@ def off_pace(date, game, lines):
                 continue
             v = sum(vals)
             pace = v / line
-            side = "over" if pace <= OVER_PACE else "under" if pace >= UNDER_PACE else None
-            if not side:
-                continue
             skip = [x for x, on in ((f"{p['PF']} fouls", (p["PF"] or 0) >= FOUL_FLAG),
                                     (f"margin {game['margin']}", game["margin"] >= MARGIN_FLAG),
                                     ("injury mention", p["injury"]), ("ejected", p["ejected"])) if on]
+            big = line >= MIN_LINE.get(mk, 99)
+            side = ("over" if pace <= OVER_PACE and (p["MIN"] or 0) >= MIN_HALF_MIN and big else
+                    "under" if pace >= UNDER_PACE and v < line and big else "")
             out.append({"game": game["name"], "game_id": game["id"], "player": p["name"], "team": p["team"], "market": mk,
-                        "side": side, "line": line, "half": v, "pace": round(pace, 2), "min": p["MIN"], "pf": p["PF"],
-                        "margin": game["margin"], "skip": skip})
-    return sorted(out, key=lambda x: (bool(x["skip"]), x["side"], x["pace"] if x["side"] == "over" else -x["pace"]))
+                        "side": side, "alert": bool(side), "line": line, "half": v, "pace": round(pace, 2), "min": p["MIN"],
+                        "pf": p["PF"], "margin": game["margin"], "skip": skip, "big_line": big})
+    return out
+
+
+def alerts(rows):
+    """One alert per player (his most extreme strong flag; correlated props of the same player are folded in)."""
+    best = {}
+    ext = lambda x: x["pace"] if x["side"] == "over" else -x["pace"]
+    for x in rows:
+        if x["alert"] and (x["player"] not in best or ext(x) < ext(best[x["player"]])):
+            best[x["player"]] = x
+    for x in rows:                                   # rows not chosen stay in the snapshot but aren't alerts
+        if x["alert"] and best.get(x["player"]) is not x:
+            x["alert"] = False
+            x["folded_into"] = f"{best[x['player']]['market']}"
+    return sorted(best.values(), key=lambda x: (bool(x["skip"]), x["side"], ext(x)))
 
 
 FLAGS = os.path.join(HERE, "halftime_flags.csv")
-FLAG_FIELDS = ["date", "game_id", "game", "flagged_at", "player", "team", "market", "side", "line", "half", "pace", "min",
-               "pf", "margin", "skip", "final", "finished", "second_half", "hit"]
+FLAG_FIELDS = ["date", "game_id", "game", "flagged_at", "player", "team", "market", "side", "alert", "big_line", "line", "half",
+               "pace", "min", "pf", "margin", "skip", "final", "finished", "second_half", "hit", "legacy"]
 
 
 def grade_flags(date, box=None):
@@ -161,51 +180,67 @@ def grade_flags(date, box=None):
         old = []
     new = []
     for gid, g in snap.items():
-        for x in g.get("flags", []):
+        legacy = "rows" not in g                     # early snapshots kept only the old, looser flags
+        for x in g.get("rows", g.get("flags", [])):
             p = BX.lookup(box, x["player"]) if box else None
             fin = BX.stat(p, x["market"]) if p else None
             row = {"date": date, "game_id": gid, "game": g.get("game"), "flagged_at": g.get("at"), "player": x["player"],
                    "team": x.get("team"), "market": x["market"], "side": x["side"], "line": x["line"], "half": x["half"],
                    "pace": x["pace"], "min": x.get("min"), "pf": x.get("pf"), "margin": x.get("margin"),
-                   "skip": "; ".join(x.get("skip") or []), "final": "", "finished": "", "second_half": "", "hit": ""}
+                   "skip": "; ".join(x.get("skip") or []), "final": "", "finished": "", "second_half": "", "hit": "",
+                   "alert": "" if legacy else ("yes" if x.get("alert") else "no"), "big_line": x.get("big_line", ""),
+                   "legacy": "yes" if legacy else ""}
             if fin is not None:
                 row.update(final=fin, second_half=fin - x["half"],
                            finished="over" if fin > x["line"] else "under" if fin < x["line"] else "push",
                            hit="" if fin == x["line"] else ("W" if (fin > x["line"]) == (x["side"] == "over") else "L"))
-            if x["side"] == "under" and x["half"] > x["line"]:
+            if legacy and x["side"] == "under" and x["half"] > x["line"]:
                 row["hit"] = "decided at half"            # already over the pregame line: not a live question
+            row["over_hit"] = "" if fin is None or fin == x["line"] else ("W" if fin > x["line"] else "L")
             new.append(row)
     with open(FLAGS, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=FLAG_FIELDS)
+        w = csv.DictWriter(f, fieldnames=FLAG_FIELDS + ["over_hit"], extrasaction="ignore")
         w.writeheader()
         w.writerows(old + new)
     return sum(1 for r in new if r["hit"])
 
 
 def flag_summary():
-    """For the Record tab: flags per night and hit rate by type (side x skip / no skip)."""
+    """Alerted flags vs. the base rate of every player at the same first-half pace (legacy snapshots excluded)."""
     try:
-        rows = list(csv.DictReader(open(FLAGS)))
+        rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy")]
     except OSError:
         rows = []
     nights = {}
     for r in rows:
-        n = nights.setdefault(r["date"], {"date": r["date"], "flags": 0, "skipped": 0, "graded": 0, "games": set()})
-        n["flags"] += 1
-        n["skipped"] += bool(r["skip"])
-        n["graded"] += r["hit"] in ("W", "L")
+        n = nights.setdefault(r["date"], {"date": r["date"], "players": 0, "alerts": 0, "skipped": 0, "graded": 0, "games": set()})
+        n["players"] += 1
+        n["alerts"] += r["alert"] == "yes"
+        n["skipped"] += r["alert"] == "yes" and bool(r["skip"])
+        n["graded"] += r["alert"] == "yes" and r["hit"] in ("W", "L")
         n["games"].add(r["game_id"])
-    by_type = []
-    for side in ("over", "under"):
-        for sk in (False, True):
-            sub = [r for r in rows if r["side"] == side and bool(r["skip"]) == sk and r["hit"] in ("W", "L")]
-            w = sum(r["hit"] == "W" for r in sub)
-            sh = [float(r["second_half"]) / float(r["line"]) for r in sub if r["second_half"] not in ("", None) and float(r["line"])]
-            by_type.append({"type": f"{side}, {'skip' if sk else 'no skip'}", "n": len(sub), "w": w, "l": len(sub) - w,
-                            "hit": round(100 * w / len(sub), 1) if sub else None,
-                            "second_half_pct": round(100 * sum(sh) / len(sh)) if sh else None})
-    return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "by_type": by_type,
-            "n": len(rows), "decided_at_half": sum(r["hit"] == "decided at half" for r in rows)}
+
+    def rate(sub, side):
+        g = [r for r in sub if r.get("over_hit") in ("W", "L")]
+        w = sum((r["over_hit"] == "W") == (side == "over") for r in g)
+        sh = [float(r["second_half"]) / float(r["line"]) for r in g if r["second_half"] not in ("", None) and float(r["line"])]
+        return {"n": len(g), "w": w, "l": len(g) - w, "hit": round(100 * w / len(g), 1) if g else None,
+                "second_half_pct": round(100 * sum(sh) / len(sh)) if sh else None}
+
+    f = lambda r: float(r["pace"])
+    pace_over = lambda r: f(r) <= OVER_PACE
+    pace_under = lambda r: f(r) >= UNDER_PACE and float(r["half"]) < float(r["line"])
+    comp = []
+    for side, at_pace in (("over", pace_over), ("under", pace_under)):
+        al = [r for r in rows if r["alert"] == "yes" and r["side"] == side]
+        comp.append(dict(rate([r for r in al if not r["skip"]], side), type=f"{side}: alerts (no skip)", kind="alert"))
+        comp.append(dict(rate([r for r in al if r["skip"]], side), type=f"{side}: alerts with a skip flag", kind="alert"))
+        comp.append(dict(rate([r for r in rows if at_pace(r)], side), type=f"{side}: base rate, all players at that pace",
+                         kind="base"))
+        comp.append(dict(rate([r for r in rows if at_pace(r) and r.get("big_line") == "True"], side),
+                         type=f"{side}: base rate, same pace + same minimum lines", kind="base"))
+    return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "by_type": comp,
+            "n": len(rows)}
 
 
 def snapshot_path(date):
@@ -220,7 +255,7 @@ def save(date, game, rows):
     except (OSError, ValueError):
         snap = {}
     snap[game["id"]] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "game": game["name"], "score": game["score"],
-                        "margin": game["margin"], "flags": rows}
+                        "margin": game["margin"], "rows": rows}
     json.dump(snap, open(path, "w"), indent=1)
 
 
@@ -228,7 +263,7 @@ def report(date, game, rows):
     print(f"\nHALFTIME {game['name']}  {' - '.join(f'{t} {s}' for t, s in game['score'].items())}  (margin {game['margin']})"
           + ("  SKIP GAME: 20+ margin" if game["margin"] >= MARGIN_FLAG else ""))
     if not rows:
-        print("  no player far off pace against a known pregame FanDuel line")
+        print("  no strong flags (overs <=25% with 12+ min, unders >=80% still under; minimum lines)")
     for x in rows:
         print(f"  {x['side'].upper():5} {x['player']:22} {x['market']:4} line {x['line']:g}: 1st half {x['half']} "
               f"({round(100 * x['pace'])}% of line), {x['min']} min, {x['pf']} PF"
@@ -256,10 +291,13 @@ def run(date, watch=False, seen=None):
         new = [g for g in gs if g["status"] == "STATUS_HALFTIME" and g["id"] not in done and g["id"] not in seen]
         for g in new:
             rows = off_pace(date, g, lines)
+            al = alerts(rows)
             save(date, g, rows)
-            report(date, g, rows)
-            live = [x for x in rows if not x["skip"]]
-            notify(f"{g['name']} at halftime: {len(live)} off-pace props (paste live odds)")
+            report(date, g, al)
+            print(f"  ({len(rows)} player props snapshotted for the base rate)")
+            live = [x for x in al if not x["skip"]]
+            notify(f"{g['name']} at halftime: {len(live)} strong flags (paste live odds)" if live else
+                   f"{g['name']} at halftime: no strong flags")
             seen.add(g["id"])
         if not watch:
             if not new:

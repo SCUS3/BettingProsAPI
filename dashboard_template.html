@@ -477,8 +477,8 @@ footer b { color: var(--ink); font-weight: 600; }
       out.push(G[1]);
       if (G[0] === "half") {
         var F = (R.half || {}).flags || {}, Pp = (R.half || {}).pastes || {}, O = (R.half || {}).oddsapi;
-        (F.nights || []).forEach(function (n) { out.push("  Flags " + n.date + ": " + n.flags + " in " + n.games + " games (" + n.skipped + " skip-flagged, " + n.graded + " graded)"); });
-        (F.by_type || []).filter(function (t) { return t.n; }).forEach(function (t) { out.push("  Flag hit, " + t.type + ": " + t.w + "-" + t.l + " (" + t.hit + "%)"); });
+        (F.nights || []).forEach(function (n) { out.push("  " + n.date + ": " + n.alerts + " alerts from " + n.players + " player props in " + n.games + " games (" + n.skipped + " skip-flagged)"); });
+        (F.by_type || []).filter(function (t) { return t.n; }).forEach(function (t) { out.push("  " + t.type + ": " + t.w + "-" + t.l + " (" + t.hit + "%)"); });
         if (Pp.rows) out.push("  Pastes: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs");
         if (O) out.push("  Odds API live test: " + (O.pass ? "PASS" : "FAIL") + ", " + O.other_fresh_books + " fresh other books, credits " + O.credits_last + " used / " + O.credits_remaining + " left");
       }
@@ -634,12 +634,13 @@ footer b { color: var(--ink); font-weight: 600; }
       if (G[0] === "half" && (rs.length || (HF.flags && HF.flags.n) || HF.oddsapi)) {
         var hh = "";
         var F = HF.flags || {nights: [], by_type: []};
-        if (F.nights.length) hh += board("Halftime flags per night", "Players far off pace vs. their pregame FanDuel line at halftime (≤35% → over, ≥70% → under). Graded after the game against the pregame line." + (F.decided_at_half ? " " + F.decided_at_half + " under flags were already over the line at half and aren't graded." : ""),
-          th([["Night", "l"], ["Games"], ["Flags"], ["Skip-flagged"], ["Graded"]]),
-          F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.flags + "</td><td>" + n.skipped + "</td><td>" + n.graded + "</td></tr>"; }).join(""));
-        if (F.by_type.some(function (t) { return t.n; })) hh += board("Flag hit rate by type", "Did the flagged side finish on its side of the pregame line? 2nd half = average second-half production as % of the line.",
-          th([["Type", "l"], ["W-L"], ["Hit"], ["2nd half % of line"]]),
-          F.by_type.map(function (t) { return '<tr><td class="l">' + esc(t.type) + "</td><td>" + t.w + "-" + t.l + "</td><td>" + pct(t.hit) + "</td><td>" + (t.second_half_pct == null ? "–" : t.second_half_pct + "%") + "</td></tr>"; }).join(""));
+        if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime (the base rate). Alerts = strong flags only: overs ≤25% of the line with 12+ first-half minutes, unders ≥80% but still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player.",
+          th([["Night", "l"], ["Games"], ["Player props"], ["Alerts"], ["Skip-flagged"], ["Graded alerts"]]),
+          F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + n.skipped + "</td><td>" + n.graded + "</td></tr>"; }).join(""));
+        if (F.by_type.some(function (t) { return t.n; })) hh += board("Alerts vs. base rate", "Hit = finished on the flagged side of the pregame line. An alert only matters if it beats the base rate of all players at the same first-half pace. 2nd half = average second-half production as % of the line.",
+          th([["Group", "l"], ["W-L"], ["Hit"], ["2nd half % of line"]]),
+          F.by_type.map(function (t) { var s = t.kind === "alert" ? "<b>" + esc(t.type) + "</b>" : '<span class="dim">' + esc(t.type) + "</span>";
+            return '<tr><td class="l">' + s + "</td><td>" + t.w + "-" + t.l + "</td><td>" + pct(t.hit) + "</td><td>" + (t.second_half_pct == null ? "–" : t.second_half_pct + "%") + "</td></tr>"; }).join(""));
         var Pp = HF.pastes || {};
         if (Pp.rows) hh += board("Halftime pastes", "Every pasted live prop: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
           (Object.keys(Pp.why_not || {}).map(function (k) { return k + " " + Pp.why_not[k]; }).join(", ") || "–") + ".", "", "");
