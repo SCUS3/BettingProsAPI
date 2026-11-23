@@ -33,10 +33,12 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
-                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener")]
+                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"),
+                    ("half", "HALF BET (halftime live)")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr"}   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
-CNO_KEYS = {"cno"}        # CrazyNinja +EV: median worst-case EV >= +2%, ¼K on CNO's fair probability (own record)
+CNO_KEYS = {"cno"}
+HALF_KEYS = {"half"}      # halftime live experiment (bp_value.py --half-paste); own record, never mixed with pregame        # CrazyNinja +EV: median worst-case EV >= +2%, ¼K on CNO's fair probability (own record)
 PLACED = os.path.join(HERE, "bp_placed.csv")      # what the user actually bet (bp_value.py --placed)
 PLACED_FIELDS = ["date", "placed_at", "player", "market", "side", "line", "odds", "stake_u", "match", "rule_stake",
                  "rule_odds", "event_id", "tip", "result", "actual", "profit_u", "close_fair", "clv_ev", "raw"]
@@ -485,9 +487,15 @@ def counted_flags(ledger):
     closing = {}
     for r in ledger:
         p, tip = r.get("pulled_at"), r.get("tip")
-        if not p or not tip or p >= tip:
+        if r.get("strategy") in HALF_KEYS:
+            pass
+        elif not p or not tip or p >= tip:
             counted.append(False)
             clv.append(None)
+            continue
+        if r.get("strategy") in HALF_KEYS:                 # logged live at halftime by design: always counts
+            counted.append(True)
+            clv.append(round(100 * _num(r["clv_ev"]), 2) if _num(r.get("clv_ev")) is not None else None)
             continue
         if r.get("strategy") in VALUE_KEYS:                # decided once at 2 PM: counts if logged before tip
             counted.append(True)
@@ -921,12 +929,12 @@ def record():
         if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
         x["group"] = ("bet" if strat in BET_KEYS else "cno" if strat in CNO_KEYS else
-                      "screener" if strat in SCREENER_KEYS else "model")
+                      "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)

@@ -469,14 +469,14 @@ footer b { color: var(--ink); font-weight: 600; }
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       if (!rs.length) return;
       out.push(G[1]);
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
-          (G[0] === "bet" || G[0] === "cno" || G[0] === "screener" ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
+          (G[0] === "bet" || G[0] === "cno" || G[0] === "screener" || G[0] === "half" ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
@@ -581,7 +581,7 @@ footer b { color: var(--ink); font-weight: 600; }
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
-  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", watch: "Watch list" };
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", half: "HALF BET", watch: "Watch list" };
   function renderRecord() {
     var el = document.getElementById("view-record");
     var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });
@@ -616,12 +616,13 @@ footer b { color: var(--ink); font-weight: 600; }
       ["bet", "BETs: Unabated market +EV", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
       ["cno", "CrazyNinja +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
+      ["half", "Halftime live (experimental)", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
       ["model", "BettingPros Projection Model (research)", "Top 5 of each model list. " + sNote, false],
       ["sim", "Sims (research, separate)", "Days you didn't pull, simmed from near-closing lines with that game removed from form. Never mixed into the records above.", false]];
     GROUPS.forEach(function (G) {
       var rs = rowsOf(G[0]);
       if (G[0] === "model" && REC.combined) rs = rs.concat([REC.combined]);
-      if (!rs.length && (G[0] === "sim" || G[0] === "screener")) return;
+      if (!rs.length && (G[0] === "sim" || G[0] === "screener" || G[0] === "half")) return;
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');

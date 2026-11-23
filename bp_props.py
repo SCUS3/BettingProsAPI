@@ -1386,7 +1386,7 @@ def print_record():
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"),
+    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("half", "Halftime live (experimental)"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]
@@ -1398,7 +1398,7 @@ def print_record():
             br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
             unit = "% EV" if x.get("clv_unit") else " pts"
             clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
-            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener") else ""
+            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half") else ""
             print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}".rstrip())
 
 

@@ -639,7 +639,7 @@ def game_resolver(rows):
     return key
 
 
-def apply_exposure(cands, logged, key):
+def apply_exposure(cands, logged, key, player_cap=None, game_cap=None):
     """Cap new BET stakes: PLAYER_CAP per player and GAME_CAP per game, counting stakes already logged that day.
     cands = [{"player", "game", "ev", "stake"}] (mutated: "stake", "cap"). When a cap binds, that player's or game's
     new BETs are scaled down proportionally to the room left; cents left over by rounding go to the largest edge first."""
@@ -669,10 +669,10 @@ def apply_exposure(cands, logged, key):
 
     for pl in {c["player"] for c in cands}:
         grp = [c for c in cands if c["player"] == pl]
-        squeeze(grp, PLAYER_CAP - used_p.get(pl, 0), "player")
+        squeeze(grp, (PLAYER_CAP if player_cap is None else player_cap) - used_p.get(pl, 0), "player")
     for g in {c["game"] for c in cands}:
         grp = [c for c in cands if c["game"] == g]
-        squeeze(grp, GAME_CAP - used_g.get(g, 0), "game")
+        squeeze(grp, (GAME_CAP if game_cap is None else game_cap) - used_g.get(g, 0), "game")
     return cands
 
 
@@ -1165,6 +1165,7 @@ def main():
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
     g.add_argument("--cno-paste", metavar="FILE", help="CrazyNinja +EV screener text (file, or - for stdin): "
                                                          "NBA FanDuel player props -> 'CNO screener' record (no API calls)")
+    g.add_argument("--half-paste", metavar="FILE", help="halftime live odds paste (file or -): CNO worst case; logs HALF BETs")
     g.add_argument("--proj", metavar="PROPS", help="BettingPros projection context for props you send, from today's saved "
                                                    "pull (0 requests): \"Toppin 3PM o1.5; Brunson PTS u27.5\"")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
@@ -1195,6 +1196,9 @@ def main():
         return run_cno_paste(args)
     if args.proj:
         return run_proj(args)
+    if args.half_paste:
+        import bp_half
+        return bp_half.run(args)
 
     shortlist = load_picks(args.date, args.top)
     ua_ok, ua_why = U.usable()
