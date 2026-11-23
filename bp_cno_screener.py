@@ -350,3 +350,53 @@ def log(plays, date, st=None):
     if out:
         L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
     return out
+
+
+def live_compare(text, date):
+    """Live screener rows (games under way) vs. both projection models: BettingPros' pregame projection/lean and the
+    halftime expected final (snapshot), plus the stat now (ESPN, free). Display only; nothing is logged."""
+    import json
+    import bp_halftime as H
+    import bp_projctx as P
+    tbl = _table(text) or []
+    snap = {}
+    try:
+        for g in json.load(open(H.snapshot_path(date))).values():
+            for x in g.get("rows", []):
+                snap[(norm(x["player"]), x["market"])] = (x, g["game"])
+    except (OSError, ValueError):
+        pass
+    live = {}
+    try:
+        for g in H.games(date):
+            if g["status"] not in ("STATUS_SCHEDULED", "STATUS_FINAL"):
+                live[g["name"]] = (g, H.half_box(g["id"]))
+    except Exception:
+        pass
+    out, skipped = [], 0
+    for t in tbl:
+        if "NBA" not in (t.get("league") or "") or "fanduel" not in (t.get("book") or "").lower():
+            skipped += 1
+            continue
+        mk = next((m for pat, m in MARKETS if re.search(pat, (t.get("market") or "").lower())), None)
+        sm = SIDE.search(t.get("bet") or "")
+        if not mk or not sm:
+            skipped += 1
+            continue
+        pl, side, line = t["bet"][:sm.start()].strip(), "over" if sm.group(1).lower().startswith("o") else "under", float(sm.group(2))
+        c = P.context(date, pl, mk, side, line)
+        sx = snap.get((norm(pl), mk))
+        if sx:
+            x, gname = sx
+            es = "over" if x["exp_final"] > line else "under" if x["exp_final"] < line else "even"
+            ht = f"{x['half']} at half (pregame {x['line']:g}) -> {x['exp_final']}, {es}"
+            htag = "agrees" if es == side else "disagrees"
+            g, box = live.get(gname, (None, {}))
+            p = box.get(norm(pl))
+            now = (f"{sum(p[k] or 0 for k in H.PARTS[mk])} ({g['status'].replace('STATUS_', '').lower().replace('_', ' ')}, Q{g['period']})"
+                   if p and g else "final" if gname not in live else "-")
+        else:
+            ht, htag, now = "no halftime snapshot", "none", "-"
+        out.append({"player": pl, "market": mk, "side": side, "line": line, "odds": t.get("odds"), "ev": t.get("ev"),
+                    "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now})
+    return out, skipped

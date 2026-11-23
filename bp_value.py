@@ -1076,6 +1076,14 @@ def parse_placed(text):
 def run_cno_paste(args):
     import bp_cno_screener as S
     text = sys.stdin.read() if args.cno_paste == "-" else open(args.cno_paste).read()
+    if args.live:
+        rows, skipped = S.live_compare(text, args.date)
+        print(f"Live screener rows vs. both models ({len(rows)} NBA FanDuel props; {skipped} other rows skipped). Display only.")
+        for r in rows:
+            both = r["half_tag"] == "agrees" and r["bp_tag"] in ("agrees", "lean agrees")
+            print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
+                  f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']}) | now {r['now']}")
+        return
     plays, dropped = S.parse(text, args.date)
     st = S.settings(text, plays, args.devig, args.min_books, args.max_odds) if not args.dry else None
     if st:
@@ -1172,6 +1180,8 @@ def main():
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
+    ap.add_argument("--live", action="store_true", help="--cno-paste: live rows vs. BettingPros projection and halftime "
+                                                        "expected final (display only)")
     ap.add_argument("--devig", help="--cno-paste: your screener's devig method (logged; warns if it changes)")
     ap.add_argument("--min-books", type=int, help="--cno-paste: your screener's min books setting")
     ap.add_argument("--max-odds", type=float, help="--cno-paste: your screener's max odds setting, e.g. +500")
