@@ -47,7 +47,7 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
-                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at"]
+                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -250,7 +250,8 @@ def run_coverage(date):
         except (OSError, ValueError):
             continue
         if d.get("pulled_at") and d.get("events"):
-            out[d["pulled_at"]] = {str(e.get("id")) for e in d["events"] if e.get("id") and not e.get("started")}
+            out[d["pulled_at"]] = {str(e.get("id")) for e in d["events"]
+                                   if e.get("id") and not e.get("started") and not e.get("skipped")}
     return out
 
 
@@ -531,11 +532,15 @@ def bet_clv_status():
 
 
 def log_value_decisions(date, rows):
-    """Replace this date's bet/watch rows for the same pull with `rows` (from bp_value.py)."""
+    """Log bp_value.py decisions. A BET already logged for `date` is never removed or replaced (a later board
+    run can only add BETs); watch rows for the same pull are refreshed."""
     pulled = {r.get("pulled_at") for r in rows}
-    ledger = [r for r in _read(LEDGER) if not (r["date"] == date and r.get("strategy") in VALUE_KEYS
-                                                and r.get("pulled_at") in pulled)]
-    _write(LEDGER, ledger + rows, LEDGER_FIELDS)
+    old = _read(LEDGER)
+    key = lambda r: (r["player"], r["market"], r["side"], str(_num(r.get("line"))))
+    have_bets = {key(r) for r in old if r["date"] == date and r.get("strategy") in BET_KEYS}
+    ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
+    new = [r for r in rows if not (r.get("strategy") in BET_KEYS and key(r) in have_bets)]
+    _write(LEDGER, ledger + new, LEDGER_FIELDS)
 
 
 def pending_dates(today):

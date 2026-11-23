@@ -561,7 +561,7 @@ def warn_started(tips, pulled_at):
     return upcoming
 
 
-def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows, kind="full", extra=None):
+def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows, kind="full", extra=None, only=None):
     fd_rows = [r for r in rows if r["price_is_fanduel"]]
     per_game = {}
     for r in fd_rows:
@@ -573,7 +573,8 @@ def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows
         "props_rows": len(props), "fanduel_offers": len(offers), "board_rows": len(fd_rows),
         "fanduel_book_id": fd, "markets": market_ids, "per_game": per_game,
         "events": [{"id": e.get("id"), "tip": tips.get(e.get("id")),
-                    "started": bool(tips.get(e.get("id")) and tips[e.get("id")] <= pulled_at)} for e in events],
+                    "started": bool(tips.get(e.get("id")) and tips[e.get("id")] <= pulled_at),
+                    "skipped": bool(only is not None and e.get("id") not in only)} for e in events],
         **(extra or {})}, prefix="pull_" if kind == "full" else kind + "_")
 
 
@@ -953,6 +954,8 @@ def main():
     ap.add_argument("--max-requests", type=int, default=None,
                     help="stop (after the page-1 requests that measure the run) if this run would use more than this")
     ap.add_argument("--no-grade", action="store_true", help="skip grading finished slates this run")
+    ap.add_argument("--only-events", metavar="IDS", help="pull only these BettingPros event ids (colon/comma list); "
+                                                            "other games keep their rows and picks from their last pull")
     ap.add_argument("--grade", metavar="DATE", help="only grade the saved slate for DATE, re-learn, and exit")
     ap.add_argument("--measure", action="store_true",
                     help="3 requests: slate prop counts (total_items) with the FanDuel filter, without it, and with the default ev_threshold")
@@ -969,11 +972,7 @@ def main():
                 rows = list(csv.DictReader(f))
         except OSError:
             sys.exit(f"{path} not found. Run without --from-csv first.")
-        for r in rows:
-            r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
-            r["noproj"] = r.get("noproj") == "True"
-            for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness", "bp_line"):
-                r[k] = _num(r.get(k))
+        typed_csv_rows(rows)
         finish(rows, args.date)
         return
 
@@ -1068,6 +1067,10 @@ def main():
     events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
     tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
     upcoming = warn_started(tips, pulled_at)
+    only = {int(x) for x in str(args.only_events).replace(",", ":").split(":") if x.strip()} if args.only_events else None
+    if only:
+        upcoming &= only
+        print(f"Only events {', '.join(str(e) for e in sorted(upcoming)) or '(none still to tip)'}; other games keep their last pull.")
     if not upcoming:
         sys.exit("No games left to tip on this slate.")
     off_params = offers_params(upcoming, market_ids, fd, args.page_limit)
@@ -1077,6 +1080,12 @@ def main():
     budget_math(used_before, grading, REQUESTS_MADE - grading + pages_left(first_off) + est_props, reprice_est,
                 args.max_requests, "estimate before /props (projections ~1.4 rows per FanDuel line)", enforce=False)
     offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd)
+    no_lines = sorted(set(upcoming) - {int(k[0]) for k in offers})
+    if no_lines:
+        print(f"Warning: no FanDuel lines in /offers yet for event(s) {', '.join(map(str, no_lines))} "
+              f"(not tipped; FanDuel hasn't posted or BettingPros hasn't picked them up). Re-pull those later with --only-events.")
+    if not offers:
+        sys.exit("No FanDuel lines for these games yet; stopping before /props.")
     if args.unfiltered_props:
         prop_queries = [props_params(args.date, None, market_ids, args.page_limit)]
     else:
@@ -1103,7 +1112,14 @@ def main():
               f"match /props ids, re-run with --unfiltered-props (about 5-6 /props pages per game).")
     print(f"Projections matched {matched} of {len(offers)} FanDuel lines ({round(100 * matched / max(len(offers), 1))}%).")
     save_pull(args.date, pulled_at, fd, market_ids, events, tips, props, offers, rows,
-              extra={"reprice_mode": mode, "reprice_estimate": reprice_est})
+              extra={"reprice_mode": mode, "reprice_estimate": reprice_est}, only=upcoming if only else None)
+    if only:                                          # keep the other games' rows from their last pull
+        try:
+            with open(f"bp_props_{args.date}.csv") as f:
+                rows += typed_csv_rows([r for r in csv.DictReader(f)
+                                        if r.get("event_id") and int(float(r["event_id"])) not in upcoming])
+        except OSError:
+            pass
     rw_players = bp_rotowire.fetch()                  # public page, not an API request
     print(f"Rotowire lineups: {len(rw_players)} players" if rw_players else "Rotowire lineups: unavailable this run")
     bp_learn.save_rotowire(rw_players, args.date, pulled_at)
@@ -1118,6 +1134,16 @@ def main():
     mode, games, picks_cost = picks_reprice_decision(args.date, pulled_at, mode, after, reprice_est, by_game, args.page_limit)
     bp_learn.update_pull_log(args.date, pulled_at, {"reprice_mode": mode, "reprice_games": games,
                                                     "reprice_picks_estimate": picks_cost, "fanduel_lines_by_game": by_game})
+
+
+def typed_csv_rows(rows):
+    """CSV rows back to the types a live pull produces."""
+    for r in rows:
+        r["price_is_fanduel"] = r.get("price_is_fanduel") == "True"
+        r["noproj"] = r.get("noproj") == "True"
+        for k in ("line", "bp_proj", "diff", "pct_gap", "fd_odds_rec", "dvp_softness", "bp_line"):
+            r[k] = _num(r.get(k))
+    return rows
 
 
 def check_projection_match(first_page, offers, labels):

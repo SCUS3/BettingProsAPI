@@ -393,7 +393,8 @@ def price_board(picks, data, d, now=None):
             f = _devig_over(two[src]["over"][1], two[src]["under"][1])
             fairs.append(f if p["side"] == "over" else 1 - f)
         res.update(fair_method="books", books=len(at), sources=sorted(names.get(x, x) for x in at),
-                   exchange=any(x in exch for x in at), other_line_books=len(other))
+                   exchange=any(x in exch for x in at), other_line_books=len(other),
+                   two_way=[(names.get(x, x), two[x]["over"][1], two[x]["under"][1]) for x in at])
         if len(at) >= MIN_SOURCES:
             f = statistics.median(fairs)
             res.update(fair_mult=round(f, 4), ev_mult=None if price is None else round(f * _dec(price) - 1, 4))

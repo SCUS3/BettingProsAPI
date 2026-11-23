@@ -36,3 +36,9 @@ every 5 seconds per key (the script enforces it). A 401/403 disables Unabated (`
 bp_value.py falls back to The Odds API and says so. Key: `UNABATED_API_KEY` in `.env` (X-Api-Key header),
 never printed.
 
+## Crazy Ninja Odds (second-opinion devig, bp_crazyninja.py)
+
+Open pre-release devigger API (`api=open`, no key). bp_value.py calls it for each new BET (one call per source at
+FanDuel's line, cached in `cno_cache.json`); it sends only odds numbers. The result is logged next to the BET and
+never changes the BET rule. If the API is down the check is skipped.
+

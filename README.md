@@ -18,6 +18,7 @@ Markets (full game): Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pt
 - **Market fair price**: Unabated consensus (median of devigged DraftKings, BetMGM, Caesars, Fanatics, theScore, Novig, ProphetX, Kalshi and Polymarket at FanDuel's line, 3+ sources; pick'em apps excluded), with The Odds API as fallback.
 - **BET tags**: "+EV + proj agrees" vs. "+EV only", with form and DvP for the bet side. Both are recorded separately so the record shows which does better.
 - **Pull timing from the schedule**: `bp_schedule.py` reads ESPN's schedule (free) and suggests the first pull at the earliest tip − 90 min.
+- **Crazy Ninja Odds second opinion** (`bp_crazyninja.py`): every new BET is also devigged with CNO's open devigger API (worst case of multiplicative, additive, power and shin, per source at FanDuel's line); the median and lowest EV are logged (`cno_ev`, `cno_min_ev`). It doesn't change the BET rule. Only odds numbers are sent; responses are cached.
 - **Auto-CLV**: the watch's last scan before each game's tip (5 min before) logs the closing fair price and CLV (EV of the bet at the closing fair price) for that game's BETs, and flags BETs whose market EV fell below 0.
 - **Scores and lists**: top 10 by projection gap, score and balanced score, overall and per category, plus lines with no projection.
 - **Kelly stakes**: BETs at quarter-Kelly (¼K) on the market's fair probability, capped at 1.25u until 50 graded BETs show positive average CLV; model stakes halved until the model is calibrated.
