@@ -117,6 +117,48 @@ def half_box(game_id):
     return players
 
 
+BUCKETS = [(0.0, 0.25, "<=25%"), (0.25, 0.5, "25-50%"), (0.5, 0.8, "50-80%"), (0.8, 1.0, "80-100%"), (1.0, 99, ">=100%")]
+SHRINK_N = 100           # shrink the 2nd-half share toward 50% while a bucket has fewer than 100 graded rows
+
+
+def bucket(pace):
+    return next(lbl for lo, hi, lbl in BUCKETS if (pace <= hi if lo == 0 else lo < pace <= hi) or (hi == 99 and pace > lo))
+
+
+_shares = {}
+
+
+def shares():
+    """{(market, pace bucket): (raw mean 2nd-half share of the pregame line, n)} from graded snapshots + backfill."""
+    if _shares:
+        return _shares
+    acc = {}
+    try:
+        for r in csv.DictReader(open(FLAGS)):
+            if r.get("legacy") or r.get("second_half") in ("", None) or not float(r["line"]):
+                continue
+            k = (r["market"], bucket(float(r["pace"])))
+            acc.setdefault(k, []).append(float(r["second_half"]) / float(r["line"]))
+    except OSError:
+        pass
+    _shares.update({k: (sum(v) / len(v), len(v)) for k, v in acc.items()})
+    return _shares
+
+
+def expected_final(market, half, line):
+    """first-half stat + base-rate 2nd-half share x pregame line (share shrunk toward 50% while n < SHRINK_N).
+    -> (expected final, share used, n)."""
+    raw, n = shares().get((market, bucket(half / line if line else 0)), (0.5, 0))
+    w = min(n, SHRINK_N) / SHRINK_N
+    sh = w * raw + (1 - w) * 0.5
+    return round(half + sh * line, 1), round(sh, 3), n
+
+
+def fair_live_line(exp):
+    """The x.5 live line closest to the expected final (where over and under are roughly even)."""
+    return round(exp - 0.5) + 0.5
+
+
 def off_pace(date, game, lines):
     """Every player with a pregame FanDuel line: first-half stat, pace, minutes, fouls, margin and skip flags.
     alert = a strong flag (overs: <=25% of the line with 12+ minutes; unders: >=80% but still under the line;
@@ -137,9 +179,11 @@ def off_pace(date, game, lines):
             big = line >= MIN_LINE.get(mk, 99)
             side = ("over" if pace <= OVER_PACE and (p["MIN"] or 0) >= MIN_HALF_MIN and big else
                     "under" if pace >= UNDER_PACE and v < line and big else "")
+            exp, sh, n = expected_final(mk, v, line)
             out.append({"game": game["name"], "game_id": game["id"], "player": p["name"], "team": p["team"], "market": mk,
                         "side": side, "alert": bool(side), "line": line, "half": v, "pace": round(pace, 2), "min": p["MIN"],
-                        "pf": p["PF"], "margin": game["margin"], "skip": skip, "big_line": big})
+                        "pf": p["PF"], "margin": game["margin"], "skip": skip, "big_line": big,
+                        "exp_final": exp, "exp_share": sh, "exp_n": n, "fair_live": fair_live_line(exp)})
     return out
 
 
@@ -270,7 +314,8 @@ def report(date, game, rows):
         print("  no strong flags (overs <=25% with 12+ min, unders >=80% still under; minimum lines)")
     for x in rows:
         print(f"  {x['side'].upper():5} {x['player']:22} {x['market']:4} line {x['line']:g}: 1st half {x['half']} "
-              f"({round(100 * x['pace'])}% of line), {x['min']} min, {x['pf']} PF"
+              f"({round(100 * x['pace'])}% of line), {x['min']} min, {x['pf']} PF; expected final {x.get('exp_final')} "
+              f"(2nd half {round(100 * x.get('exp_share', 0.5))}% of line, n {x.get('exp_n')}) -> fair live line ~{x.get('fair_live')}"
               + (f"   SKIP: {', '.join(x['skip'])}" if x["skip"] else ""))
 
 

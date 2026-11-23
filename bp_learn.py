@@ -990,6 +990,15 @@ def record():
                      label="CNO screener: " + lab)
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
+    hb = [(r, v) for r, v in graded if r["strategy"] in HALF_KEYS]
+    for tag, lab in (("exp agrees", "market EV + expected final agree"), ("exp disagrees", "market only (expected final disagrees)"),
+                     ("exp none", "market only (no expected final)")):
+        sub = [(r, v) for r, v in hb if (r.get("proj_tag") or "exp none") == tag]
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="half_" + tag.replace(" ", "_"), group="half",
+                     label="HALF BET: " + lab)
+            x["clv_unit"] = "% EV at closing fair"
+            strategies.append(x)
     strategies += sim_record_rows()          # placed_record_rows() kept but unused: the record is the system's BETs only
     by_cat = []
     for mk in MARKETS:

@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KEY = "half"
 PASTES = os.path.join(HERE, "half_pastes.csv")
 PASTE_FIELDS = ["date", "at", "player", "market", "side", "line", "fd", "books_n", "books", "fair", "market_ev", "cno_ev",
-                "cno_min_ev", "decision", "reason", "min", "pf", "margin"]
+                "cno_min_ev", "decision", "reason", "min", "pf", "margin", "pregame_line", "half", "exp_final", "exp_side", "exp_tag"]
 MIN_EV, MIN_SOURCES = 0.03, 3
 BET_CAP, GAME_CAP = 0.5, 1.5
 PAIR = re.compile(r"([A-Za-z][A-Za-z0-9 .&'-]*?)\s*:?\s*([+-]\d{3,5})\s*/\s*([+-]\d{3,5})")
@@ -82,6 +82,15 @@ def run(args):
     text = sys.stdin.read() if args.half_paste == "-" else open(args.half_paste).read()
     led = L._read(L.LEDGER)
     ctx = context(args.date)
+    pregame = H.pregame_lines(args.date)
+    snap = {}                                            # first-half stat + pregame line frozen at halftime
+    try:
+        import json
+        for g in json.load(open(H.snapshot_path(args.date))).values():
+            for x in g.get("rows", []):
+                snap[(norm(x["player"]), x["market"])] = x
+    except (OSError, ValueError):
+        pass
     names = sorted({r["player"] for r in led} | {p["name"] for p, _ in ctx.values()}, key=len, reverse=True)
     props, bad = parse(text, names)
     if bad:
@@ -113,6 +122,17 @@ def run(args):
             continue
         c = V.cno_check(p["side"], {"two_way": [(b, o, u) for b, o, u in two], "price_used": p["fd"]})
         box, game = ctx.get(norm(p["player"]), (None, None))
+        sx = snap.get((norm(p["player"]), p["market"]))
+        if sx:                                           # halftime snapshot (exact first half)
+            pre, half = sx["line"], sx["half"]
+        else:                                            # no snapshot: live box (only right if pasted at halftime)
+            pre = pregame.get((norm(p["player"]), p["market"]))
+            half = sum((box or {}).get(x) or 0 for x in H.PARTS[p["market"]]) if box else None
+        exp = H.expected_final(p["market"], half, pre)[0] if half is not None and pre else None
+        exp_side = None if exp is None or exp == p["line"] else ("over" if exp > p["line"] else "under")
+        exp_tag = "none" if exp_side is None else ("agrees" if exp_side == p["side"] else "disagrees")
+        exp_txt = (f"; FD live {p['line']:g} vs exp {exp:g} -> {exp_side or 'even'} side ({exp_tag})" if exp is not None
+                   else "; no expected final (no pregame line or live box)")
         skip = []
         if box:
             if (box.get("PF") or 0) >= H.FOUL_FLAG:
@@ -131,10 +151,11 @@ def run(args):
                                ("CNO worst case <= 0", c is not None and c["median_ev"] <= 0)) if on] + skip
         logrow(p, fair=round(fair, 4), market_ev=round(ev, 4), cno_ev=None if c is None else c["median_ev"],
                cno_min_ev=None if c is None else c["min_ev"], decision="HALF BET" if ok else "pass", reason="; ".join(why),
-               min=(box or {}).get("MIN"), pf=(box or {}).get("PF"), margin=(game or {}).get("margin"))
-        print(f"  {'HALF BET' if ok else 'pass    '} {tag}: {info}" + (f"  SKIP: {', '.join(skip)}" if skip else ""))
+               min=(box or {}).get("MIN"), pf=(box or {}).get("PF"), margin=(game or {}).get("margin"),
+               pregame_line=pre, half=half, exp_final=exp, exp_side=exp_side, exp_tag=exp_tag)
+        print(f"  {'HALF BET' if ok else 'pass    '} {tag}: {info}{exp_txt}" + (f"  SKIP: {', '.join(skip)}" if skip else ""))
         if ok:
-            cands.append((p, fair, ev, c, game, box))
+            cands.append((p, fair, ev, c, game, box, exp_tag))
     if clv_done and not args.dry:
         L._write(L.LEDGER, led, L.LEDGER_FIELDS)
     if plog and not args.dry:
@@ -150,9 +171,9 @@ def run(args):
     gkey = lambda r: r.get("game") or r.get("event_id") or "?"
     logged = [dict(r, game=r.get("event_id")) for r in led if r["date"] == args.date and r["strategy"] == KEY]
     cc = V.apply_exposure([{"player": p["player"], "game": f"espn:{g['id']}" if g else "?", "ev": ev,
-                            "stake": min(V.bet_kelly(fair, p["fd"], BET_CAP), BET_CAP)} for p, fair, ev, c, g, b in cands],
+                            "stake": min(V.bet_kelly(fair, p["fd"], BET_CAP), BET_CAP)} for p, fair, ev, c, g, b, _ in cands],
                           logged, gkey, player_cap=GAME_CAP, game_cap=GAME_CAP)
-    for (p, fair, ev, c, g, b), x in zip(cands, cc):
+    for (p, fair, ev, c, g, b, et), x in zip(cands, cc):
         if x["stake"] <= 0:
             print(f"  at cap, not logged: {p['player']} {p['market']} {p['side']} {p['line']:g}")
             continue
@@ -161,7 +182,7 @@ def run(args):
                      "odds": p["fd"], "our_prob": round(fair, 4), "nv_prob": round(fair, 4), "kelly_u": x["stake"],
                      "event_id": f"espn:{g['id']}" if g else "", "oa_fair": round(fair, 4), "oa_ev": round(ev, 4),
                      "fair_src": "half paste", "sources": len(p["books"]), "cno_ev": c["median_ev"], "cno_min_ev": c["min_ev"],
-                     "cap_note": x["cap"]})
+                     "cap_note": x["cap"], "proj_tag": "exp " + et})
         print(f"  logged HALF BET {p['player']} {p['market']} {p['side']} {p['line']:g} {p['fd']:+g}: {x['stake']}u ¼K"
               + (f" ({x['cap']})" if x["cap"] else ""))
     if rows:
