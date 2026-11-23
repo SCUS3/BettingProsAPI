@@ -604,7 +604,7 @@ footer b { color: var(--ink); font-weight: 600; }
       ["Brier ours / mkt", "hide-sm"], ["Log loss ours / mkt", "hide-sm"], ["CLV", "hide-sm"]]);
     function sRow(x, strong) {
       return '<tr><td class="l"><span class="player">' + (strong ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p + "</td><td>" + pct(x.hit) +
-        "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm">' + units(x.kelly_units) +
+        "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm"><span class="dim" title="Research list: no stake">–</span>' +
         '</td><td class="hide-sm">' + vs(x.brier, x.brier_mkt) + '</td><td class="hide-sm">' + vs(x.logloss, x.logloss_mkt) +
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
     }
