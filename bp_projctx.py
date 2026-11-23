@@ -18,35 +18,54 @@ _cache = {}
 
 
 def load(date):
+    """({(norm player, exact market): row with a projection}, markets in the pull, 'HH:MM ET' of the pull)."""
     if date not in _cache:
-        idx = {}
+        idx, markets, pulled = {}, set(), ""
         try:
             for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
+                markets.add(r["market"])
+                pulled = max(pulled, r.get("pulled_at") or "")
                 if r.get("bp_proj") not in (None, ""):
                     idx.setdefault((norm(r["player"]), r["market"]), r)
         except OSError:
             pass
-        _cache[date] = idx
+        _cache[date] = (idx, markets, _et(pulled))
     return _cache[date]
+
+
+def _et(iso):
+    if not iso:
+        return "?"
+    import datetime as dt
+    t = dt.datetime.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        t = t.astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        t -= dt.timedelta(hours=5)
+    return t.strftime("%-I:%M %p ET")
 
 
 def context(date, player, market, side, line):
     """-> {"text", "tag", "proj", "gap"} for the +EV side `side` at `line`."""
-    r = load(date).get((norm(player), market))
+    idx, markets, asof = load(date)
+    if market not in markets:                       # exact market only: never another market's projection
+        return {"text": f"– (not pulled; pull as of {asof})", "tag": "none", "proj": None, "gap": None}
+    r = idx.get((norm(player), market))
     if not r:
-        return {"text": "–", "tag": "none", "proj": None, "gap": None}
+        return {"text": f"– (no projection; as of {asof})", "tag": "none", "proj": None, "gap": None}
     proj, line = float(r["bp_proj"]), float(line)
     ps = "over" if proj > line else "under" if proj < line else None
     if market in REAL:
         gap = round(proj - line, 2)
         tag = "agrees" if ps == side else "disagrees" if ps else "on the line"
-        return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')}", "tag": tag,
+        return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')} · as of {asof}", "tag": tag,
                 "proj": proj, "gap": gap}
     lean = ps or r.get("bp_lean") or None
     gap = round(proj - line, 2)
     if not lean:
-        return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · ⚪ on the line (lean only)", "tag": "none",
+        return {"text": f"BP lean: proj {proj:g} (gap {gap:+.2f} vs {line:g}) · ⚪ on the line · as of {asof}", "tag": "none",
                 "proj": proj, "gap": gap}
     tag = "lean agrees" if lean == side else "lean disagrees"
-    return {"text": f"BP proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT[tag.split()[1]]} (lean only)",
+    return {"text": f"BP lean: proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT[tag.split()[1]]} · as of {asof}",
             "tag": tag, "proj": proj, "gap": gap}

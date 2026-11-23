@@ -113,3 +113,7 @@ When the user sends props in chat, run `python3 bp_value.py --proj "<player> <ma
 
 On game nights, after the watch, run `python3 bp_halftime.py --watch` in the background (free ESPN polling). It exits at each new halftime so you're told: report the off-pace list (skip flags shown) and ask the user to paste live odds, then restart it for the next halftime. When they paste, save it and run `python3 bp_value.py --half-paste <file> --dry`, then without `--dry` to log HALF BETs. Paste format: `Player PTS o14.5 FD -110 | DK -125/-105 | MGM -120/-110 | Novig -118/-108`. Never mix HALF BETs into the pregame records. The Odds API live test is one call only, asked first.
 
+## R+A and the alt ladder (from 11/24)
+
+R+A (market 337) is in every pull again: after the first 11/24 pull, report the actual extra request cost (R+A share of /offers and /props pages in the pull log vs. the ≈5.7/game estimate). The board and watch also run the alt ladder (bp_alts.py): report new "ALT [alt, market only]" / "ALT [alt, market + projection]" rungs with EV, sources, CNO worst case, stake and the BettingPros context.
+

@@ -158,9 +158,9 @@ TOKEN_MAP = {
     "threes": "3pm", "three": "3pm", "3pt": "3pm", "3pts": "3pm", "3-pt": "3pm", "3pm": "3pm",
     "3-pointers": "3pm", "pointers": "3pm", "3s": "3pm",
 }
-# Categories classified but left out of every pull. R+A: BettingPros carries no FanDuel R+A lines
-# (0 of 60 offers on 11/19). Remove it from this set to turn it back on.
-DISABLED = {"R+A"}
+# Categories classified but left out of every pull. R+A was off 11/19-11/23 (BettingPros carried no FanDuel R+A
+# offers); back on from 11/24 for projection/lean context, and Unabated prices FanDuel's R+A lines.
+DISABLED = set()
 
 # Any of these in a market slug/label means it is not one of the eight.
 BLOCK = {"steals", "steal", "blocks", "block", "turnovers", "turnover", "double", "triple", "first",
@@ -1393,7 +1393,7 @@ def print_record():
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("half", "Halftime live (experimental)"),
+    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]
@@ -1405,7 +1405,7 @@ def print_record():
             br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
             unit = "% EV" if x.get("clv_unit") else " pts"
             clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
-            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half") else ""
+            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half", "alt") else ""
             print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}".rstrip())
 
 

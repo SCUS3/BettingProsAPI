@@ -31,7 +31,7 @@ MIN_HALF_MIN = 12                        # overs: at least 12 first-half minutes
 MIN_LINE = {"PTS": 14.5, "REB": 6.5, "AST": 4.5, "3PM": 2.5, "P+A": 20.5, "P+R": 20.5, "PRA": 20.5}
 FOUL_FLAG, MARGIN_FLAG = 3, 20
 PARTS = {"PTS": ("PTS",), "REB": ("REB",), "AST": ("AST",), "3PM": ("3PM",), "P+A": ("PTS", "AST"),
-         "P+R": ("PTS", "REB"), "PRA": ("PTS", "REB", "AST")}
+         "P+R": ("PTS", "REB"), "PRA": ("PTS", "REB", "AST"), "R+A": ("REB", "AST")}
 
 
 def et_today():

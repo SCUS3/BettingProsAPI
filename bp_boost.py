@@ -20,7 +20,7 @@ from bp_rotowire import norm
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("player")
-    ap.add_argument("market", choices=["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
+    ap.add_argument("market", choices=["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"])
     ap.add_argument("side", choices=["over", "under", "o", "u"])
     ap.add_argument("price", type=float, help="FanDuel's price before the boost, e.g. +172")
     ap.add_argument("--boost", type=float, required=True, help="boost percent, e.g. 25")

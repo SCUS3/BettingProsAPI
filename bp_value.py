@@ -504,7 +504,7 @@ def run_board(args):
                 data = json.load(open(args.board_file))
                 print(f"  Using the saved Unabated board {args.board_file} (no call).")
             else:
-                data = U.fetch_board(["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
+                data = U.fetch_board(BOARD_MARKETS)
             extra = extra_rows(args.date, rows, data)
             if extra:
                 print(f"  {len(extra)} FanDuel lines on Unabated's board that BettingPros doesn't carry: priced too (no projection).")
@@ -591,6 +591,16 @@ def run_board(args):
                          f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}"
                          + cno_note(ledger[-1]))
     lines_out += rejects
+    try:                                              # alt ladder (FanDuel alt rungs vs. other sources at that rung)
+        import bp_alts
+        arows = bp_alts.log(args.date, bp_alts.scan(data, U.load(U.DISCOVERY, {}), args.date, bp_learn.utc_now()), bp_learn.utc_now())
+        for r in arows:
+            lines_out.append(f"  ALT [{bp_alts.KEYS[r['strategy']]}] {r['player']} {r['market']} {r['side']} {float(r['line']):g} "
+                             f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources, "
+                             f"{r['cap_note']}), CNO worst-case {100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K  |  {r.get('proj_note') or '–'}")
+        lines_out.append(f"  Alt ladder: {len(arows)} new rungs logged (EV >= +4%, 3+ two-sided sources, <= +300, CNO > 0, one per player).")
+    except Exception as e:
+        lines_out.append(f"  Alt ladder skipped ({e}).")
     ledger += cno_rows(args.date, cno_cands, led_now, gkey, cap)
     lines_out.append(f"  CrazyNinja +EV (own record): {sum(1 for x in ledger if x['strategy'] == 'cno')} lines this run "
                      f"(median worst-case EV >= +{100 * CNO_MIN_EV:g}%). CNO calls only for sides with Unabated EV >= +2%.")
@@ -703,6 +713,7 @@ def value_row(date, r, strategy, side, v, stake, our_prob, cno="unset"):
 
 
 
+BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]   # Unabated board + watch (R+A from 11/24)
 CNO_MIN_EV = 0.02     # CrazyNinja +EV strategy: median worst-case EV across sources >= +2% (our bar)
 
 
@@ -885,7 +896,7 @@ def watch_scan(date, state, close_before=None):
     """One free Unabated scan: new BETs (logged) and logged BETs whose market EV fell below 0 (or line moved).
     BETs in games tipping before `close_before` (the next scan) get their closing price and CLV logged now:
     this is the last scan before their tip. Returns the tip times still ahead."""
-    data = U.fetch_board(["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
+    data = U.fetch_board(BOARD_MARKETS)
     d = U.load(U.DISCOVERY, {})
     have_csv = os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv"))
     rows = board_rows(date) if have_csv else []
@@ -950,6 +961,20 @@ def watch_scan(date, state, close_before=None):
                f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}; "
                f"tip {str(r.get('tip'))[11:16]}Z" + cno_note(row))
     new_rows += cno_rows(date, [(dict(r, pulled_at=now), sd, v, c) for r, sd, v, c in cno_cands], led, gkey, cap)
+    try:                                              # alt ladder: new qualifying rungs, logged and alerted
+        import bp_alts
+        if new_rows:
+            bp_learn._write(bp_learn.LEDGER, led + new_rows, bp_learn.LEDGER_FIELDS)
+            led, new_rows = led + new_rows, []
+        for r in bp_alts.log(date, bp_alts.scan(data, d, date, now), now):
+            notify(f"NEW ALT [{bp_alts.KEYS[r['strategy']]}] {r['player']} {r['market']} {r['side']} {float(r['line']):g} "
+                   f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources), CNO "
+                   f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K")
+        led = bp_learn._read(bp_learn.LEDGER)
+        if close_before:
+            bp_alts.close(date, data, d, now, close_before)
+    except Exception as e:
+        print(f"[{_et_now():%H:%M}] alt ladder skipped ({e})", flush=True)
     if new_rows:
         led = [r for r in led] + new_rows
         bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
@@ -1064,7 +1089,7 @@ def run_watch(args):
 
 MARKET_WORDS = {"pts": "PTS", "points": "PTS", "reb": "REB", "rebounds": "REB", "ast": "AST", "assists": "AST",
                 "3pm": "3PM", "threes": "3PM", "3s": "3PM", "p+a": "P+A", "pa": "P+A", "p+r": "P+R", "pr": "P+R",
-                "pra": "PRA", "p+r+a": "PRA"}
+                "pra": "PRA", "p+r+a": "PRA", "r+a": "R+A", "ra": "R+A", "reb+ast": "R+A"}
 
 
 def parse_placed(text):
