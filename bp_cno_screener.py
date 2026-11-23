@@ -102,10 +102,28 @@ def ev_header(text):
     return None
 
 
+def page_settings(text):
+    """Settings shown in a full-page paste (Devig Method, Minimum Books, Maximum Odds), or {}."""
+    out, lines = {}, [ln.strip() for ln in text.splitlines()]
+    for i, ln in enumerate(lines):
+        nxt = next((x for x in lines[i + 1:i + 3] if x), "")
+        if ln.startswith("Devig Method") and nxt:
+            out["devig"] = "LW-M" if "liquidity-weighted" in nxt.lower() and "multiplicative" in nxt.lower() else nxt
+        elif ln.startswith("Minimum Books") and re.match(r"^\d+$", nxt):
+            out["min_books"] = int(nxt)
+        elif ln.startswith("Maximum Odds") and re.match(r"^[+-]?\d+$", nxt):
+            out["max_odds"] = float(nxt)
+    return out
+
+
 def settings(text, plays, devig=None, min_books=None, max_odds=None):
     """This paste's screener settings (stated by flags, else the last paste's) + what the rows show; warnings when
     they differ from the last paste or the rows break them. Appends to cno_screener_log.json."""
     import json
+    pg = page_settings(text)                         # a full-page paste shows the screener's own settings
+    devig = devig if devig is not None else pg.get("devig")
+    min_books = min_books if min_books is not None else pg.get("min_books")
+    max_odds = max_odds if max_odds is not None else pg.get("max_odds")
     try:
         hist = json.load(open(PASTE_LOG))
     except (OSError, ValueError):
@@ -127,7 +145,9 @@ def settings(text, plays, devig=None, min_books=None, max_odds=None):
     if st["max_odds"] is not None and st["rows_max_odds"] is not None and st["rows_max_odds"] > float(st["max_odds"]):
         warn.append(f"a row is priced {st['rows_max_odds']:+g}, over your max odds {float(st['max_odds']):+g}")
     if (st["devig"], st["min_books"], float(st["max_odds"])) != (FIXED["devig"], FIXED["min_books"], FIXED["max_odds"]):
-        warn.append(f"differs from your fixed settings (devig {FIXED['devig']}, min books {FIXED['min_books']}, max odds +{FIXED['max_odds']:g})")
+        warn.append(f"screener page set to devig {st['devig']}, min books {st['min_books']}, max odds {float(st['max_odds']):+g}; "
+                    f"your fixed settings (devig {FIXED['devig']}, min books {FIXED['min_books']}, max odds +{FIXED['max_odds']:g}) "
+                    f"are applied, so rows outside them are dropped")
     if st["ev_header"] and "lw-m" not in st["ev_header"].lower():
         warn.append(f"EV column is '{st['ev_header']}', not LW-M: check the screener's devig setting")
     st["warnings"] = warn
