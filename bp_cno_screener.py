@@ -23,6 +23,7 @@ from bp_rotowire import norm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEY = "cno_scr"
+KEY_SUB = "cno_scr_sub"     # logged with --all: +EV but under the +2% bar (tracking only, kept out of the +2% record)
 
 # longest phrases first: combos before singles
 MARKETS = [
@@ -215,11 +216,11 @@ def _table(text):
     return out
 
 
-def parse(text, date):
+def parse(text, date, min_ev=None):
     """-> (plays, dropped {reason: n}). play = {player, market, side, line, odds, ev, fair, books, tip, raw}."""
     tbl = _table(text)
     if tbl is not None:
-        return _parse_table(tbl, date)
+        return _parse_table(tbl, date, MIN_EV if min_ev is None else min_ev)
     return _parse_loose(text, date)
 
 
@@ -235,7 +236,7 @@ def fd_main_lines(date):
     return out
 
 
-def _parse_table(tbl, date):
+def _parse_table(tbl, date, min_ev=MIN_EV):
     names = {norm(n): n for n in known_players(date)}
     mains = fd_main_lines(date)
     now = L.utc_now()
@@ -280,8 +281,8 @@ def _parse_table(tbl, date):
         if tip and tip <= now:
             drop("game already started")
             continue
-        if ev < MIN_EV:
-            drop(f"EV below +{100 * MIN_EV:g}%")
+        if ev < min_ev or ev <= 0:
+            drop(f"EV below +{100 * min_ev:g}%")
             continue
         try:
             books = int(g.get("books"))
@@ -361,12 +362,12 @@ def _parse_loose(text, date):
     return _with_proj(plays, date), dropped
 
 
-def log(plays, date, st=None):
+def log(plays, date, st=None, key=KEY):
     """Log new plays as 'cno_scr' rows (¼K on fair prob, same caps). Returns rows logged."""
     import bp_value as V
     led = L._read(L.LEDGER)
     k = lambda r: (r["player"], r["market"], r["side"], str(V._f(r.get("line"))))
-    have = {k(r) for r in led if r["date"] == date and r["strategy"] == KEY}
+    have = {k(r) for r in led if r["date"] == date and r["strategy"] in (KEY, KEY_SUB)}   # one record per play per day
     board = {}
     try:
         for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
@@ -378,14 +379,14 @@ def log(plays, date, st=None):
     rows_ctx = [dict(board.get(p["player"], {}), player=p["player"]) for p in new]
     gkey = V.game_resolver(rows_ctx + [r for r in led if r["date"] == date])
     cap = V.bet_cap()[0]
-    logged = [r for r in led if r["date"] == date and r["strategy"] == KEY]
+    logged = [r for r in led if r["date"] == date and r["strategy"] == key]
     cands = V.apply_exposure([{"player": p["player"], "game": gkey(c), "ev": p["ev"],
                                "stake": V.bet_kelly(p["fair"], p["odds"], cap)} for p, c in zip(new, rows_ctx)], logged, gkey)
     out = []
     for p, c, x in zip(new, rows_ctx, cands):
         if x["stake"] <= 0:
             continue
-        out.append({"date": date, "pulled_at": now, "tip": p.get("tip") or c.get("tip") or "", "strategy": KEY, "rank": None,
+        out.append({"date": date, "pulled_at": now, "tip": p.get("tip") or c.get("tip") or "", "strategy": key, "rank": None,
                     "player": p["player"], "team": c.get("team"), "market": p["market"], "side": p["side"], "line": p["line"],
                     "odds": p["odds"], "our_prob": p["fair"], "nv_prob": p["fair"], "kelly_u": x["stake"],
                     "event_id": c.get("event_id") or "", "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",

@@ -1093,7 +1093,7 @@ def run_cno_paste(args):
             print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
                   f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']}) | now {r['now']}")
         return
-    plays, dropped = S.parse(text, args.date)
+    plays, dropped = S.parse(text, args.date, 0.0 if args.all else None)
     st = S.settings(text, plays, args.devig, args.min_books, args.max_odds) if not args.dry else None
     if st:
         inherited = [k for k in st["assumed"] if st.get(k) is not None]
@@ -1108,7 +1108,13 @@ def run_cno_paste(args):
               + (f"  [{p['line_note']}]" if p.get("line_note") else ""))
     if args.dry or not plays:
         return
-    rows = S.log(plays, args.date, st)
+    rows = S.log([p for p in plays if p["ev"] >= S.MIN_EV], args.date, st)
+    if args.all:
+        sub = S.log([p for p in plays if p["ev"] < S.MIN_EV], args.date, st, key=S.KEY_SUB)
+        print(f"Logged {len(sub)} under +{100 * S.MIN_EV:g}% as 'CNO screener (under +2%)', tracking only:")
+        for r in sub:
+            print(f"  {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: {r['kelly_u']}u ¼K"
+                  f"{cap_text(r['cap_note'])}  |  {r.get('proj_note') or '–'}")
     notip = sum(1 for r in rows if not r.get("tip"))
     print(f"Logged {len(rows)} as 'CNO screener' (¼K on fair prob, caps applied)"
           + (f"; {notip} have no tip time (player not on today's BettingPros board) and won't count until matched" if notip else "")
@@ -1190,6 +1196,7 @@ def main():
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
+    ap.add_argument("--all", action="store_true", help="--cno-paste: also log +EV rows under +2% (separate tracking record)")
     ap.add_argument("--live", action="store_true", help="--cno-paste: live rows vs. BettingPros projection and halftime "
                                                         "expected final (display only)")
     ap.add_argument("--devig", help="--cno-paste: your screener's devig method (logged; warns if it changes)")

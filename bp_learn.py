@@ -33,10 +33,10 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
-                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"),
+                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
                     ("half", "HALF BET (halftime live)")]
 BET_KEYS = {"bet_agree", "bet_only"}
-SCREENER_KEYS = {"cno_scr"}   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
+SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}      # halftime live experiment (bp_value.py --half-paste); own record, never mixed with pregame        # CrazyNinja +EV: median worst-case EV >= +2%, ¼K on CNO's fair probability (own record)
 PLACED = os.path.join(HERE, "bp_placed.csv")      # what the user actually bet (bp_value.py --placed)
@@ -981,7 +981,7 @@ def record():
     o3 = [(r, v) for r, v in uniq if r["market"] == "3PM" and r.get("side") == "over"]
     strategies.append(dict(_summ([r for r, _ in o3], [v for _, v in o3]), key="model_3pm_over", group="model",
                            label="Projection model: 3PM overs"))
-    scr = [(r, v) for r, v in graded if r["strategy"] in SCREENER_KEYS]
+    scr = [(r, v) for r, v in graded if r["strategy"] == "cno_scr"]
     for tag, lab in (("agrees", "proj agrees (3PM/P+R)"), ("disagrees", "proj disagrees (3PM/P+R)"),
                      ("lean agrees", "BP lean agrees"), ("lean disagrees", "BP lean disagrees"), ("none", "no BP projection")):
         sub = [(r, v) for r, v in scr if (r.get("proj_tag") or "none") == tag]
