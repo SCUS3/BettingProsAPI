@@ -22,6 +22,7 @@ import csv
 import datetime as dt
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -1076,20 +1077,46 @@ def run_cno_paste(args):
     import bp_cno_screener as S
     text = sys.stdin.read() if args.cno_paste == "-" else open(args.cno_paste).read()
     plays, dropped = S.parse(text, args.date)
+    st = S.settings(text, plays, args.devig, args.min_books, args.max_odds) if not args.dry else None
+    if st:
+        inherited = [k for k in st["assumed"] if st.get(k) is not None]
+        print("Screener settings: " + S.settings_text(st) + (f" (same as last paste: {', '.join(inherited)})" if inherited else ""))
+        for w in st["warnings"]:
+            print("  WARNING: " + w)
     print(f"CNO screener paste: {len(plays)} NBA FanDuel player props kept"
           + (f"; dropped {sum(dropped.values())} ({', '.join(f'{k} {v}' for k, v in sorted(dropped.items()))})" if dropped else ""))
     for p in plays:
         print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {p['odds']:+g}: CNO EV {100 * p['ev']:+.1f}%, "
-              f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else ""))
+              f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}")
     if args.dry or not plays:
         return
-    rows = S.log(plays, args.date)
+    rows = S.log(plays, args.date, st)
     notip = sum(1 for r in rows if not r.get("tip"))
     print(f"Logged {len(rows)} as 'CNO screener' (¼K on fair prob, caps applied)"
           + (f"; {notip} have no tip time (player not on today's BettingPros board) and won't count until matched" if notip else "")
           + ". " + counts_line(args.date))
     for r in rows:
         print(f"  {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: {r['kelly_u']}u ¼K{cap_text(r['cap_note'])}")
+
+
+def run_proj(args):
+    """Projection context for props the user sends (display only; never changes a decision)."""
+    import bp_projctx as P
+    names = sorted({r["player"] for r in bp_learn._read(bp_learn.LEDGER)} |
+                   {r["player"] for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{args.date}.csv")))}
+                   if os.path.exists(os.path.join(HERE, f"bp_props_{args.date}.csv")) else set(), key=len, reverse=True)
+    for part in [x for x in re.split(r"[;\n]", args.proj) if x.strip()]:
+        t = part.split()
+        mi = next((i for i, w in enumerate(t) if w.lower() in MARKET_WORDS), None)
+        sm = re.search(r"\b(o|u|over|under)\s*(\d+(?:\.\d)?)", part, re.I)
+        if mi is None or not sm:
+            print(f"  {part.strip()}: need '<player> <market> <o|u><line>'")
+            continue
+        nm = norm(" ".join(t[:mi]))
+        player = next((n for n in names if nm and (nm == norm(n) or norm(n).endswith(" " + nm))), " ".join(t[:mi]))
+        side = "over" if sm.group(1).lower().startswith("o") else "under"
+        c = P.context(args.date, player, MARKET_WORDS[t[mi].lower()], side, float(sm.group(2)))
+        print(f"  {player} {MARKET_WORDS[t[mi].lower()]} {side} {float(sm.group(2)):g}: {c['text']}")
 
 
 def run_placed(args):
@@ -1138,10 +1165,15 @@ def main():
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
     g.add_argument("--cno-paste", metavar="FILE", help="CrazyNinja +EV screener text (file, or - for stdin): "
                                                          "NBA FanDuel player props -> 'CNO screener' record (no API calls)")
+    g.add_argument("--proj", metavar="PROPS", help="BettingPros projection context for props you send, from today's saved "
+                                                   "pull (0 requests): \"Toppin 3PM o1.5; Brunson PTS u27.5\"")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
+    ap.add_argument("--devig", help="--cno-paste: your screener's devig method (logged; warns if it changes)")
+    ap.add_argument("--min-books", type=int, help="--cno-paste: your screener's min books setting")
+    ap.add_argument("--max-odds", type=float, help="--cno-paste: your screener's max odds setting, e.g. +500")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
     ap.add_argument("--max-credits", type=int, help="required with --go: most credits this run may spend")
     ap.add_argument("--budget", type=int, default=DAILY_CREDITS,
@@ -1161,6 +1193,8 @@ def main():
         return run_placed(args)
     if args.cno_paste:
         return run_cno_paste(args)
+    if args.proj:
+        return run_proj(args)
 
     shortlist = load_picks(args.date, args.top)
     ua_ok, ua_why = U.usable()

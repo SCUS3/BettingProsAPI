@@ -88,6 +88,53 @@ def _dec(a):
 
 
 MIN_EV = 0.02        # same bar as our other +EV records
+PASTE_LOG = os.path.join(HERE, "cno_screener_log.json")
+
+
+def ev_header(text):
+    """The screener's EV column header (it names the devig method, e.g. 'LW-M EV%'), or None."""
+    for ln in text.splitlines():
+        if "bet name" in ln.lower() and "sportsbook" in ln.lower():
+            h = re.split(r"\t|\s{2,}", ln.strip())[0]
+            return h if "ev" in h.lower() else None
+    return None
+
+
+def settings(text, plays, devig=None, min_books=None, max_odds=None):
+    """This paste's screener settings (stated by flags, else the last paste's) + what the rows show; warnings when
+    they differ from the last paste or the rows break them. Appends to cno_screener_log.json."""
+    import json
+    try:
+        hist = json.load(open(PASTE_LOG))
+    except (OSError, ValueError):
+        hist = []
+    last = hist[-1] if hist else {}
+    st = {"at": L.utc_now(), "ev_header": ev_header(text),
+          "devig": devig if devig is not None else last.get("devig"),
+          "min_books": min_books if min_books is not None else last.get("min_books"),
+          "max_odds": max_odds if max_odds is not None else last.get("max_odds"),
+          "assumed": [k for k, v in (("devig", devig), ("min_books", min_books), ("max_odds", max_odds)) if v is None],
+          "rows_min_books": min((p["books"] for p in plays if p.get("books") is not None), default=None),
+          "rows_max_odds": max((p["odds"] for p in plays), default=None)}
+    warn = []
+    for k in ("ev_header", "devig", "min_books", "max_odds"):
+        if last and last.get(k) is not None and st.get(k) is not None and str(last.get(k)) != str(st.get(k)):
+            warn.append(f"{k} changed: {last.get(k)} -> {st.get(k)}")
+    if st["min_books"] is not None and st["rows_min_books"] is not None and st["rows_min_books"] < int(st["min_books"]):
+        warn.append(f"a row has {st['rows_min_books']} books, under your min books {st['min_books']}")
+    if st["max_odds"] is not None and st["rows_max_odds"] is not None and st["rows_max_odds"] > float(st["max_odds"]):
+        warn.append(f"a row is priced {st['rows_max_odds']:+g}, over your max odds {float(st['max_odds']):+g}")
+    if not last and st["assumed"]:
+        warn.append("settings not given (" + ", ".join(st["assumed"]) + "): pass --devig/--min-books/--max-odds once")
+    st["warnings"] = warn
+    hist.append(st)
+    json.dump(hist[-200:], open(PASTE_LOG, "w"), indent=1)
+    return st
+
+
+def settings_text(st):
+    return (f"devig {st.get('devig') or '?'} (EV column '{st.get('ev_header') or '?'}'), min books {st.get('min_books') or '?'}, "
+            f"max odds {('%+g' % float(st['max_odds'])) if st.get('max_odds') not in (None, '') else '?'}")
 
 
 def _when(txt, date):
@@ -196,7 +243,15 @@ def _parse_table(tbl, date):
         plays.append({"player": player, "market": mk, "side": "over" if sm.group(1).lower().startswith("o") else "under",
                       "line": float(sm.group(2)), "odds": odds, "ev": round(ev, 4), "fair": round(fair, 4), "books": books,
                       "tip": tip, "event": g.get("event"), "raw": " | ".join(f"{k}={v}" for k, v in g.items())[:200]})
-    return plays, dropped
+    return _with_proj(plays, date), dropped
+
+
+def _with_proj(plays, date):
+    import bp_projctx as P
+    for p in plays:
+        c = P.context(date, p["player"], p["market"], p["side"], p["line"])
+        p.update(proj_note=c["text"], proj_tag=c["tag"])
+    return plays
 
 
 def _parse_loose(text, date):
@@ -249,10 +304,10 @@ def _parse_loose(text, date):
         books = int(bm.group(1) or bm.group(2)) if bm else None
         plays.append({"player": player, "market": mk, "side": side, "line": line, "odds": fd, "ev": round(evv, 4),
                       "fair": round(fair, 4), "books": books, "raw": rec[:200]})
-    return plays, dropped
+    return _with_proj(plays, date), dropped
 
 
-def log(plays, date):
+def log(plays, date, st=None):
     """Log new plays as 'cno_scr' rows (¼K on fair prob, same caps). Returns rows logged."""
     import bp_value as V
     led = L._read(L.LEDGER)
@@ -280,7 +335,8 @@ def log(plays, date):
                     "player": p["player"], "team": c.get("team"), "market": p["market"], "side": p["side"], "line": p["line"],
                     "odds": p["odds"], "our_prob": p["fair"], "nv_prob": p["fair"], "kelly_u": x["stake"],
                     "event_id": c.get("event_id") or "", "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",
-                    "sources": p["books"], "cap_note": x["cap"]})
+                    "sources": p["books"], "cap_note": x["cap"], "proj_tag": p.get("proj_tag"),
+                    "proj_note": p.get("proj_note"), "scr_settings": settings_text(st) if st else ""})
     if out:
         L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
     return out

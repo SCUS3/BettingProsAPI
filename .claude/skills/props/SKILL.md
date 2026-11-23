@@ -103,5 +103,7 @@ Every finished slate with no live pull gets simmed with `bp_sim.py` (model picks
 
 ## CrazyNinja screener paste
 
-When the user pastes CrazyNinja's +EV screener text, save it to a scratch file and run `python3 bp_value.py --cno-paste <file> --dry` first, then without `--dry` to log (no API calls). It keeps NBA player props at FanDuel with EV >= +2% whose game hasn't started (tip from the screener's "Today at 8:00 PM"), and logs them as the "CNO screener" record (¼K on fair prob, same caps). Report kept vs. dropped by reason.
+When the user pastes CrazyNinja's +EV screener text, save it to a scratch file and run `python3 bp_value.py --cno-paste <file> --dry` first, then without `--dry` to log (no API calls). It keeps NBA player props at FanDuel with EV >= +2% whose game hasn't started (tip from the screener's "Today at 8:00 PM"), and logs them as the "CNO screener" record (¼K on fair prob, same caps). Report kept vs. dropped by reason, each play's BettingPros context (3PM/P+R projection, gap, proj agrees/disagrees; other markets BP lean; "–" if not in the pull), and any settings WARNING. Pass `--devig/--min-books/--max-odds` when the user states their screener settings; otherwise the last paste's are assumed. The screener bar stays +2%.
+
+When the user sends props in chat, run `python3 bp_value.py --proj "<player> <market> <o|u><line>; ..."` (0 requests) and show the BettingPros context next to each. Display only: it never changes a BET decision.
 

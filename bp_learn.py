@@ -53,7 +53,7 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
-                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag"]
+                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag", "proj_tag", "proj_note", "scr_settings"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -948,6 +948,15 @@ def record():
     o3 = [(r, v) for r, v in uniq if r["market"] == "3PM" and r.get("side") == "over"]
     strategies.append(dict(_summ([r for r, _ in o3], [v for _, v in o3]), key="model_3pm_over", group="model",
                            label="Projection model: 3PM overs"))
+    scr = [(r, v) for r, v in graded if r["strategy"] in SCREENER_KEYS]
+    for tag, lab in (("agrees", "proj agrees (3PM/P+R)"), ("disagrees", "proj disagrees (3PM/P+R)"),
+                     ("lean agrees", "BP lean agrees"), ("lean disagrees", "BP lean disagrees"), ("none", "no BP projection")):
+        sub = [(r, v) for r, v in scr if (r.get("proj_tag") or "none") == tag]
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="scr_" + tag.replace(" ", "_"), group="screener",
+                     label="CNO screener: " + lab)
+            x["clv_unit"] = "% EV at closing fair"
+            strategies.append(x)
     strategies += sim_record_rows()          # placed_record_rows() kept but unused: the record is the system's BETs only
     by_cat = []
     for mk in MARKETS:
