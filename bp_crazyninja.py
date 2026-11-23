@@ -1,9 +1,13 @@
-"""Second-opinion EV from Crazy Ninja Odds' devigger API (work in progress, api=open; no key).
+"""Crazy Ninja Odds' devigger API (work in progress, api=open; no key): worst-case devig per source.
 
-For one bet: each source's two-way odds at FanDuel's line are devigged with CNO's worst-case method
-(multiplicative, additive, power and shin; the least favourable fair value wins) against FanDuel's price.
-Reports the median and the lowest EV across sources. Only odds numbers are sent. Responses are cached in
-cno_cache.json, so a repeat check costs no call.
+Every call devigs ONE source's two-way market: LegOdds = "<bet side odds>/<other side odds>" (e.g. "-120/+100"),
+FinalOdds = FanDuel's price. Sources are never joined with commas (CNO would price that as a parlay); a bet
+priced by five sources is five calls, and we take the median. DevigMethod=4 (worst case) with all four
+WorstCase flags = 1: the least favourable of multiplicative, additive, power and shin.
+
+Throttled to 1 call per second, cached by (odds, final odds, method, boost) in cno_cache.json, and any error
+(down, timeout, odd response) is skipped silently: the caller gets None and says "no CNO check".
+Only odds numbers are sent.
 """
 import json
 import os
@@ -15,7 +19,10 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 URL = "http://api.crazyninjaodds.com/api/devigger/v1/sportsbook_devigger.aspx"
 CACHE = os.path.join(HERE, "cno_cache.json")
-PAUSE = 0.4            # seconds between calls (be polite to a pre-release API)
+MIN_INTERVAL = 1.0          # seconds between calls
+WORST_CASE = 4
+_last = [0.0]
+_cache = [None]
 
 
 def _fmt(a):
@@ -24,52 +31,78 @@ def _fmt(a):
 
 
 def _load():
+    if _cache[0] is None:
+        try:
+            _cache[0] = json.load(open(CACHE))
+        except (OSError, ValueError):
+            _cache[0] = {}
+    return _cache[0]
+
+
+def _save():
     try:
-        return json.load(open(CACHE))
-    except (OSError, ValueError):
-        return {}
+        json.dump(_load(), open(CACHE, "w"))
+    except OSError:
+        pass
 
 
-def devig(leg_odds, other_odds, final_odds, cache=None):
-    """CNO worst-case devig of one two-way market. Returns {'fair', 'ev', 'kelly', 'method'} or None."""
-    cache = _load() if cache is None else cache
-    key = f"{_fmt(leg_odds)}/{_fmt(other_odds)}|{_fmt(final_odds)}"
+def params(leg_odds, other_odds, final_odds, method=WORST_CASE, boost=None, boost_type=0):
+    """Query for one source's two-way market. boost = percent (e.g. 25), boost_type 0 = profit, 1 = all."""
+    q = {"api": "open", "LegOdds": f"{_fmt(leg_odds)}/{_fmt(other_odds)}", "FinalOdds": _fmt(final_odds),
+         "DevigMethod": method, "Args": "ev_p,kelly,dm,fo_o"}
+    if method == WORST_CASE:
+        q.update(WorstCase_Multiplicative=1, WorstCase_Additive=1, WorstCase_Power=1, WorstCase_Shin=1)
+    if boost:
+        q.update(Boost_Bool=1, Boost_Text=f"{float(boost):g}", Boost_Type=int(boost_type))
+    return q
+
+
+def url(*a, **k):
+    return f"{URL}?{urllib.parse.urlencode(params(*a, **k))}"
+
+
+def devig(leg_odds, other_odds, final_odds, method=WORST_CASE, boost=None, boost_type=0):
+    """{'fair', 'ev', 'kelly', 'method', 'final_odds'} for one source, or None on any error."""
+    q = params(leg_odds, other_odds, final_odds, method, boost, boost_type)
+    key = "|".join(f"{k}={q[k]}" for k in ("LegOdds", "FinalOdds", "DevigMethod")) + \
+          (f"|boost={q['Boost_Text']}:{q['Boost_Type']}" if boost else "")
+    cache = _load()
     if key in cache:
         return cache[key]
-    q = {"api": "open", "LegOdds": f"{_fmt(leg_odds)}/{_fmt(other_odds)}", "FinalOdds": _fmt(final_odds),
-         "DevigMethod": 4, "WorstCase_Multiplicative": 1, "WorstCase_Additive": 1, "WorstCase_Power": 1,
-         "WorstCase_Shin": 1, "Args": "ev_p,kelly,dm"}
-    req = urllib.request.Request(f"{URL}?{urllib.parse.urlencode(q)}", headers={"User-Agent": "props-devig-check"})
+    wait = MIN_INTERVAL - (time.time() - _last[0])
+    if wait > 0:
+        time.sleep(wait)
+    _last[0] = time.time()
     try:
+        req = urllib.request.Request(f"{URL}?{urllib.parse.urlencode(q)}", headers={"User-Agent": "props-devig-check"})
         with urllib.request.urlopen(req, timeout=20) as r:
-            j = json.load(r)
+            fin = (json.load(r) or {}).get("Final") or {}
+        if fin.get("EV_Percentage") is None or fin.get("FairValue") is None:
+            return None
+        out = {"fair": float(fin["FairValue"]), "ev": float(fin["EV_Percentage"]),
+               "kelly": None if fin.get("Kelly_Full") is None else float(fin["Kelly_Full"]),
+               "method": fin.get("DevigMethod"), "final_odds": fin.get("Odds")}
     except Exception:
         return None
-    time.sleep(PAUSE)
-    fin = j.get("Final") or {}
-    if fin.get("EV_Percentage") is None:
-        return None
-    out = {"fair": fin.get("FairValue"), "ev": fin.get("EV_Percentage"), "kelly": fin.get("Kelly_Full"),
-           "method": fin.get("DevigMethod")}
     cache[key] = out
+    _save()
     return out
 
 
-def check(side, two_way, fd_price):
-    """two_way = [(source, over_odds, under_odds)] at FanDuel's line. Returns {'median_ev', 'min_ev', 'n'} or None."""
+def check(side, two_way, fd_price, boost=None, boost_type=0):
+    """two_way = [(source, over_odds, under_odds)] at FanDuel's line, one CNO call per source.
+    Returns {'median_ev', 'min_ev', 'fair', 'kelly', 'n'} (medians across sources) or None if no call worked."""
     if not two_way or fd_price is None:
         return None
-    cache = _load()
-    evs = []
+    res = []
     for _, o, u in two_way:
         leg, other = (o, u) if side == "over" else (u, o)
-        r = devig(leg, other, fd_price, cache)
+        r = devig(leg, other, fd_price, boost=boost, boost_type=boost_type)
         if r:
-            evs.append(r["ev"])
-    try:
-        json.dump(cache, open(CACHE, "w"))
-    except OSError:
-        pass
-    if not evs:
+            res.append(r)
+    if not res:
         return None
-    return {"median_ev": round(statistics.median(evs), 4), "min_ev": round(min(evs), 4), "n": len(evs)}
+    ks = [r["kelly"] for r in res if r.get("kelly") is not None]
+    return {"median_ev": round(statistics.median(r["ev"] for r in res), 4), "min_ev": round(min(r["ev"] for r in res), 4),
+            "fair": round(statistics.median(r["fair"] for r in res), 4),
+            "kelly": round(statistics.median(ks), 3) if ks else None, "n": len(res)}

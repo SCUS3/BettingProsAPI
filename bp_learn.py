@@ -33,8 +33,13 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # Value-check decisions on the 2 PM shortlist (bp_value.py): logged once, counted if logged before tip,
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
-                    ("watch", "Watch list (shortlist, not bet)")]
+                    ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV")]
 BET_KEYS = {"bet_agree", "bet_only"}
+CNO_KEYS = {"cno"}        # CrazyNinja +EV: median worst-case EV >= +2%, ¼K on CNO's fair probability (own record)
+PLACED = os.path.join(HERE, "bp_placed.csv")      # what the user actually bet (bp_value.py --placed)
+PLACED_FIELDS = ["date", "placed_at", "player", "market", "side", "line", "odds", "stake_u", "match", "rule_stake",
+                 "rule_odds", "event_id", "tip", "result", "actual", "profit_u", "close_fair", "clv_ev", "raw"]
+SIM_LEDGER = os.path.join(HERE, "sim", "sim_ledger.csv")
 VALUE_KEYS = {k for k, _ in VALUE_STRATEGIES}
 MIN_TRAIN = 60            # player-games needed before the model is fit at all
 TRUST_N = 400             # model weight = n / (n + TRUST_N), then capped:
@@ -47,7 +52,7 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
-                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note"]
+                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -536,10 +541,11 @@ def log_value_decisions(date, rows):
     run can only add BETs); watch rows for the same pull are refreshed."""
     pulled = {r.get("pulled_at") for r in rows}
     old = _read(LEDGER)
-    key = lambda r: (r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    have_bets = {key(r) for r in old if r["date"] == date and r.get("strategy") in BET_KEYS}
+    cls = lambda st: "bet" if st in BET_KEYS else "cno" if st in CNO_KEYS else st
+    key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
+    have = {key(r) for r in old if r["date"] == date and r.get("strategy") in BET_KEYS | CNO_KEYS}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
-    new = [r for r in rows if not (r.get("strategy") in BET_KEYS and key(r) in have_bets)]
+    new = [r for r in rows if not (r.get("strategy") in BET_KEYS | CNO_KEYS and key(r) in have)]
     _write(LEDGER, ledger + new, LEDGER_FIELDS)
 
 
@@ -824,6 +830,83 @@ def _uniq(pairs):
     return out
 
 
+def sim_record_rows():
+    """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
+    rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P")]
+    if not rows:
+        return []
+    out = []
+    for strat, label in STRATEGIES:
+        sub = [r for r in rows if r["strategy"] == strat]
+        if sub:
+            out.append(dict(_summ(sub), key="sim_" + strat, group="sim", label="Sim: " + label))
+    once = [r for r, _ in _uniq([(r, None) for r in rows])]
+    out.append(dict(_summ(once), key="sim_all", group="sim",
+                    label=f"Sim: each prop once ({len({r['date'] for r in rows})} slates)"))
+    return out
+
+
+def placed_record_rows():
+    """My bets (bp_value.py --placed): W-L, units at my stake, ROI, CLV vs. the closing fair, rule vs. my stake."""
+    rows = _read(PLACED)
+    if not rows:
+        return []
+    g = [r for r in rows if r.get("result") in ("W", "L", "P")]
+    staked = sum(_num(r.get("stake_u")) or 0 for r in g)
+    units = sum(_num(r.get("profit_u")) or 0 for r in g)
+    clvs = [100 * _num(r["clv_ev"]) for r in rows if _num(r.get("clv_ev")) is not None]
+    x = {"key": "mine", "group": "mine", "label": "My bets", "w": sum(r["result"] == "W" for r in g),
+         "l": sum(r["result"] == "L" for r in g), "p": sum(r["result"] == "P" for r in g),
+         "units": round(units, 2), "roi": round(100 * units / staked, 1) if staked else None,
+         "kelly_units": round(units, 2), "kelly_roi": None, "brier": None, "brier_mkt": None, "logloss": None,
+         "logloss_mkt": None, "clv": round(sum(clvs) / len(clvs), 2) if clvs else None, "clv_n": len(clvs),
+         "clv_unit": "% EV at closing fair", "hit": None, "n_bets": len(rows), "pending": len(rows) - len(g),
+         "my_stake": round(sum(_num(r.get("stake_u")) or 0 for r in rows), 2),
+         "rule_stake": round(sum(_num(r.get("rule_stake")) or 0 for r in rows), 2),
+         "off_board": sum(1 for r in rows if r.get("match") == "off-board")}
+    if x["w"] + x["l"]:
+        x["hit"] = round(100 * x["w"] / (x["w"] + x["l"]), 1)
+    return [x]
+
+
+def grade_placed(date, box):
+    """Grade my placed bets for `date` from box scores; CLV from the matched BET's closing fair price."""
+    import bp_boxscore as BX
+    rows = _read(PLACED)
+    if not rows:
+        return 0
+    led = {(r["date"], r["strategy"], r["player"], r["market"], r["side"], str(_num(r.get("line")))): r for r in _read(LEDGER)}
+    n = 0
+    for r in rows:
+        if r["date"] != date:
+            continue
+        if r.get("match", "").startswith(("bet_", "cno")):
+            b = led.get((date, r["match"], r["player"], r["market"], r["side"], str(_num(r.get("line")))))
+            if b and _num(b.get("close_fair")) is not None:
+                r["close_fair"] = b["close_fair"]
+                r["clv_ev"] = round(_num(b["close_fair"]) * _dec(_num(r["odds"])) - 1, 4)
+        if r.get("result"):
+            continue
+        p = BX.lookup(box, r["player"]) if box else None
+        if p is None:
+            continue
+        v = BX.stat(p, r["market"])
+        if v is None and not p.get("played"):
+            r["result"], r["actual"], r["profit_u"] = "V", "", 0.0
+        elif v is not None:
+            res = grade(r["side"], r["line"], v)
+            r["result"], r["actual"] = res, v
+            r["profit_u"] = profit(r["odds"], res, _num(r["stake_u"]) or 0)
+        n += 1
+    _write(PLACED, rows, PLACED_FIELDS)
+    return n
+
+
+def _dec(american):
+    a = float(american)
+    return 1 + (a / 100 if a > 0 else 100 / -a)
+
+
 def record():
     """Summary of counted (pre-tip) picks for the dashboard and terminal."""
     ledger = _read(LEDGER)
@@ -836,25 +919,33 @@ def record():
         if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS:
-            x["clv_unit"] = "% EV at 6:30 fair"
+        if strat in BET_KEYS | CNO_KEYS:
+            x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
-        x["group"] = "bet" if strat in BET_KEYS else "model"
+        x["group"] = "bet" if strat in BET_KEYS else "cno" if strat in CNO_KEYS else "model"
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
     uniq = _uniq([(r, v) for r, v in graded if r["strategy"] in model_keys])
     combined = dict(_summ([r for r, _ in uniq], [v for _, v in uniq]), key="all", group="model",
-                    label="Model picks, each prop once (research)")
+                    label="Projection model, each prop once")
     if any(r["strategy"] in BET_KEYS for r in ledger):
         bu = _uniq([(r, v) for r, v in graded if r["strategy"] in BET_KEYS])
-        x = dict(_summ([r for r, _ in bu], [v for _, v in bu]), key="bets_all", group="bet", label="All BETs (market +EV)")
-        x["clv_unit"] = "% EV at 6:30 fair"
+        x = dict(_summ([r for r, _ in bu], [v for _, v in bu]), key="bets_all", group="bet",
+                 label="All Unabated BETs")
+        x["clv_unit"] = "% EV at closing fair"
+        strategies.append(x)
+    if any(r["strategy"] in CNO_KEYS for r in ledger):
+        mu = _uniq([(r, v) for r, v in graded if r["strategy"] in BET_KEYS | CNO_KEYS])
+        x = dict(_summ([r for r, _ in mu], [v for _, v in mu]), key="market_all", group="cno",
+                 label="Unabated BETs + CrazyNinja, each play once")
+        x["clv_unit"] = "% EV at closing fair"
         strategies.append(x)
     o3 = [(r, v) for r, v in uniq if r["market"] == "3PM" and r.get("side") == "over"]
     strategies.append(dict(_summ([r for r, _ in o3], [v for _, v in o3]), key="model_3pm_over", group="model",
-                           label="Model picks: 3PM overs"))
+                           label="Projection model: 3PM overs"))
+    strategies += sim_record_rows() + placed_record_rows()
     by_cat = []
     for mk in MARKETS:
         sub = [r for r, _ in uniq_all if r["market"] == mk and r["result"] in ("W", "L", "P")]

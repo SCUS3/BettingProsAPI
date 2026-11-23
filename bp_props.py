@@ -1017,7 +1017,7 @@ def main():
     for d in to_grade:
         finals = bp_learn.known_finals(d)
         capped = False
-        voids = set()
+        voids, box = set(), None
         try:                                             # public box scores first: ESPN, NBA.com fallback (0 BettingPros requests)
             box = bp_boxscore.finals(d)
             got, voids, unmatched = bp_learn.finals_from_box(d, box)
@@ -1050,6 +1050,7 @@ def main():
                 scored.add((ev, mk))
             finals.update(got)
         n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored, voids)
+        bp_learn.grade_placed(d, box)
         print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))
     if to_grade or not os.path.exists(bp_learn.MODEL):
         m = bp_learn.fit_model()
@@ -1384,13 +1385,23 @@ def print_record():
     if not any(x["w"] + x["l"] + x["p"] for x in lines):
         print("Record: no graded picks yet.")
         return
-    print(f"Record ({rec['slates']} graded slates, pre-tip picks only, flat 1u):")
-    for x in lines:
-        hit = f"{x['hit']}%" if x["hit"] is not None else "-"
-        br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
-        clv = f"CLV {x['clv']:+} pts" if x["clv"] is not None else ""
-        print(f"  {x['label']:28} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  {x['units']:+.2f}u  "
-              f"Kelly {x['kelly_units']:+.2f}u  {br}  {clv}".rstrip())
+    print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
+    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("mine", "My bets"),
+             ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
+    for g, head in heads:
+        rs = [x for x in lines if x.get("group") == g]
+        if not rs:
+            continue
+        print(f" {head}:")
+        for x in rs:
+            hit = f"{x['hit']}%" if x["hit"] is not None else "-"
+            br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
+            unit = "% EV" if x.get("clv_unit") else " pts"
+            clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
+            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno") else ""
+            extra = (f"ROI {x['roi']:+}%  rule {x['rule_stake']}u vs mine {x['my_stake']}u" if g == "mine" and x["roi"] is not None
+                     else f"rule {x.get('rule_stake')}u vs mine {x.get('my_stake')}u" if g == "mine" else "")
+            print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}  {extra}".rstrip())
 
 
 def finish(rows, date, snapshot=False, rw_players=None):

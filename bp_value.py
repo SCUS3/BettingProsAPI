@@ -429,6 +429,26 @@ def extra_rows(date, rows, data):
     return out
 
 
+def cno_rows(date, cands, led, gkey, cap):
+    """CrazyNinja +EV strategy rows: every side with median worst-case EV >= CNO_MIN_EV, staked at ¼K on CNO's fair
+    probability with the same player/game exposure caps (counted within this strategy). Never re-logged."""
+    have = {(x["player"], x["market"], x["side"], str(_f(x.get("line")))) for x in led
+            if x["date"] == date and x["strategy"] in bp_learn.CNO_KEYS}
+    logged = [x for x in led if x["date"] == date and x["strategy"] in bp_learn.CNO_KEYS]
+    new = [(r, sd, v, c) for r, sd, v, c in sorted(cands, key=lambda x: -x[3]["median_ev"])
+           if (r["player"], r["market"], sd, str(_f(r.get("line")))) not in have]
+    cc = apply_exposure([{"player": r["player"], "game": gkey(r), "ev": c["median_ev"],
+                          "stake": bet_kelly(c["fair"], v["price_used"], cap)} for r, sd, v, c in new], logged, gkey)
+    out = []
+    for (r, sd, v, c), x in zip(new, cc):
+        if x["stake"] <= 0:
+            continue
+        row = value_row(date, r, "cno", sd, v, x["stake"], c["fair"], c)
+        row["line"], row["cap_note"] = r["line"], x["cap"]
+        out.append(row)
+    return out
+
+
 def run_board(args):
     if args.go and not args.board_file and U.key():
         try:                                       # discovery refresh (free; no odds interval): current player ids
@@ -477,7 +497,7 @@ def run_board(args):
     need = [p for p in shortlist if not (ua.get(k(p)) and ua[k(p)].get("fair_mult") is not None)]
     oa = oa_fallback(args, need)
     # every priced line: both sides, best qualifying side is the BET
-    entries, bets = {}, []
+    entries, bets, cno_cands, rejects = {}, [], [], []
     by_row = {(r["player"], r["market"]): r for r in rows}
     for r in rows:
         sides = {sd: ua.get((r["player"], r["market"], sd)) for sd in ("over", "under")}
@@ -488,10 +508,22 @@ def run_board(args):
         if not sides:
             continue
         e = {"sides": sides, "at": bp_learn.utc_now()}
-        q = [(sd, v) for sd, v in sides.items() if qualifies(v)]
+        q = []
+        for sd, v in sides.items():
+            if not qualifies(v):
+                continue
+            c = cno_check(sd, v) if v.get("fair_src") == "Unabated" else None
+            ok, flag = bet_gate(v, c)
+            if c and c["median_ev"] >= CNO_MIN_EV:
+                cno_cands.append((r, sd, v, c))
+            if ok:
+                q.append((sd, v, c, flag))
+            else:
+                rejects.append(f"  CNO says no: {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: "
+                               f"Unabated EV {100 * v['ev_mult']:+.1f}%, CNO worst-case {100 * c['median_ev']:+.1f}%")
         if q:
-            sd, v = max(q, key=lambda x: x[1]["ev_mult"])
-            bets.append((r, sd, v))
+            sd, v, c, flag = max(q, key=lambda x: x[1]["ev_mult"])
+            bets.append((r, sd, v, c, flag))
         entries[line_key(r["player"], r["market"], r["line"])] = e
     ledger, lines_out = [], []
     cap, cap_note = bet_cap()
@@ -501,16 +533,16 @@ def run_board(args):
     have = {(x["player"], x["market"], x["side"], str(_f(x.get("line")))) for x in logged_bets}
     gkey = game_resolver(rows + logged_bets)
     cands = [{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
-              "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v in bets]
-    new_idx = [i for i, (r, sd, v) in enumerate(bets) if (r["player"], r["market"], sd, str(_f(r.get("line")))) not in have]
+              "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, c, flag in bets]
+    new_idx = [i for i, (r, sd, v, c, flag) in enumerate(bets) if (r["player"], r["market"], sd, str(_f(r.get("line")))) not in have]
     apply_exposure([cands[i] for i in new_idx], logged_bets, gkey)
     for i in range(len(bets)):                    # already-logged BETs keep their logged stake
         if i not in new_idx:
-            r, sd, v = bets[i]
+            r, sd, v, c, flag = bets[i]
             old_r = next(x for x in logged_bets if (x["player"], x["market"], x["side"], str(_f(x.get("line"))))
                          == (r["player"], r["market"], sd, str(_f(r.get("line")))))
             cands[i].update(stake=_f(old_r.get("kelly_u")) or 0, cap=old_r.get("cap_note") or "")
-    for (r, sd, v), c in zip(bets, cands):
+    for (r, sd, v, cno, flag), c in zip(bets, cands):
         ps = proj_side(r)
         tag = "+EV + proj agrees" if ps == sd else "+EV only"
         form, dvp = side_context(r, sd)
@@ -521,10 +553,10 @@ def run_board(args):
             continue
         e = entries[line_key(r["player"], r["market"], r["line"])]
         e.update(decision="BET", bet_side=sd, tag=tag, bet_kelly=stake, bet_price=v["price_used"], bet_ev=v["ev_mult"],
-                 form=form, dvp=dvp, proj_side=ps, cap_note=c["cap"])
+                 form=form, dvp=dvp, proj_side=ps, cap_note=c["cap"], cno_flag=flag)
         mp = _f(r.get("model_prob"))
         ledger.append(value_row(args.date, r, "bet_agree" if ps == sd else "bet_only", sd, v, stake,
-                                None if mp is None or ps is None else (mp if ps == sd else 1 - mp)))
+                                None if mp is None or ps is None else (mp if ps == sd else 1 - mp), cno))
         ledger[-1]["cap_note"] = c["cap"]
         e["cno_ev"], e["cno_min_ev"] = ledger[-1].get("cno_ev"), ledger[-1].get("cno_min_ev")
         lines_out.append(f"  BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
@@ -533,7 +565,11 @@ def run_board(args):
                          f"BP proj {'agrees' if ps == sd else ('says ' + ps if ps else 'none')} ({r.get('bp_proj') or '-'} vs {float(r['line']):g}); "
                          f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}"
                          + cno_note(ledger[-1]))
-    bet_keys = {(r["player"], r["market"]) for r, _, _ in bets}
+    lines_out += rejects
+    ledger += cno_rows(args.date, cno_cands, led_now, gkey, cap)
+    lines_out.append(f"  CrazyNinja +EV (own record): {sum(1 for x in ledger if x['strategy'] == 'cno')} lines logged "
+                     f"(median worst-case EV >= +{100 * CNO_MIN_EV:g}%).")
+    bet_keys = {(b[0]["player"], b[0]["market"]) for b in bets}
     for p in shortlist:
         if (p["player"], p["market"]) in bet_keys:
             continue
@@ -627,7 +663,7 @@ def cap_text(note):
     return f" ({note})" if note else ""
 
 
-def value_row(date, r, strategy, side, v, stake, our_prob):
+def value_row(date, r, strategy, side, v, stake, our_prob, cno="unset"):
     v = v or {}
     return {"date": date, "pulled_at": r.get("pulled_at"), "tip": r.get("tip"), "strategy": strategy, "rank": None,
             "player": r.get("player"), "team": r.get("team"), "market": r.get("market"), "side": side,
@@ -636,23 +672,45 @@ def value_row(date, r, strategy, side, v, stake, our_prob):
             "learned": r.get("learned"), "our_prob": our_prob, "nv_prob": v.get("fair_mult"), "kelly_u": stake,
             "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
             "oa_fair": v.get("fair_mult"), "oa_ev": v.get("ev_mult"), "fair_src": v.get("fair_src"),
-            "sources": v.get("books"), **(cno_fields(side, v) if strategy in bp_learn.BET_KEYS else {})}
+            "sources": v.get("books"),
+            **(cno_fields(side, v, cno) if strategy in bp_learn.BET_KEYS | bp_learn.CNO_KEYS else {})}
 
 
 
-def cno_fields(side, v):
-    """Crazy Ninja Odds worst-case devig of each source at FanDuel's line (second opinion; doesn't change the BET)."""
+CNO_MIN_EV = 0.02     # CrazyNinja +EV strategy: median worst-case EV across sources >= +2% (our bar)
+
+
+def cno_check(side, v):
+    """CrazyNinja worst-case devig of each source at FanDuel's line (one call per source), or None if CNO is down."""
+    if not v or not v.get("two_way"):
+        return None
     try:
         import bp_crazyninja as C
-        c = C.check(side, v.get("two_way"), v.get("price_used"))
+        return C.check(side, v.get("two_way"), v.get("price_used"))
     except Exception:
-        c = None
-    return {"cno_ev": c["median_ev"], "cno_min_ev": c["min_ev"]} if c else {}
+        return None
+
+
+def cno_fields(side, v, c="unset"):
+    c = cno_check(side, v) if c == "unset" else c
+    if not c:
+        return {"cno_flag": "no CNO check"}
+    return {"cno_ev": c["median_ev"], "cno_min_ev": c["min_ev"], "cno_fair": c["fair"], "cno_flag": ""}
+
+
+def bet_gate(v, c):
+    """BET rule: Unabated median EV >= +2% (qualifies) AND CNO median worst-case EV > 0; CNO down -> Unabated rule,
+    flagged. Returns (is_bet, flag)."""
+    if not qualifies(v):
+        return False, ""
+    if c is None:
+        return True, "no CNO check"
+    return c["median_ev"] > 0, ("" if c["median_ev"] > 0 else "CNO worst-case EV <= 0")
 
 
 def cno_note(row):
     if row.get("cno_ev") in (None, ""):
-        return ""
+        return "; no CNO check" if row.get("cno_flag") else ""
     return f"; CNO worst-case EV {100 * float(row['cno_ev']):+.1f}% (lowest source {100 * float(row['cno_min_ev']):+.1f}%)"
 
 
@@ -708,7 +766,8 @@ def run_close(args):
     """6:30 PM: one Unabated call to log CLV for today's BETs still to tip; flag any whose market EV fell below 0."""
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
-    bets = [r for r in led if r["date"] == args.date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip", "") > now]
+    bets = [r for r in led if r["date"] == args.date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS
+            and r.get("tip", "") > now]
     if not bets:
         sys.exit("No BETs for games still to tip.")
     ok, why = U.usable()
@@ -814,23 +873,37 @@ def watch_scan(date, state, close_before=None):
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
               if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip", "") > now}
     cap = bet_cap()[0]
-    new_rows, found = [], []
+    new_rows, found, cno_cands = [], [], []
+    state.setdefault("cno_seen", [])
     for r in rows:
         if r.get("tip") and str(r["tip"]) <= now:        # game already tipped: never log it
             continue
         for sd in ("over", "under"):
             v = ua.get((r["player"], r["market"], sd))
             k = f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"
-            if not qualifies(v) or k in logged or k in state["alerted"]:
+            if not qualifies(v) or (k in logged or k in state["alerted"]) and k in state["cno_seen"]:
                 continue
-            found.append((r, sd, v, k))
+            c = cno_check(sd, v)
+            if k not in state["cno_seen"] and c and c["median_ev"] >= CNO_MIN_EV:
+                cno_cands.append((r, sd, v, c))
+                state["cno_seen"].append(k)
+            if k in logged or k in state["alerted"]:
+                continue
+            ok, flag = bet_gate(v, c)
+            if not ok:
+                state["alerted"][k] = v["ev_mult"]          # don't re-check every scan
+                print(f"[{_et_now():%H:%M}] CNO says no: {r['player']} {r['market']} {sd} {float(r['line']):g} "
+                      f"{v['price_used']:+g}: Unabated EV {100 * v['ev_mult']:+.1f}%, CNO worst-case {100 * c['median_ev']:+.1f}%",
+                      flush=True)
+                continue
+            found.append((r, sd, v, k, c, flag))
     found.sort(key=lambda x: -x[2]["ev_mult"])
     day_bets = [x for x in led if x["date"] == date and x["strategy"] in bp_learn.BET_KEYS]
     gkey = game_resolver(rows + day_bets)
     cands = apply_exposure([{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
-                             "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, k in found],
+                             "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, k, _, _ in found],
                            day_bets, gkey)
-    for (r, sd, v, k), c in zip(found, cands):
+    for (r, sd, v, k, cno, flag), c in zip(found, cands):
         ps = proj_side(r)
         tag = "+EV + proj agrees" if ps == sd else "+EV only"
         stake = c["stake"]
@@ -842,7 +915,7 @@ def watch_scan(date, state, close_before=None):
                    f"(mkt EV {100 * v['ev_mult']:+.1f}%; {c['cap']})")
             continue
         row = value_row(date, dict(r, pulled_at=now), "bet_agree" if ps == sd else "bet_only", sd, v, stake,
-                        None if mp is None or ps is None else (mp if ps == sd else 1 - mp))
+                        None if mp is None or ps is None else (mp if ps == sd else 1 - mp), cno)
         row["line"] = r["line"]
         row["cap_note"] = c["cap"]
         new_rows.append(row)
@@ -850,6 +923,7 @@ def watch_scan(date, state, close_before=None):
                f"{100 * v['ev_mult']:+.1f}% ({v.get('books')} sources{', exch' if v.get('exchange') else ''}); "
                f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}; "
                f"tip {str(r.get('tip'))[11:16]}Z" + cno_note(row))
+    new_rows += cno_rows(date, [(dict(r, pulled_at=now), sd, v, c) for r, sd, v, c in cno_cands], led, gkey, cap)
     if new_rows:
         led = [r for r in led] + new_rows
         bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
@@ -872,7 +946,7 @@ def watch_scan(date, state, close_before=None):
     if close_before:                                     # last scan before these games tip: closing line
         state.setdefault("closed", [])
         led = bp_learn._read(bp_learn.LEDGER)
-        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS
+        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS
                    and now < r.get("tip", "") <= close_before]        # a later scan before tip overwrites: last one wins
         if closing:
             cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
@@ -884,6 +958,8 @@ def watch_scan(date, state, close_before=None):
                 if k not in state["closed"]:
                     state["closed"].append(k)
                 c = r.get("clv_ev")
+                if r["strategy"] not in bp_learn.BET_KEYS:        # CrazyNinja-record rows close silently
+                    continue
                 notify(f"CLOSE {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: "
                        + ("no closing price" if c in (None, "") else
                           f"CLV {100 * float(c):+.1f}%" + (f", mkt EV now {100 * float(r['close_mkt_ev']):+.1f}%"
@@ -958,6 +1034,61 @@ def run_watch(args):
         time.sleep(max(nxt - time.time(), 1))
 
 
+MARKET_WORDS = {"pts": "PTS", "points": "PTS", "reb": "REB", "rebounds": "REB", "ast": "AST", "assists": "AST",
+                "3pm": "3PM", "threes": "3PM", "3s": "3PM", "p+a": "P+A", "pa": "P+A", "p+r": "P+R", "pr": "P+R",
+                "pra": "PRA", "p+r+a": "PRA"}
+
+
+def parse_placed(text):
+    """'Toppin 3PM o1.5 +172 0.75u' -> dict(name, market, side, line, odds, stake). Raises ValueError."""
+    t = text.replace(",", " ").split()
+    mi = next((i for i, w in enumerate(t) if w.lower() in MARKET_WORDS), None)
+    if mi is None or mi == 0:
+        raise ValueError("needs: <player> <market> <o|u><line> <price> <stake>u, e.g. 'Toppin 3PM o1.5 +172 0.75u'")
+    name, market, rest = " ".join(t[:mi]), MARKET_WORDS[t[mi].lower()], t[mi + 1:]
+    j = " ".join(rest).lower().replace("over ", "o").replace("under ", "u").split()
+    if len(j) < 3 or j[0][0] not in "ou":
+        raise ValueError("side and line like o1.5 / u12.5, then the price (+172) and stake (0.75u)")
+    side = "over" if j[0][0] == "o" else "under"
+    line, odds, stake = float(j[0][1:]), float(j[1]), float(j[2].rstrip("u"))
+    return {"name": name, "market": market, "side": side, "line": line, "odds": odds, "stake": stake}
+
+
+def run_placed(args):
+    """Log a bet the user actually placed and match it to the day's logged BET (or CrazyNinja row), else off-board."""
+    try:
+        b = parse_placed(args.placed)
+    except ValueError as e:
+        sys.exit(f"Can't read that bet: {e}")
+    led = bp_learn._read(bp_learn.LEDGER)
+    nm = norm(b["name"])
+    day = [r for r in led if r["date"] == args.date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS
+           and r["market"] == b["market"] and r["side"] == b["side"] and _f(r.get("line")) == b["line"]
+           and (nm in norm(r["player"]) or norm(r["player"]).endswith(nm))]
+    day.sort(key=lambda r: 0 if r["strategy"] in bp_learn.BET_KEYS else 1)
+    m = day[0] if day else None
+    if m is None:                                     # player on the board at all?
+        cand = [r for r in led if r["date"] == args.date and (nm in norm(r["player"]) or norm(r["player"]).endswith(nm))]
+        player = cand[0]["player"] if cand else b["name"]
+        tip = cand[0].get("tip") if cand else ""
+        ev = cand[0].get("event_id") if cand else ""
+    else:
+        player, tip, ev = m["player"], m.get("tip"), m.get("event_id")
+    row = {"date": args.date, "placed_at": bp_learn.utc_now(), "player": player, "market": b["market"], "side": b["side"],
+           "line": b["line"], "odds": b["odds"], "stake_u": b["stake"], "match": m["strategy"] if m else "off-board",
+           "rule_stake": m.get("kelly_u") if m else 0, "rule_odds": m.get("odds") if m else "", "event_id": ev, "tip": tip,
+           "raw": args.placed}
+    rows = bp_learn._read(bp_learn.PLACED) + [row]
+    bp_learn._write(bp_learn.PLACED, rows, bp_learn.PLACED_FIELDS)
+    if m:
+        print(f"Logged: {player} {b['market']} {b['side']} {b['line']:g} {b['odds']:+g} for {b['stake']:g}u "
+              f"-> matches {m['strategy']} (rule stake {m.get('kelly_u')}u at {float(m['odds']):+g}"
+              f"{', ' + m['cap_note'] if m.get('cap_note') else ''}).")
+    else:
+        print(f"Logged OFF-BOARD: {player} {b['market']} {b['side']} {b['line']:g} {b['odds']:+g} for {b['stake']:g}u "
+              f"(no logged BET at that line).")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=bp_props.eastern_today())
@@ -967,6 +1098,7 @@ def main():
     g.add_argument("--board", action="store_true", help="daily: one Unabated call prices every FanDuel line; BETs; "
                                                         "The Odds API only for the shortlist Unabated can't price")
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
+    g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
@@ -984,6 +1116,8 @@ def main():
         return run_close(args)
     if args.watch:
         return run_watch(args)
+    if args.placed:
+        return run_placed(args)
 
     shortlist = load_picks(args.date, args.top)
     ua_ok, ua_why = U.usable()

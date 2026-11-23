@@ -26,3 +26,4 @@ watch_*.json
 watch_*.log
 sim/
 cno_cache.json
+bp_placed.csv
