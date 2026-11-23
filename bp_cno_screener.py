@@ -88,6 +88,8 @@ def _dec(a):
 
 
 MIN_EV = 0.02        # same bar as our other +EV records
+# The user's fixed screener settings: rows that break them are dropped.
+FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 200.0, "book": "FanDuel", "league": "NBA"}
 PASTE_LOG = os.path.join(HERE, "cno_screener_log.json")
 
 
@@ -110,9 +112,9 @@ def settings(text, plays, devig=None, min_books=None, max_odds=None):
         hist = []
     last = hist[-1] if hist else {}
     st = {"at": L.utc_now(), "ev_header": ev_header(text),
-          "devig": devig if devig is not None else last.get("devig"),
-          "min_books": min_books if min_books is not None else last.get("min_books"),
-          "max_odds": max_odds if max_odds is not None else last.get("max_odds"),
+          "devig": devig if devig is not None else FIXED["devig"],
+          "min_books": min_books if min_books is not None else FIXED["min_books"],
+          "max_odds": max_odds if max_odds is not None else FIXED["max_odds"],
           "assumed": [k for k, v in (("devig", devig), ("min_books", min_books), ("max_odds", max_odds)) if v is None],
           "rows_min_books": min((p["books"] for p in plays if p.get("books") is not None), default=None),
           "rows_max_odds": max((p["odds"] for p in plays), default=None)}
@@ -124,8 +126,10 @@ def settings(text, plays, devig=None, min_books=None, max_odds=None):
         warn.append(f"a row has {st['rows_min_books']} books, under your min books {st['min_books']}")
     if st["max_odds"] is not None and st["rows_max_odds"] is not None and st["rows_max_odds"] > float(st["max_odds"]):
         warn.append(f"a row is priced {st['rows_max_odds']:+g}, over your max odds {float(st['max_odds']):+g}")
-    if not last and st["assumed"]:
-        warn.append("settings not given (" + ", ".join(st["assumed"]) + "): pass --devig/--min-books/--max-odds once")
+    if (st["devig"], st["min_books"], float(st["max_odds"])) != (FIXED["devig"], FIXED["min_books"], FIXED["max_odds"]):
+        warn.append(f"differs from your fixed settings (devig {FIXED['devig']}, min books {FIXED['min_books']}, max odds +{FIXED['max_odds']:g})")
+    if st["ev_header"] and "lw-m" not in st["ev_header"].lower():
+        warn.append(f"EV column is '{st['ev_header']}', not LW-M: check the screener's devig setting")
     st["warnings"] = warn
     hist.append(st)
     json.dump(hist[-200:], open(PASTE_LOG, "w"), indent=1)
@@ -240,6 +244,12 @@ def _parse_table(tbl, date):
             books = int(g.get("books"))
         except (TypeError, ValueError):
             books = None
+        if books is not None and books < FIXED["min_books"]:
+            drop(f"under {FIXED['min_books']} books")
+            continue
+        if odds > FIXED["max_odds"]:
+            drop(f"odds over +{FIXED['max_odds']:g}")
+            continue
         plays.append({"player": player, "market": mk, "side": "over" if sm.group(1).lower().startswith("o") else "under",
                       "line": float(sm.group(2)), "odds": odds, "ev": round(ev, 4), "fair": round(fair, 4), "books": books,
                       "tip": tip, "event": g.get("event"), "raw": " | ".join(f"{k}={v}" for k, v in g.items())[:200]})
