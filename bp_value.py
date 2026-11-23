@@ -1104,7 +1104,8 @@ def run_cno_paste(args):
           + (f"; dropped {sum(dropped.values())} ({', '.join(f'{k} {v}' for k, v in sorted(dropped.items()))})" if dropped else ""))
     for p in plays:
         print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {p['odds']:+g}: CNO EV {100 * p['ev']:+.1f}%, "
-              f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}")
+              f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}"
+              + (f"  [{p['line_note']}]" if p.get("line_note") else ""))
     if args.dry or not plays:
         return
     rows = S.log(plays, args.date, st)

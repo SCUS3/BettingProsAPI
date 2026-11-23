@@ -88,6 +88,7 @@ def _dec(a):
 
 
 MIN_EV = 0.02        # same bar as our other +EV records
+ALT_GAP = 2.0        # a screener line this far from the pull's FanDuel main line is an alternate line (dropped)
 # The user's fixed screener settings: rows that break them are dropped.
 FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 200.0, "book": "FanDuel", "league": "NBA"}
 PASTE_LOG = os.path.join(HERE, "cno_screener_log.json")
@@ -222,8 +223,21 @@ def parse(text, date):
     return _parse_loose(text, date)
 
 
+def fd_main_lines(date):
+    """{(norm player, market): FanDuel main line} from today's pull (FanDuel-priced rows only)."""
+    out = {}
+    try:
+        for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
+            if r.get("price_is_fanduel") == "True" and r.get("line"):
+                out[(norm(r["player"]), r["market"])] = float(r["line"])
+    except OSError:
+        pass
+    return out
+
+
 def _parse_table(tbl, date):
     names = {norm(n): n for n in known_players(date)}
+    mains = fd_main_lines(date)
     now = L.utc_now()
     plays, dropped = [], {}
     drop = lambda why: dropped.__setitem__(why, dropped.get(why, 0) + 1)
@@ -245,6 +259,13 @@ def _parse_table(tbl, date):
             continue
         player_txt = (g.get("bet") or "")[:sm.start()].strip()
         player = names.get(norm(player_txt), player_txt)
+        main = mains.get((norm(player), mk))
+        line_note = ""
+        if main is not None and abs(float(sm.group(2)) - main) >= ALT_GAP:
+            drop(f"alt line (FanDuel main {main:g} at the pull)")
+            continue
+        if main is not None and float(sm.group(2)) != main:
+            line_note = f"line differs from the pull's FanDuel main {main:g} (moved, or an alt)"
         try:
             odds = float(g.get("odds"))
             ev = float(str(g.get("ev")).rstrip("%")) / 100
@@ -274,7 +295,8 @@ def _parse_table(tbl, date):
             continue
         plays.append({"player": player, "market": mk, "side": "over" if sm.group(1).lower().startswith("o") else "under",
                       "line": float(sm.group(2)), "odds": odds, "ev": round(ev, 4), "fair": round(fair, 4), "books": books,
-                      "tip": tip, "event": g.get("event"), "raw": " | ".join(f"{k}={v}" for k, v in g.items())[:200]})
+                      "tip": tip, "event": g.get("event"), "line_note": line_note,
+                      "raw": " | ".join(f"{k}={v}" for k, v in g.items())[:200]})
     return _with_proj(plays, date), dropped
 
 
