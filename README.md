@@ -17,7 +17,8 @@ Markets (full game): Points, Rebounds, Assists, Threes, Pts + Ast, Pts + Reb, Pt
 - **Every FanDuel line**: `/offers` (FanDuel main lines, all games in one query) first, then `/props` projections only for the players FanDuel prices. Side, gap, EV, Kelly and placeholder status are computed at FanDuel's line; when BettingPros' line differs, both are shown.
 - **Market fair price**: Unabated consensus (median of devigged DraftKings, BetMGM, Caesars, Fanatics, theScore, Novig, ProphetX, Kalshi and Polymarket at FanDuel's line, 3+ sources; pick'em apps excluded), with The Odds API as fallback.
 - **BET tags**: "+EV + proj agrees" vs. "+EV only", with form and DvP for the bet side. Both are recorded separately so the record shows which does better.
-- **Closing check**: a 6:30 PM re-price logs CLV (EV of the bet at the closing fair price) and flags BETs whose market EV fell below 0.
+- **Pull timing from the schedule**: `bp_schedule.py` reads ESPN's schedule (free) and suggests the first pull at the earliest tip − 90 min.
+- **Auto-CLV**: the watch's last scan before each game's tip (5 min before) logs the closing fair price and CLV (EV of the bet at the closing fair price) for that game's BETs, and flags BETs whose market EV fell below 0.
 - **Scores and lists**: top 10 by projection gap, score and balanced score, overall and per category, plus lines with no projection.
 - **Kelly stakes**: BETs at quarter-Kelly (¼K) on the market's fair probability, capped at 1.25u until 50 graded BETs show positive average CLV; model stakes halved until the model is calibrated.
 - **Lineups and injuries**: Rotowire projected lineups and injury status, including teammates ruled out.
@@ -73,12 +74,13 @@ Only `BP_API_KEY` is required; without the others the market check is skipped or
 
 | Time (ET) | Step | Cost |
 | --- | --- | --- |
+| Morning | `python3 bp_schedule.py`: earliest tip, suggested first pull, request estimate | free (ESPN) |
 | First run | Grade the previous slate | 0 BettingPros requests (ESPN / NBA.com box scores); BettingPros only for a game no box score covers |
-| 2:00 PM | `python3 bp_props.py --max-requests N`: full pull | about 5.7 requests per game + 1 |
-| After 2 PM | `python3 bp_value.py --board --go [--max-credits N]`: market check of every FanDuel line | 1 Unabated call; Odds API credits only for the fallback |
-| Noon to last tip | `python3 bp_value.py --watch`: free Unabated scan every 20 min; alerts only on new BETs and BETs whose market EV fell below 0 | 1 Unabated call per scan |
-| 6:30 PM | `python3 bp_props.py --reprice`: FanDuel lines from `/offers` only | about 2.4 requests per game |
-| 6:30 PM | `python3 bp_value.py --close --go`: CLV for each BET | 1 Unabated call |
+| Earliest tip − 90 min | `python3 bp_props.py --max-requests N`: full pull | about 5.7 requests per game + 1 |
+| After the pull | `python3 bp_value.py --board --go [--max-credits N]`: market check of every FanDuel line | 1 Unabated call; Odds API credits only for the fallback |
+| First pull to last tip | `python3 bp_value.py --watch`: free Unabated scan every 20 min plus one 5 min before each tip; alerts on new BETs and BETs whose market EV fell below 0; logs closing CLV per game | 1 Unabated call per scan |
+| Before most tips (optional) | `python3 bp_props.py --reprice`: FanDuel lines from `/offers` only | about 2.4 requests per game |
+| Only without the watch | `python3 bp_value.py --close --go`: CLV for each BET | 1 Unabated call |
 
 Without `--go`, `bp_value.py` only prints its plan and cost. Every step prints its budget math first.
 
@@ -103,8 +105,8 @@ python3 bp_props.py --location NJ      # sportsbook location for the FanDuel boo
 # Market check
 python3 bp_value.py --board                        # plan: cost of pricing every FanDuel line
 python3 bp_value.py --board --go --max-credits 4   # run: Unabated for the board, Odds API fallback up to 4 credits
-python3 bp_value.py --close --go                   # 6:30 PM: CLV for today's BETs
-python3 bp_value.py --watch                        # noon to last tip: alerts on new BETs and BETs gone below 0 EV
+python3 bp_value.py --close --go                   # CLV for today's BETs when the watch isn't running
+python3 bp_value.py --watch                        # first pull to last tip: alerts, plus closing CLV per game
 python3 bp_value.py --board --go --board-file F    # price a saved Unabated board (no call)
 python3 bp_value.py --top 10                       # plan an Odds API check of the top 10 by Balanced only
 python3 bp_unabated.py --discover                  # Unabated discovery (no odds calls)
@@ -216,6 +218,6 @@ This project is for research and entertainment. Projections and market prices ar
 
 ## Simulating a slate you didn't pull (`bp_sim.py`, research only)
 
-`python3 bp_sim.py --date YYYY-MM-DD --max-requests N` pulls that date's FanDuel props from BettingPros (≈1.5 requests per game; ask first), scores them with the same model and grades the model picks from box scores. Re-running without `--max-requests` reuses the saved pull (0 requests). `--backfill` lists every finished regular-season date without a live pull, with request estimates (free, from ESPN's schedule); `--backfill --go --max-requests N` sims them newest first within N; `--record` prints the sim record. It writes only to `sim/` (`sim/sim_ledger.csv`): the real ledger, graded props, model, Kelly cap and dashboard are untouched.
+`python3 bp_sim.py --date YYYY-MM-DD --max-requests N` pulls that date's FanDuel props from BettingPros (≈1.5 requests per game; ask first), scores them with the same model and grades the model picks from box scores. Re-running without `--max-requests` reuses the saved pull (0 requests). `--backfill` lists every finished regular-season date without a live pull, with request estimates (free, from ESPN's schedule); `--backfill --go --max-requests N` sims them newest first, using only requests left after the live flow (it reserves every live pull and re-price due before the 7 PM ET reset, so a sim never delays or trims a live pull); `--record` prints the sim record. It writes only to `sim/` (`sim/sim_ledger.csv`): the real ledger, graded props, model, Kelly cap and dashboard are untouched.
 
 Limits: the lines are the last ones BettingPros kept (near closing), not the 2 PM prices; BettingPros' form windows for a past date already include that game, so the sim removes it from every window and drops last-1, head-to-head and the streak; market BETs aren't simulated (no historical Unabated consensus).

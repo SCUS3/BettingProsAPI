@@ -608,28 +608,41 @@ def run_close(args):
     except U.Unavailable as e:
         sys.exit(f"Unabated key stopped working ({e}); no closing check.")
     at = bp_learn.utc_now()
+    flagged = apply_close(args.date, led, bets, res, at, show=True)
+    print(f"\nCLV logged for {sum(1 for r in bets if r.get('close_fair') not in (None, ''))} of {len(bets)} BETs. "
+          + ("FLAGGED (market EV now < 0): " + "; ".join(f"{r['player']} {r['market']} {r['side']} {float(r['line']):g}" for r in flagged)
+             if flagged else "No BET's market EV fell below 0."))
+
+
+def apply_close(date, led, bets, res, at, show=False):
+    """Closing fair price, CLV (EV of the bet taken, at the closing fair) and market EV now for `bets`
+    (rows of `led`), from Unabated prices `res`. Writes the ledger and the value file; returns BETs whose
+    market EV at FanDuel's current price fell below 0."""
     flagged = []
-    print(f"\n{'player':22} {'mkt':4} {'side':5} {'bet':10} {'fair now':8} {'CLV (EV)':9} {'mkt EV now':10} FD now")
-    for r, p in zip(bets, picks):
-        v = res.get((p["player"], p["market"], p["side"])) or {}
+    if show:
+        print(f"\n{'player':22} {'mkt':4} {'side':5} {'bet':10} {'fair now':8} {'CLV (EV)':9} {'mkt EV now':10} FD now")
+    for r in bets:
+        v = res.get((r["player"], r["market"], r["side"])) or {}
         f = v.get("fair_mult")
+        odds = float(r["odds"])
         r["close_at"] = at
         r["close_fd_line"] = v.get("oa_fd_line")
         if f is None:
-            print(f"{r['player'][:22]:22} {r['market']:4} {r['side']:5} {p['line']:g} {p['odds']:+g}  no closing price ({v.get('note') or 'not on the board'})")
+            if show:
+                print(f"{r['player'][:22]:22} {r['market']:4} {r['side']:5} {float(r['line']):g} {odds:+g}  no closing price ({v.get('note') or 'not on the board'})")
             continue
         r["close_fair"] = f
-        r["clv_ev"] = round(f * decimal(p["odds"]) - 1, 4)           # the bet we took, priced at the 6:30 fair
+        r["clv_ev"] = round(f * decimal(odds) - 1, 4)                  # the bet we took, priced at the closing fair
         r["close_mkt_ev"] = v.get("ev_mult")                           # FanDuel's current price at our line, if still there
-        drop = v.get("ev_mult") is not None and v["ev_mult"] < 0
-        if drop:
+        if v.get("ev_mult") is not None and v["ev_mult"] < 0:
             flagged.append(r)
-        fd_now = "-" if v.get("oa_fd_line") is None else f"{v['oa_fd_line']:g} {v.get('oa_fd_price'):+g}"
-        ev_now = "-" if v.get("ev_mult") is None else f"{100 * v['ev_mult']:+.1f}%"
-        print(f"{r['player'][:22]:22} {r['market']:4} {r['side']:5} {p['line']:g} {p['odds']:+g}  {f:.3f}    "
-              f"{100 * r['clv_ev']:+.1f}%    {ev_now:10} {fd_now}" + ("   FLAG: market EV now below 0" if drop else ""))
+        if show:
+            fd_now = "-" if v.get("oa_fd_line") is None else f"{v['oa_fd_line']:g} {v.get('oa_fd_price'):+g}"
+            ev_now = "-" if v.get("ev_mult") is None else f"{100 * v['ev_mult']:+.1f}%"
+            print(f"{r['player'][:22]:22} {r['market']:4} {r['side']:5} {float(r['line']):g} {odds:+g}  {f:.3f}    "
+                  f"{100 * r['clv_ev']:+.1f}%    {ev_now:10} {fd_now}" + ("   FLAG: market EV now below 0" if r in flagged else ""))
     bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
-    path = os.path.join(HERE, f"value_{args.date}.json")
+    path = os.path.join(HERE, f"value_{date}.json")
     try:
         val = json.load(open(path))
     except (OSError, ValueError):
@@ -639,14 +652,12 @@ def run_close(args):
         if e is not None and r.get("close_fair") not in (None, ""):
             e["close"] = {"fair": r["close_fair"], "clv_ev": r["clv_ev"], "mkt_ev": r["close_mkt_ev"], "at": at}
     json.dump(val, open(path, "w"), indent=1)
-    print(f"\nCLV logged for {sum(1 for r in bets if r.get('close_fair') not in (None, ''))} of {len(bets)} BETs. "
-          + ("FLAGGED (market EV now < 0): " + "; ".join(f"{r['player']} {r['market']} {r['side']} {float(r['line']):g}" for r in flagged)
-             if flagged else "No BET's market EV fell below 0."))
+    return flagged
 
 
 # --------------------------------------------------------------------- watch
 WATCH_EVERY = 20 * 60        # seconds between scans
-WATCH_START_ET = 12          # noon ET
+CLOSE_LEAD = 5 * 60          # the closing scan runs this long before each tip
 
 
 def _et_now():
@@ -668,9 +679,10 @@ def notify(msg):
         pass
 
 
-def watch_scan(date, state):
+def watch_scan(date, state, close_before=None):
     """One free Unabated scan: new BETs (logged) and logged BETs whose market EV fell below 0 (or line moved).
-    Returns the number of games still to tip."""
+    BETs in games tipping before `close_before` (the next scan) get their closing price and CLV logged now:
+    this is the last scan before their tip. Returns the tip times still ahead."""
     data = U.fetch_board(["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA"])
     d = U.load(U.DISCOVERY, {})
     have_csv = os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv"))
@@ -726,13 +738,36 @@ def watch_scan(date, state):
             state["dropped"].append(k)
             notify(f"BET EV BELOW 0: {r['player']} {r['market']} {r['side']} {float(r['line']):g}: mkt EV now "
                    f"{100 * v['ev_mult']:+.1f}% at {v['price_used']:+g} (bet {float(r['odds']):+g})")
-    tips = {x["tip"] for x in U.fd_lines(data, d) if x.get("tip") and x["tip"] > now}
-    return len(tips)
+    if close_before:                                     # last scan before these games tip: closing line
+        state.setdefault("closed", [])
+        led = bp_learn._read(bp_learn.LEDGER)
+        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS
+                   and now < r.get("tip", "") <= close_before
+                   and f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}" not in state["closed"]]
+        if closing:
+            cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
+                   "odds": float(r["odds"])} for r in closing]
+            res = U.price_board(cp, data, d)
+            flagged = apply_close(date, led, closing, res, now)
+            for r in closing:
+                state["closed"].append(f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}")
+                c = r.get("clv_ev")
+                notify(f"CLOSE {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: "
+                       + ("no closing price" if c in (None, "") else
+                          f"CLV {100 * float(c):+.1f}%" + (f", mkt EV now {100 * float(r['close_mkt_ev']):+.1f}%"
+                                                           if r.get("close_mkt_ev") not in (None, "") else ""))
+                       + ("  EV FELL BELOW 0" if r in flagged else "") + f"; tip {str(r.get('tip'))[11:16]}Z")
+    tips = sorted({x["tip"] for x in U.fd_lines(data, d) if x.get("tip") and x["tip"] > now})
+    led = bp_learn._read(bp_learn.LEDGER)
+    tips = sorted(set(tips) | {r["tip"] for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS
+                               and r.get("tip", "") > now})
+    return tips
 
 
 def run_watch(args):
-    """Free Unabated scan every 20 minutes from noon ET until the last game's tip; alerts only on new BETs and
-    on logged BETs whose market EV fell below 0 (or whose FanDuel line moved). Start it once a day."""
+    """Free Unabated scan every 20 minutes from the day's first pull until the last game's tip, plus one 5 minutes
+    before each tip; alerts on new BETs and on logged BETs whose market EV fell below 0 (or whose FanDuel line
+    moved). The last scan before each tip logs closing fair price and CLV for that game's BETs (replaces --close)."""
     ok, why = U.usable()
     if not ok:
         sys.exit(f"Unabated not usable: {why}")
@@ -741,8 +776,9 @@ def run_watch(args):
         state = json.load(open(path))
     except (OSError, ValueError):
         state = {"alerted": {}, "dropped": []}
-    print(f"Watching {args.date}: one free Unabated scan every {args.every} min from {WATCH_START_ET}:00 ET until the last tip. "
-          f"Alerts: new BETs (logged) and BETs whose market EV fell below 0.", flush=True)
+    print(f"Watching {args.date}: one free Unabated scan every {args.every} min from the first pull until the last tip, "
+          f"plus one {CLOSE_LEAD // 60} min before each tip (closing CLV). Alerts: new BETs, BETs whose market EV fell below 0.",
+          flush=True)
     try:                                                  # keep the Mac awake while watching (sleep skipped scans)
         import subprocess
         subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
@@ -752,27 +788,42 @@ def run_watch(args):
         U.discover()
     except (U.Unavailable, RuntimeError) as e:
         print(f"Discovery refresh failed ({e}); using the saved one.", flush=True)
+    csv_path = os.path.join(HERE, f"bp_props_{args.date}.csv")
+    while not os.path.exists(csv_path):                   # starts with the day's first pull
+        print(f"{_et_now():%H:%M} ET: waiting for the first pull (bp_props_{args.date}.csv); checking every 5 min.", flush=True)
+        time.sleep(300)
+    every = args.every * 60
+    close_before = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + every))   # first scan: games before the next
     while True:
-        et = _et_now()
-        if et.hour < WATCH_START_ET:
-            wait = ((WATCH_START_ET - et.hour) * 3600 - et.minute * 60 - et.second)
-            print(f"Waiting {wait // 60} min until {WATCH_START_ET}:00 ET.", flush=True)
-            time.sleep(max(wait, 1))
-            continue
         try:
-            left = watch_scan(args.date, state)
+            tips = watch_scan(args.date, state, close_before)
         except U.Unavailable as e:
             notify(f"Watch stopped: Unabated key stopped working ({e}).")
             return
         except Exception as e:
             print(f"{_et_now():%H:%M} scan failed ({e}); next in {args.every} min.", flush=True)
-            left = 1
+            tips = [bp_learn.utc_now()[:11] + "23:59:59Z"]
         json.dump(state, open(path, "w"), indent=1)
-        print(f"{_et_now():%H:%M} ET scan done; {left} tip times still ahead.", flush=True)
-        if left == 0:
+        print(f"{_et_now():%H:%M} ET scan done; {len(tips)} tip times still ahead.", flush=True)
+        if not tips:
             print("All games have tipped. Watch done.", flush=True)
             return
-        time.sleep(args.every * 60)
+        now = time.time()
+        nxt = now + every
+        for t in tips:                                    # land a scan CLOSE_LEAD before each tip
+            ts = dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc).timestamp() - CLOSE_LEAD
+            if now + 60 < ts < nxt:
+                nxt = ts
+                break
+        # the scan at `nxt` is the last one before every tip earlier than the scan after it
+        after = nxt + every
+        for t in tips:
+            ts = dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc).timestamp() - CLOSE_LEAD
+            if nxt + 60 < ts < after:
+                after = ts
+                break
+        close_before = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(after + CLOSE_LEAD - 1))
+        time.sleep(max(nxt - time.time(), 1))
 
 
 def main():
@@ -784,8 +835,8 @@ def main():
     g.add_argument("--board", action="store_true", help="daily: one Unabated call prices every FanDuel line; BETs; "
                                                         "The Odds API only for the shortlist Unabated can't price")
     g.add_argument("--close", action="store_true", help="6:30 PM: one Unabated call logs CLV for today's BETs")
-    g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from noon ET to the last tip; "
-                                                        "alerts on new BETs and BETs whose market EV fell below 0")
+    g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
+                                                        "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--go", action="store_true", help="make the calls (only after the user approved the credit cost)")
     ap.add_argument("--max-credits", type=int, help="required with --go: most credits this run may spend")
     ap.add_argument("--budget", type=int, default=DAILY_CREDITS,

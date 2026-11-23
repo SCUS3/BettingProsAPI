@@ -85,7 +85,34 @@ def unpulled_dates(today):
     return out
 
 
+def live_reserve():
+    """BettingPros requests the live flow still needs inside the current UTC day (the 100-request window).
+    For each ET date whose first pull (earliest tip - 90 min) or games fall before the window resets: the full
+    pull if it hasn't run, plus the re-price. Sims only get what's left, so they never delay or trim a live pull."""
+    import bp_schedule as S
+    now = dt.datetime.now(dt.timezone.utc)
+    window_end = dt.datetime.combine(now.date() + dt.timedelta(days=1), dt.time(), dt.timezone.utc)
+    reserve, notes = 0, []
+    et_today = dt.date.fromisoformat(B.eastern_today())
+    for d in (et_today, et_today + dt.timedelta(days=1)):
+        p = S.plan(d.isoformat())
+        if not p["games"] or p["last_tip"] <= now or p["pull_at"] >= window_end:
+            continue
+        pulled = os.path.exists(os.path.join(HERE, f"bp_props_{d.isoformat()}.csv"))
+        left = sum(1 for tip, _, _ in p["list"] if tip > now)                 # games still to tip
+        need = (0 if pulled else math.ceil(S.PULL_PER_GAME * left + 1)) + math.ceil(S.REPRICE_PER_GAME * left)
+        reserve += need
+        notes.append(f"{d.isoformat()} live flow ≈{need} ({'re-price' if pulled else 'pull + re-price'})")
+    return reserve, notes
+
+
 def backfill(today, cap, go):
+    used = B.used_today()
+    reserve, notes = live_reserve()
+    spare = max(0, B.DAILY_LIMIT - used - reserve)
+    print(f"BettingPros window: {used} used, {reserve} reserved for the live flow"
+          + (f" ({'; '.join(notes)})" if notes else "") + f" -> {spare} spare for sims.")
+    cap = min(cap, spare)
     todo = unpulled_dates(today)
     est = sum(c for _, _, c in todo)
     print(f"Unpulled finished dates since {SEASON_START}: {len(todo)} ({sum(g for _, g, _ in todo)} games), "
@@ -94,6 +121,9 @@ def backfill(today, cap, go):
         print(f"  {ds}: {g} games, ≈{c} requests")
     if not go:
         print("Plan only: no BettingPros requests made.")
+        return
+    if cap <= 0:
+        print("No spare requests after the live flow: no sims this window.")
         return
     spent, done = 0, []
     for ds, g, c in reversed(todo):                   # newest first
