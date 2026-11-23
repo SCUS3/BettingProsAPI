@@ -477,10 +477,10 @@ footer b { color: var(--ink); font-weight: 600; }
       out.push(G[1]);
       if (G[0] === "half") {
         var F = (R.half || {}).flags || {}, Pp = (R.half || {}).pastes || {}, O = (R.half || {}).oddsapi;
-        (F.nights || []).forEach(function (n) { out.push("  " + n.date + ": " + n.alerts + " alerts from " + n.players + " player props in " + n.games + " games (" + n.skipped + " skip-flagged)"); });
-        (F.by_type || []).filter(function (t) { return t.n; }).forEach(function (t) { out.push("  " + t.type + ": " + t.w + "-" + t.l + " (" + t.hit + "%)"); });
+        (F.nights || []).forEach(function (n) { out.push("  " + n.date + ": " + n.alerts + " alerts from " + n.players + " player props in " + n.games + " games" + (n.legacy_reversal ? " (" + n.legacy_reversal + " legacy reversal flags)" : "")); });
+        (F.accuracy || []).filter(function (a) { return a.bucket === "all"; }).forEach(function (a) { out.push("  Expected final " + a.market + ": avg miss " + a.miss + ", bias " + (a.bias > 0 ? "+" : "") + a.bias + " (n " + a.n + ")"); });
         if (Pp.rows) out.push("  Pastes: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs");
-        if (O) out.push("  Odds API live test: " + (O.pass ? "PASS" : "FAIL") + ", " + O.other_fresh_books + " fresh other books, credits " + O.credits_last + " used / " + O.credits_remaining + " left");
+        if (O) out.push("  Odds API live test (failed; no more live calls): " + (O.pass ? "PASS" : "FAIL") + ", " + O.other_fresh_books + " fresh other books, credits " + O.credits_last + " used / " + O.credits_remaining + " left");
       }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
@@ -634,20 +634,20 @@ footer b { color: var(--ink); font-weight: 600; }
       if (G[0] === "half" && (rs.length || (HF.flags && HF.flags.n) || HF.oddsapi)) {
         var hh = "";
         var F = HF.flags || {nights: [], by_type: []};
-        if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime (the base rate). Alerts = strong flags only: overs ≤25% of the line with 12+ first-half minutes, unders ≥80% but still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player.",
-          th([["Night", "l"], ["Games"], ["Player props"], ["Alerts"], ["Skip-flagged"], ["Graded alerts"]]),
-          F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + n.skipped + "</td><td>" + n.graded + "</td></tr>"; }).join(""));
-        var BF = F.backfill || {};
-        if (F.by_type.some(function (t) { return t.n; })) hh += board("Alerts vs. base rate", "Hit = finished on the flagged side of the pregame line. An alert only matters if it beats the base rate of all players at the same first-half pace. 2nd half = average second-half production as % of the line." +
-          (BF.rows ? " Base rate includes " + BF.rows + " backfill player props from " + BF.games + " past games (" + BF.dates.join(", ") + "; ESPN play-by-play); backfill never counts as an alert or HALF BET." : ""),
-          th([["Group", "l"], ["W-L"], ["Hit"], ["2nd half % of line"]]),
-          F.by_type.map(function (t) { var s = t.kind === "alert" ? "<b>" + esc(t.type) + "</b>" : '<span class="dim">' + esc(t.type) + "</span>";
-            return '<tr><td class="l">' + s + "</td><td>" + t.w + "-" + t.l + "</td><td>" + pct(t.hit) + "</td><td>" + (t.second_half_pct == null ? "–" : t.second_half_pct + "%") + "</td></tr>"; }).join(""));
+        if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime. Alerts are strong pace flags (≤25% with 12+ minutes, or ≥80% still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player) with no side: the side comes only from the expected final vs. FanDuel's live line in a paste. 11/22's 9 alerts were reversal bets and are kept only as legacy reversal flags.",
+          th([["Night", "l"], ["Games"], ["Player props"], ["Alerts"], ["Legacy reversal flags"]]),
+          F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + (n.legacy_reversal || "–") + "</td></tr>"; }).join(""));
+        var BF = F.backfill || {}, ACC = (F.accuracy || []);
+        if (ACC.length) hh += board("Expected final accuracy", "Final stat minus expected final (first half + base-rate 2nd-half share × pregame line), scored out of sample: each night uses shares from the other nights only. Bias > 0 means the expected final runs too low; < 0 too high." +
+          (BF.rows ? " Includes " + BF.rows + " backfill rows from " + BF.games + " past games." : ""),
+          th([["Market", "l"], ["1st-half pace", "l"], ["n"], ["Avg miss"], ["Bias"]]),
+          ACC.map(function (a) { var s = a.bucket === "all" ? "<b>" : "", e = a.bucket === "all" ? "</b>" : "";
+            return '<tr><td class="l">' + s + esc(a.market) + e + '</td><td class="l">' + s + esc(a.bucket) + e + "</td><td>" + a.n + "</td><td>" + a.miss + "</td><td>" + (a.bias > 0 ? "+" : "") + a.bias + "</td></tr>"; }).join(""));
         var Pp = HF.pastes || {};
         if (Pp.rows) hh += board("Halftime pastes", "Every pasted live prop: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
           (Object.keys(Pp.why_not || {}).map(function (k) { return k + " " + Pp.why_not[k]; }).join(", ") || "–") + ".", "", "");
         var O = HF.oddsapi;
-        if (O) hh += board("Odds API live test", O.event + " " + O.market + " at " + O.at + ": " + (O.pass ? "PASS" : "FAIL") + " — FanDuel " + (O.fanduel ? (O.fanduel_fresh ? "fresh" : "stale") : "missing") +
+        if (O) hh += board("Odds API live test (failed; no more live calls)", O.event + " " + O.market + " at " + O.at + ": " + (O.pass ? "PASS" : "FAIL") + " — FanDuel " + (O.fanduel ? (O.fanduel_fresh ? "fresh" : "stale") : "missing") +
           ", " + O.other_fresh_books + " other books under 60 s old. Credits: " + O.credits_last + " used, " + O.credits_remaining + " left.",
           th([["Book", "l"], ["Updated"], ["Outcomes"]]), (O.books || []).map(function (b) { return '<tr><td class="l">' + esc(b.book) + "</td><td>" + (b.age_s == null ? "–" : b.age_s + " s ago") + "</td><td>" + b.outcomes + "</td></tr>"; }).join(""));
         html += board(G[1], G[2], bHead, rs.map(bRow).join("") || '<tr><td class="l dim" colspan="7">No HALF BETs yet.</td></tr>') + hh;

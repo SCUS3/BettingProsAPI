@@ -412,21 +412,30 @@ def extra_rows(date, rows, data):
     """FanDuel lines on Unabated's board that the BettingPros pull didn't carry, as no-projection rows mapped to
     BettingPros' game ids by team (so they can be graded)."""
     have = {(norm(r["player"]), r["market"]) for r in rows}
-    ev_teams = {}
+    ev_teams, bp_only = {}, {}
     for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
         if r.get("event_id") and r.get("team"):
             ev_teams.setdefault(str(r["event_id"]).split(".")[0], set()).add(U.TEAM_FIX.get(r["team"], r["team"]))
+        if r.get("price_is_fanduel") != "True" and r.get("bp_proj") not in (None, ""):
+            bp_only[(norm(r["player"]), r["market"])] = r       # BettingPros projection with no FanDuel line in /offers
     pulled = rows[0].get("pulled_at") if rows else bp_learn.utc_now()
     out = []
     for x in slate_lines(data, date):
         if (norm(x["player"]), x["market"]) in have:
             continue
         ev = next((e for e, t in ev_teams.items() if t & set(x["teams"])), None)
-        side = "over" if x["over_odds"] >= x["under_odds"] else "under"
-        out.append({"player": x["player"], "team": "", "market": x["market"], "line": x["line"], "rec_side": side,
-                    "fd_odds_rec": x[side + "_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"],
-                    "price_is_fanduel": "True", "noproj": "True", "bp_proj": "", "event_id": ev or "", "tip": x["tip"],
-                    "pulled_at": pulled, "source_row": "unabated"})
+        bp = bp_only.get((norm(x["player"]), x["market"]))
+        proj = _f(bp.get("bp_proj")) if bp else None
+        if proj is not None and proj != x["line"]:              # BettingPros' projection, sided at FanDuel's line
+            side = "over" if proj > x["line"] else "under"
+        else:
+            side = "over" if x["over_odds"] >= x["under_odds"] else "under"
+        out.append({"player": x["player"], "team": (bp or {}).get("team", ""), "market": x["market"], "line": x["line"],
+                    "rec_side": side, "fd_odds_rec": x[side + "_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"],
+                    "price_is_fanduel": "True", "noproj": "False" if proj is not None else "True",
+                    "bp_proj": "" if proj is None else proj, "event_id": ev or (bp or {}).get("event_id", ""), "tip": x["tip"],
+                    "pulled_at": pulled, "source_row": "unabated" + (" + BP projection" if proj is not None else ""),
+                    "dvp_softness": (bp or {}).get("dvp_softness", ""), "perf": (bp or {}).get("perf", "")})
     return out
 
 

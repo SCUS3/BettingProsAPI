@@ -24,6 +24,9 @@ def main():
     if len(args) != 2:
         sys.exit('usage: bp_oddsapi_live.py "Away Team" "Home Team" [--go]')
     away, home = args
+    if "--force-retest" not in sys.argv:
+        sys.exit("The Odds API live test failed on 11/22 (FanDuel + 2 fresh books, needs 3). No more live calls; "
+                 "pass --force-retest only if the user asks for a new test.")
     if "--go" not in sys.argv:
         print(f"Plan: 1 free /events call, then 1 event-odds call ({away} @ {home}, {MARKET}, region {REGION}) = 1 credit "
               f"(max {MAX_COST}). Re-run with --go once approved.")

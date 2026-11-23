@@ -177,11 +177,12 @@ def off_pace(date, game, lines):
                                     (f"margin {game['margin']}", game["margin"] >= MARGIN_FLAG),
                                     ("injury mention", p["injury"]), ("ejected", p["ejected"])) if on]
             big = line >= MIN_LINE.get(mk, 99)
-            side = ("over" if pace <= OVER_PACE and (p["MIN"] or 0) >= MIN_HALF_MIN and big else
-                    "under" if pace >= UNDER_PACE and v < line and big else "")
+            pace_flag = ("slow" if pace <= OVER_PACE and (p["MIN"] or 0) >= MIN_HALF_MIN and big else
+                         "fast" if pace >= UNDER_PACE and v < line and big else "")
+            side = ""                         # no reversal side: the side comes only from expected final vs. the live line
             exp, sh, n = expected_final(mk, v, line)
             out.append({"game": game["name"], "game_id": game["id"], "player": p["name"], "team": p["team"], "market": mk,
-                        "side": side, "alert": bool(side), "line": line, "half": v, "pace": round(pace, 2), "min": p["MIN"],
+                        "side": side, "pace_flag": pace_flag, "alert": bool(pace_flag), "line": line, "half": v, "pace": round(pace, 2), "min": p["MIN"],
                         "pf": p["PF"], "margin": game["margin"], "skip": skip, "big_line": big,
                         "exp_final": exp, "exp_share": sh, "exp_n": n, "fair_live": fair_live_line(exp)})
     return out
@@ -190,7 +191,7 @@ def off_pace(date, game, lines):
 def alerts(rows):
     """One alert per player (his most extreme strong flag; correlated props of the same player are folded in)."""
     best = {}
-    ext = lambda x: x["pace"] if x["side"] == "over" else -x["pace"]
+    ext = lambda x: x["pace"] if x.get("pace_flag", x.get("side")) in ("slow", "over") else -x["pace"]
     for x in rows:
         if x["alert"] and (x["player"] not in best or ext(x) < ext(best[x["player"]])):
             best[x["player"]] = x
@@ -198,7 +199,7 @@ def alerts(rows):
         if x["alert"] and best.get(x["player"]) is not x:
             x["alert"] = False
             x["folded_into"] = f"{best[x['player']]['market']}"
-    return sorted(best.values(), key=lambda x: (bool(x["skip"]), x["side"], ext(x)))
+    return sorted(best.values(), key=lambda x: (bool(x["skip"]), x.get("pace_flag", ""), ext(x)))
 
 
 FLAGS = os.path.join(HERE, "halftime_flags.csv")
@@ -232,7 +233,8 @@ def grade_flags(date, box=None):
                    "team": x.get("team"), "market": x["market"], "side": x["side"], "line": x["line"], "half": x["half"],
                    "pace": x["pace"], "min": x.get("min"), "pf": x.get("pf"), "margin": x.get("margin"),
                    "skip": "; ".join(x.get("skip") or []), "final": "", "finished": "", "second_half": "", "hit": "",
-                   "alert": "" if legacy else ("yes" if x.get("alert") else "no"), "big_line": x.get("big_line", ""),
+                   "alert": ("" if legacy else "legacy reversal" if x.get("legacy_reversal") else
+                             "yes" if x.get("alert") else "no"), "big_line": x.get("big_line", ""),
                    "legacy": "yes" if legacy else ""}
             if fin is not None:
                 row.update(final=fin, second_half=fin - x["half"],
@@ -250,7 +252,8 @@ def grade_flags(date, box=None):
 
 
 def flag_summary():
-    """Alerted flags vs. the base rate of every player at the same first-half pace (legacy snapshots excluded)."""
+    """Halftime record: snapshots per night, and how accurate the expected final is (average miss and bias, by market
+    and pace bucket), scored out of sample: each night's rows use 2nd-half shares from the other nights only."""
     try:
         rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy")]
     except OSError:
@@ -259,34 +262,33 @@ def flag_summary():
     bf = [r for r in rows if r.get("backfill") == "yes"]
     nights = {}
     for r in live_rows:
-        n = nights.setdefault(r["date"], {"date": r["date"], "players": 0, "alerts": 0, "skipped": 0, "graded": 0, "games": set()})
+        n = nights.setdefault(r["date"], {"date": r["date"], "players": 0, "alerts": 0, "legacy_reversal": 0, "games": set()})
         n["players"] += 1
         n["alerts"] += r["alert"] == "yes"
-        n["skipped"] += r["alert"] == "yes" and bool(r["skip"])
-        n["graded"] += r["alert"] == "yes" and r["hit"] in ("W", "L")
+        n["legacy_reversal"] += r["alert"] == "legacy reversal"
         n["games"].add(r["game_id"])
-
-    def rate(sub, side):
-        g = [r for r in sub if r.get("over_hit") in ("W", "L")]
-        w = sum((r["over_hit"] == "W") == (side == "over") for r in g)
-        sh = [float(r["second_half"]) / float(r["line"]) for r in g if r["second_half"] not in ("", None) and float(r["line"])]
-        return {"n": len(g), "w": w, "l": len(g) - w, "hit": round(100 * w / len(g), 1) if g else None,
-                "second_half_pct": round(100 * sum(sh) / len(sh)) if sh else None}
-
-    f = lambda r: float(r["pace"])
-    pace_over = lambda r: f(r) <= OVER_PACE
-    pace_under = lambda r: f(r) >= UNDER_PACE and float(r["half"]) < float(r["line"])
-    comp = []
-    for side, at_pace in (("over", pace_over), ("under", pace_under)):
-        al = [r for r in live_rows if r["alert"] == "yes" and r["side"] == side]      # never backfill
-        comp.append(dict(rate([r for r in al if not r["skip"]], side), type=f"{side}: alerts (no skip)", kind="alert"))
-        comp.append(dict(rate([r for r in al if r["skip"]], side), type=f"{side}: alerts with a skip flag", kind="alert"))
-        comp.append(dict(rate([r for r in rows if at_pace(r)], side), type=f"{side}: base rate, all players at that pace",
-                         kind="base", backfill=sum(1 for r in bf if at_pace(r) and r.get("over_hit") in ("W", "L"))))
-        comp.append(dict(rate([r for r in rows if at_pace(r) and r.get("big_line") == "True"], side),
-                         type=f"{side}: base rate, same pace + same minimum lines", kind="base",
-                         backfill=sum(1 for r in bf if at_pace(r) and r.get("big_line") == "True" and r.get("over_hit") in ("W", "L"))))
-    return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "by_type": comp,
+    graded = [r for r in rows if r.get("final") not in ("", None) and r.get("line") and float(r["line"])]
+    by_date = {}
+    for r in graded:
+        k = (r["market"], bucket(float(r["pace"])))
+        by_date.setdefault(r["date"], {}).setdefault(k, []).append(float(r["second_half"]) / float(r["line"]))
+    acc = {}
+    for r in graded:
+        k = (r["market"], bucket(float(r["pace"])))
+        other = [v for d, m in by_date.items() if d != r["date"] for v in m.get(k, [])]
+        w = min(len(other), SHRINK_N) / SHRINK_N
+        sh = w * (sum(other) / len(other) if other else 0.5) + (1 - w) * 0.5
+        err = float(r["final"]) - (float(r["half"]) + sh * float(r["line"]))
+        acc.setdefault(k, []).append(err)
+        acc.setdefault((r["market"], "all"), []).append(err)
+    table = []
+    for mk in PARTS:
+        for _, _, b in BUCKETS + [(0, 0, "all")]:
+            e = acc.get((mk, b))
+            if e:
+                table.append({"market": mk, "bucket": b, "n": len(e), "miss": round(sum(abs(x) for x in e) / len(e), 2),
+                              "bias": round(sum(e) / len(e), 2)})
+    return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "accuracy": table,
             "n": len(rows), "backfill": {"rows": len(bf), "games": len({r["game_id"] for r in bf}),
                                          "dates": sorted({r["date"] for r in bf})}}
 
@@ -311,13 +313,13 @@ def report(date, game, rows):
     print(f"\nHALFTIME {game['name']}  {' - '.join(f'{t} {s}' for t, s in game['score'].items())}  (margin {game['margin']})"
           + ("  SKIP GAME: 20+ margin" if game["margin"] >= MARGIN_FLAG else ""))
     if not rows:
-        print("  no strong flags (overs <=25% with 12+ min, unders >=80% still under; minimum lines)")
+        print("  no strong pace flags (<=25% with 12+ min, or >=80% still under; minimum lines)")
     for x in rows:
-        print(f"  {x['side'].upper():5} {x['player']:22} {x['market']:4} line {x['line']:g}: 1st half {x['half']} "
-              f"({round(100 * x['pace'])}% of line), {x['min']} min, {x['pf']} PF; expected final {x.get('exp_final')} "
-              f"(2nd half {round(100 * x.get('exp_share', 0.5))}% of line, n {x.get('exp_n')}) -> fair live line ~{x.get('fair_live')}"
+        X = x.get("fair_live")
+        print(f"  {x['player']:22} {x['market']:4} pregame {x['line']:g}: 1st half {x['half']} ({round(100 * x['pace'])}%, "
+              f"{x['pace_flag']}), {x['min']} min, {x['pf']} PF; expected final {x.get('exp_final')} (n {x.get('exp_n')})"
+              f"  -> lean: OVER if live line below {X}, UNDER if above {X}"
               + (f"   SKIP: {', '.join(x['skip'])}" if x["skip"] else ""))
-
 
 def notify(msg):
     try:
