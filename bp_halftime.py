@@ -159,7 +159,7 @@ def alerts(rows):
 
 FLAGS = os.path.join(HERE, "halftime_flags.csv")
 FLAG_FIELDS = ["date", "game_id", "game", "flagged_at", "player", "team", "market", "side", "alert", "big_line", "line", "half",
-               "pace", "min", "pf", "margin", "skip", "final", "finished", "second_half", "hit", "legacy"]
+               "pace", "min", "pf", "margin", "skip", "final", "finished", "second_half", "hit", "legacy", "backfill"]
 
 
 def grade_flags(date, box=None):
@@ -175,7 +175,7 @@ def grade_flags(date, box=None):
         except Exception:
             box = None
     try:
-        old = [r for r in csv.DictReader(open(FLAGS)) if r["date"] != date]
+        old = [r for r in csv.DictReader(open(FLAGS)) if r["date"] != date or r.get("backfill") == "yes"]
     except OSError:
         old = []
     new = []
@@ -211,8 +211,10 @@ def flag_summary():
         rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy")]
     except OSError:
         rows = []
+    live_rows = [r for r in rows if r.get("backfill") != "yes"]
+    bf = [r for r in rows if r.get("backfill") == "yes"]
     nights = {}
-    for r in rows:
+    for r in live_rows:
         n = nights.setdefault(r["date"], {"date": r["date"], "players": 0, "alerts": 0, "skipped": 0, "graded": 0, "games": set()})
         n["players"] += 1
         n["alerts"] += r["alert"] == "yes"
@@ -232,15 +234,17 @@ def flag_summary():
     pace_under = lambda r: f(r) >= UNDER_PACE and float(r["half"]) < float(r["line"])
     comp = []
     for side, at_pace in (("over", pace_over), ("under", pace_under)):
-        al = [r for r in rows if r["alert"] == "yes" and r["side"] == side]
+        al = [r for r in live_rows if r["alert"] == "yes" and r["side"] == side]      # never backfill
         comp.append(dict(rate([r for r in al if not r["skip"]], side), type=f"{side}: alerts (no skip)", kind="alert"))
         comp.append(dict(rate([r for r in al if r["skip"]], side), type=f"{side}: alerts with a skip flag", kind="alert"))
         comp.append(dict(rate([r for r in rows if at_pace(r)], side), type=f"{side}: base rate, all players at that pace",
-                         kind="base"))
+                         kind="base", backfill=sum(1 for r in bf if at_pace(r) and r.get("over_hit") in ("W", "L"))))
         comp.append(dict(rate([r for r in rows if at_pace(r) and r.get("big_line") == "True"], side),
-                         type=f"{side}: base rate, same pace + same minimum lines", kind="base"))
+                         type=f"{side}: base rate, same pace + same minimum lines", kind="base",
+                         backfill=sum(1 for r in bf if at_pace(r) and r.get("big_line") == "True" and r.get("over_hit") in ("W", "L"))))
     return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "by_type": comp,
-            "n": len(rows)}
+            "n": len(rows), "backfill": {"rows": len(bf), "games": len({r["game_id"] for r in bf}),
+                                         "dates": sorted({r["date"] for r in bf})}}
 
 
 def snapshot_path(date):

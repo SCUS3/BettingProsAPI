@@ -1054,6 +1054,8 @@ def main():
         try:
             import bp_halftime
             bp_halftime.grade_flags(d, box)
+            import bp_halftime_backfill                      # games with no live halftime snapshot: base rate only
+            bp_halftime_backfill.backfill(d)
         except Exception as e:
             print(f"Halftime flags {d}: not graded ({e})")
         print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))

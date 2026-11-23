@@ -637,7 +637,9 @@ footer b { color: var(--ink); font-weight: 600; }
         if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime (the base rate). Alerts = strong flags only: overs ≤25% of the line with 12+ first-half minutes, unders ≥80% but still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player.",
           th([["Night", "l"], ["Games"], ["Player props"], ["Alerts"], ["Skip-flagged"], ["Graded alerts"]]),
           F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + n.skipped + "</td><td>" + n.graded + "</td></tr>"; }).join(""));
-        if (F.by_type.some(function (t) { return t.n; })) hh += board("Alerts vs. base rate", "Hit = finished on the flagged side of the pregame line. An alert only matters if it beats the base rate of all players at the same first-half pace. 2nd half = average second-half production as % of the line.",
+        var BF = F.backfill || {};
+        if (F.by_type.some(function (t) { return t.n; })) hh += board("Alerts vs. base rate", "Hit = finished on the flagged side of the pregame line. An alert only matters if it beats the base rate of all players at the same first-half pace. 2nd half = average second-half production as % of the line." +
+          (BF.rows ? " Base rate includes " + BF.rows + " backfill player props from " + BF.games + " past games (" + BF.dates.join(", ") + "; ESPN play-by-play); backfill never counts as an alert or HALF BET." : ""),
           th([["Group", "l"], ["W-L"], ["Hit"], ["2nd half % of line"]]),
           F.by_type.map(function (t) { var s = t.kind === "alert" ? "<b>" + esc(t.type) + "</b>" : '<span class="dim">' + esc(t.type) + "</span>";
             return '<tr><td class="l">' + s + "</td><td>" + t.w + "-" + t.l + "</td><td>" + pct(t.hit) + "</td><td>" + (t.second_half_pct == null ? "–" : t.second_half_pct + "%") + "</td></tr>"; }).join(""));
