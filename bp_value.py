@@ -495,23 +495,43 @@ def run_board(args):
         entries[line_key(r["player"], r["market"], r["line"])] = e
     ledger, lines_out = [], []
     cap, cap_note = bet_cap()
-    for r, sd, v in sorted(bets, key=lambda x: -x[2]["ev_mult"]):
+    bets = sorted(bets, key=lambda x: -x[2]["ev_mult"])
+    led_now = bp_learn._read(bp_learn.LEDGER)
+    logged_bets = [x for x in led_now if x["date"] == args.date and x["strategy"] in bp_learn.BET_KEYS]
+    have = {(x["player"], x["market"], x["side"], str(_f(x.get("line")))) for x in logged_bets}
+    gkey = game_resolver(rows + logged_bets)
+    cands = [{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
+              "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v in bets]
+    new_idx = [i for i, (r, sd, v) in enumerate(bets) if (r["player"], r["market"], sd, str(_f(r.get("line")))) not in have]
+    apply_exposure([cands[i] for i in new_idx], logged_bets, gkey)
+    for i in range(len(bets)):                    # already-logged BETs keep their logged stake
+        if i not in new_idx:
+            r, sd, v = bets[i]
+            old_r = next(x for x in logged_bets if (x["player"], x["market"], x["side"], str(_f(x.get("line"))))
+                         == (r["player"], r["market"], sd, str(_f(r.get("line")))))
+            cands[i].update(stake=_f(old_r.get("kelly_u")) or 0, cap=old_r.get("cap_note") or "")
+    for (r, sd, v), c in zip(bets, cands):
         ps = proj_side(r)
         tag = "+EV + proj agrees" if ps == sd else "+EV only"
         form, dvp = side_context(r, sd)
-        stake = bet_kelly(v["fair_mult"], v["price_used"], cap)
+        stake = c["stake"]
+        if stake <= 0:                            # no room left under the player/game cap: not a BET today
+            lines_out.append(f"  AT CAP, not logged: {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g} "
+                             f"(mkt EV {100 * v['ev_mult']:+.1f}%; {c['cap']})")
+            continue
         e = entries[line_key(r["player"], r["market"], r["line"])]
         e.update(decision="BET", bet_side=sd, tag=tag, bet_kelly=stake, bet_price=v["price_used"], bet_ev=v["ev_mult"],
-                 form=form, dvp=dvp, proj_side=ps)
+                 form=form, dvp=dvp, proj_side=ps, cap_note=c["cap"])
         mp = _f(r.get("model_prob"))
         ledger.append(value_row(args.date, r, "bet_agree" if ps == sd else "bet_only", sd, v, stake,
                                 None if mp is None or ps is None else (mp if ps == sd else 1 - mp)))
+        ledger[-1]["cap_note"] = c["cap"]
         e["cno_ev"], e["cno_min_ev"] = ledger[-1].get("cno_ev"), ledger[-1].get("cno_min_ev")
         lines_out.append(f"  BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
                          f"{100 * v['ev_mult']:+.1f}%, fair {v['fair_mult']:.3f} ({v['fair_src']}, {v.get('books')} "
                          f"{'sources' if v['fair_src'] == 'Unabated' else 'books'}{', exchange' if v.get('exchange') else ''}); "
                          f"BP proj {'agrees' if ps == sd else ('says ' + ps if ps else 'none')} ({r.get('bp_proj') or '-'} vs {float(r['line']):g}); "
-                         f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K"
+                         f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}"
                          + cno_note(ledger[-1]))
     bet_keys = {(r["player"], r["market"]) for r, _, _ in bets}
     for p in shortlist:
@@ -544,6 +564,69 @@ def fmtn(v):
     return "-" if v is None else f"{v:g}"
 
 
+PLAYER_CAP = 1.5     # max units per player, all of his BETs combined (that day)
+GAME_CAP = 3.5       # max units per game
+
+
+def game_resolver(rows):
+    """game key for a row: BettingPros event id; rows without one (Unabated-only lines) map to the event that
+    shares their tip time when only one does, else to the tip time itself."""
+    by_tip = {}
+    for r in rows:
+        ev = str(r.get("event_id") or "").split(".")[0]
+        if ev and r.get("tip"):
+            by_tip.setdefault(r["tip"], set()).add(ev)
+
+    def key(r):
+        ev = str(r.get("event_id") or "").split(".")[0]
+        if ev:
+            return ev
+        evs = by_tip.get(r.get("tip"), set())
+        return next(iter(evs)) if len(evs) == 1 else f"tip:{r.get('tip')}"
+    return key
+
+
+def apply_exposure(cands, logged, key):
+    """Cap new BET stakes: PLAYER_CAP per player and GAME_CAP per game, counting stakes already logged that day.
+    cands = [{"player", "game", "ev", "stake"}] (mutated: "stake", "cap"). When a cap binds, that player's or game's
+    new BETs are scaled down proportionally to the room left; cents left over by rounding go to the largest edge first."""
+    used_p, used_g = {}, {}
+    for r in logged:
+        u = _f(r.get("kelly_u")) or 0
+        used_p[r["player"]] = used_p.get(r["player"], 0) + u
+        used_g[key(r)] = used_g.get(key(r), 0) + u
+    for c in cands:
+        c.setdefault("cap", "")
+
+    def squeeze(group, room, label):
+        want = sum(c["stake"] for c in group)
+        room = max(0.0, round(room, 2))
+        if want <= room + 1e-9 or want <= 0:
+            return
+        f = room / want
+        for c in group:
+            c["stake"] = int(c["stake"] * f * 100) / 100           # round down to 0.01u
+            c["cap"] = ", ".join(x for x in (c["cap"], f"capped: {label}") if x)
+        left = round(room - sum(c["stake"] for c in group), 2)
+        for c in sorted(group, key=lambda c: -c["ev"]):               # leftover cents: largest edge first
+            if left < 0.01:
+                break
+            c["stake"] = round(c["stake"] + 0.01, 2)
+            left = round(left - 0.01, 2)
+
+    for pl in {c["player"] for c in cands}:
+        grp = [c for c in cands if c["player"] == pl]
+        squeeze(grp, PLAYER_CAP - used_p.get(pl, 0), "player")
+    for g in {c["game"] for c in cands}:
+        grp = [c for c in cands if c["game"] == g]
+        squeeze(grp, GAME_CAP - used_g.get(g, 0), "game")
+    return cands
+
+
+def cap_text(note):
+    return f" ({note})" if note else ""
+
+
 def value_row(date, r, strategy, side, v, stake, our_prob):
     v = v or {}
     return {"date": date, "pulled_at": r.get("pulled_at"), "tip": r.get("tip"), "strategy": strategy, "rank": None,
@@ -554,6 +637,7 @@ def value_row(date, r, strategy, side, v, stake, our_prob):
             "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
             "oa_fair": v.get("fair_mult"), "oa_ev": v.get("ev_mult"), "fair_src": v.get("fair_src"),
             "sources": v.get("books"), **(cno_fields(side, v) if strategy in bp_learn.BET_KEYS else {})}
+
 
 
 def cno_fields(side, v):
@@ -730,7 +814,7 @@ def watch_scan(date, state, close_before=None):
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
               if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip", "") > now}
     cap = bet_cap()[0]
-    new_rows = []
+    new_rows, found = [], []
     for r in rows:
         if r.get("tip") and str(r["tip"]) <= now:        # game already tipped: never log it
             continue
@@ -739,20 +823,33 @@ def watch_scan(date, state, close_before=None):
             k = f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"
             if not qualifies(v) or k in logged or k in state["alerted"]:
                 continue
-            ps = proj_side(r)
-            tag = "+EV + proj agrees" if ps == sd else "+EV only"
-            stake = bet_kelly(v["fair_mult"], v["price_used"], cap)
-            form, dvp = side_context(r, sd)
-            mp = _f(r.get("model_prob"))
-            row = value_row(date, dict(r, pulled_at=now), "bet_agree" if ps == sd else "bet_only", sd, v, stake,
-                            None if mp is None or ps is None else (mp if ps == sd else 1 - mp))
-            row["line"] = r["line"]
-            new_rows.append(row)
-            state["alerted"][k] = v["ev_mult"]
-            notify(f"NEW BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
-                   f"{100 * v['ev_mult']:+.1f}% ({v.get('books')} sources{', exch' if v.get('exchange') else ''}); "
-                   f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K; tip {str(r.get('tip'))[11:16]}Z"
-                   + cno_note(row))
+            found.append((r, sd, v, k))
+    found.sort(key=lambda x: -x[2]["ev_mult"])
+    day_bets = [x for x in led if x["date"] == date and x["strategy"] in bp_learn.BET_KEYS]
+    gkey = game_resolver(rows + day_bets)
+    cands = apply_exposure([{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
+                             "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, k in found],
+                           day_bets, gkey)
+    for (r, sd, v, k), c in zip(found, cands):
+        ps = proj_side(r)
+        tag = "+EV + proj agrees" if ps == sd else "+EV only"
+        stake = c["stake"]
+        form, dvp = side_context(r, sd)
+        mp = _f(r.get("model_prob"))
+        state["alerted"][k] = v["ev_mult"]
+        if stake <= 0:
+            notify(f"BET at cap, not logged: {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g} "
+                   f"(mkt EV {100 * v['ev_mult']:+.1f}%; {c['cap']})")
+            continue
+        row = value_row(date, dict(r, pulled_at=now), "bet_agree" if ps == sd else "bet_only", sd, v, stake,
+                        None if mp is None or ps is None else (mp if ps == sd else 1 - mp))
+        row["line"] = r["line"]
+        row["cap_note"] = c["cap"]
+        new_rows.append(row)
+        notify(f"NEW BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
+               f"{100 * v['ev_mult']:+.1f}% ({v.get('books')} sources{', exch' if v.get('exchange') else ''}); "
+               f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}; "
+               f"tip {str(r.get('tip'))[11:16]}Z" + cno_note(row))
     if new_rows:
         led = [r for r in led] + new_rows
         bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)

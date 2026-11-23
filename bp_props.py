@@ -1292,7 +1292,7 @@ def value_bets(date):
         out.append({"player": player, "market": market, "side": e["bet_side"], "line": float(line), "price": e.get("bet_price"),
                     "ev": e.get("bet_ev"), "fair": v.get("fair_mult"), "src": v.get("fair_src"), "n": v.get("books"),
                     "exchange": bool(v.get("exchange")), "tag": e.get("tag"), "form": e.get("form"), "dvp": e.get("dvp"),
-                    "stake": e.get("bet_kelly"), "close": e.get("close")})
+                    "stake": e.get("bet_kelly"), "cap": e.get("cap_note") or None, "close": e.get("close")})
     return sorted(out, key=lambda b: -(b["ev"] or 0))
 
 
@@ -1308,7 +1308,8 @@ def attach_value(rows, date):
             r.update(oa_fair=v.get("fair_mult"), oa_ev=v.get("ev_mult"), oa_books=v.get("books"),
                      fair_src=v.get("fair_src"), decision=e.get("decision"), bet_kelly=e.get("bet_kelly"),
                      bet_side=e.get("bet_side"), bet_tag=e.get("tag"), bet_ev=e.get("bet_ev"),
-                     close_mkt_ev=(e.get("close") or {}).get("mkt_ev"), close_clv=(e.get("close") or {}).get("clv_ev"))
+                     close_mkt_ev=(e.get("close") or {}).get("mkt_ev"), close_clv=(e.get("close") or {}).get("clv_ev"),
+                     bet_cap_note=e.get("cap_note") or None)
             continue
         v = val.get(f"{r.get('player')}|{r.get('market')}|{r.get('rec_side')}|{line:g}") if line is not None else None
         r["oa_fair"] = v.get("fair_mult") if v else None
@@ -1346,7 +1347,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
             "lean": r.get("bp_lean") if r.get("lean_only") in (True, "True") else None,
             "pick": r.get("model_pick") or None,
-            "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")),
+            "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")), "bet_cap": r.get("bet_cap_note") or None,
             "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
             "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),
             "fair_src": r.get("fair_src") or None,

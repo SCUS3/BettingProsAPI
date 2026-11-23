@@ -47,7 +47,7 @@ TM_MIN_PTS_LINE = 9.5     # stand-in for "averages 20+ minutes" (no minutes data
 LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team", "market", "side", "line",
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
-                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev"]
+                 "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
