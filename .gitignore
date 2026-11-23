@@ -30,3 +30,6 @@ bp_placed.csv
 cno_api_state.json
 cno_screener_log.json
 unabated_live_probe_*.json
+halftime_flags.csv
+half_pastes.csv
+halftime_*.log

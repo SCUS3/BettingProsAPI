@@ -1051,6 +1051,11 @@ def main():
             finals.update(got)
         n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored, voids)
         bp_learn.grade_placed(d, box)
+        try:
+            import bp_halftime
+            bp_halftime.grade_flags(d, box)
+        except Exception as e:
+            print(f"Halftime flags {d}: not graded ({e})")
         print(f"Graded {d}: {n_props} props, {n_picks} picks" + (f", {pend} still pending" if pend else ""))
     if to_grade or not os.path.exists(bp_learn.MODEL):
         m = bp_learn.fit_model()

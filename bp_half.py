@@ -25,6 +25,9 @@ from bp_rotowire import norm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEY = "half"
+PASTES = os.path.join(HERE, "half_pastes.csv")
+PASTE_FIELDS = ["date", "at", "player", "market", "side", "line", "fd", "books_n", "books", "fair", "market_ev", "cno_ev",
+                "cno_min_ev", "decision", "reason", "min", "pf", "margin"]
 MIN_EV, MIN_SOURCES = 0.03, 3
 BET_CAP, GAME_CAP = 0.5, 1.5
 PAIR = re.compile(r"([A-Za-z][A-Za-z0-9 .&'-]*?)\s*:?\s*([+-]\d{3,5})\s*/\s*([+-]\d{3,5})")
@@ -86,13 +89,17 @@ def run(args):
     now = L.utc_now()
     k = lambda r: (r["player"], r["market"], r["side"], str(V._f(r.get("line"))))
     have = {k(r): r for r in led if r["date"] == args.date and r["strategy"] == KEY}
-    cands, rows, clv_done = [], [], 0
+    cands, rows, clv_done, plog = [], [], 0, []
+    logrow = lambda p, **k: plog.append(dict({"date": args.date, "at": now, "player": p["player"], "market": p["market"],
+                                              "side": p["side"], "line": p["line"], "fd": p["fd"], "books_n": len(p["books"]),
+                                              "books": "; ".join(f"{b} {o:+g}/{u:+g}" for b, o, u in p["books"])}, **k))
     for p in props:
         two = [(b, o, u) for b, o, u in p["books"]]
         fairs = [(_mult(o, u) if p["side"] == "over" else 1 - _mult(o, u)) for _, o, u in two]
         tag = f"{p['player']} {p['market']} {p['side']} {p['line']:g} FD {p['fd']:+g}"
         if len(two) < MIN_SOURCES:
             print(f"  {tag}: only {len(two)} other books with both sides (needs {MIN_SOURCES}); not priced")
+            logrow(p, decision="not priced", reason=f"{len(two)} books (needs {MIN_SOURCES})")
             continue
         fair = statistics.median(fairs)
         ev = fair * _dec(p["fd"]) - 1
@@ -102,6 +109,7 @@ def run(args):
                          close_mkt_ev=round(ev, 4), close_at=now, close_fd_line=p["line"])
             clv_done += 1
             print(f"  {tag}: CLV for the logged HALF BET {100 * float(prior['clv_ev']):+.1f}% (market EV now {100 * ev:+.1f}%)")
+            logrow(p, fair=round(fair, 4), market_ev=round(ev, 4), decision="CLV update", reason="later paste of a HALF BET")
             continue
         c = V.cno_check(p["side"], {"two_way": [(b, o, u) for b, o, u in two], "price_used": p["fd"]})
         box, game = ctx.get(norm(p["player"]), (None, None))
@@ -119,11 +127,24 @@ def run(args):
         info = (f"market EV {100 * ev:+.1f}% (fair {fair:.3f}, {len(two)} books), {cno_txt}"
                 + (f"; {box['MIN']} min, {box['PF']} PF, margin {game['margin']}" if box and game else "; no live box match"))
         ok = ev >= MIN_EV and c is not None and c["median_ev"] > 0 and not skip
+        why = [w for w, on in ((f"market EV under +{100 * MIN_EV:g}%", ev < MIN_EV), ("CNO down", c is None),
+                               ("CNO worst case <= 0", c is not None and c["median_ev"] <= 0)) if on] + skip
+        logrow(p, fair=round(fair, 4), market_ev=round(ev, 4), cno_ev=None if c is None else c["median_ev"],
+               cno_min_ev=None if c is None else c["min_ev"], decision="HALF BET" if ok else "pass", reason="; ".join(why),
+               min=(box or {}).get("MIN"), pf=(box or {}).get("PF"), margin=(game or {}).get("margin"))
         print(f"  {'HALF BET' if ok else 'pass    '} {tag}: {info}" + (f"  SKIP: {', '.join(skip)}" if skip else ""))
         if ok:
             cands.append((p, fair, ev, c, game, box))
     if clv_done and not args.dry:
         L._write(L.LEDGER, led, L.LEDGER_FIELDS)
+    if plog and not args.dry:
+        import csv
+        new_file = not os.path.exists(PASTES)
+        with open(PASTES, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=PASTE_FIELDS, extrasaction="ignore")
+            if new_file:
+                w.writeheader()
+            w.writerows(plog)
     if not cands or args.dry:
         return
     gkey = lambda r: r.get("game") or r.get("event_id") or "?"

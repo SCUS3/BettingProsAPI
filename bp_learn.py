@@ -840,6 +840,31 @@ def _uniq(pairs):
     return out
 
 
+def half_summary():
+    """Halftime live (experimental): flags, paste decisions and the Odds API live test. Never mixed with pregame."""
+    out = {}
+    try:
+        import bp_halftime
+        out["flags"] = bp_halftime.flag_summary()
+    except Exception:
+        out["flags"] = {"nights": [], "by_type": [], "n": 0}
+    try:
+        rows = list(csv.DictReader(open(os.path.join(HERE, "half_pastes.csv"))))
+    except OSError:
+        rows = []
+    reasons = {}
+    for r in rows:
+        if r["decision"] == "pass":
+            for x in (r.get("reason") or "").split("; "):
+                if x:
+                    reasons[x] = reasons.get(x, 0) + 1
+    out["pastes"] = {"rows": len(rows), "priced": sum(r["decision"] in ("HALF BET", "pass") for r in rows),
+                     "bets": sum(r["decision"] == "HALF BET" for r in rows), "why_not": reasons}
+    tests = sorted(glob.glob(os.path.join(HISTORY, "*", "oddsapi_live_test.json")))
+    out["oddsapi"] = json.load(open(tests[-1])) if tests else None
+    return out
+
+
 def sim_record_rows():
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
     rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P")]
@@ -1000,7 +1025,7 @@ def record():
     if model.get("weights"):
         weights = sorted(({"name": FEATURE_LABELS[f], "coef": round(c, 3)} for f, c in zip(FEATURES, model["weights"])),
                          key=lambda x: -abs(x["coef"]))
-    return {"strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
+    return {"half": half_summary(), "strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
             "recent": recent, "pending": pending, "dropped_after_tip": dropped,
             "model_n": model.get("n", 0), "trust": round(100 * trust(model)), "proven": model.get("proven", False),
             "cap_unproven": round(100 * CAP_UNPROVEN), "validation": model.get("validation"),

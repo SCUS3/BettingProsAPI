@@ -138,6 +138,76 @@ def off_pace(date, game, lines):
     return sorted(out, key=lambda x: (bool(x["skip"]), x["side"], x["pace"] if x["side"] == "over" else -x["pace"]))
 
 
+FLAGS = os.path.join(HERE, "halftime_flags.csv")
+FLAG_FIELDS = ["date", "game_id", "game", "flagged_at", "player", "team", "market", "side", "line", "half", "pace", "min",
+               "pf", "margin", "skip", "final", "finished", "second_half", "hit"]
+
+
+def grade_flags(date, box=None):
+    """Every halftime flag for `date` (from the saved snapshot), with the final stat once the game is final:
+    finished over/under the pregame line, 2nd-half production, and whether the flagged side hit."""
+    try:
+        snap = json.load(open(snapshot_path(date)))
+    except (OSError, ValueError):
+        return 0
+    if box is None:
+        try:
+            box = BX.finals(date)
+        except Exception:
+            box = None
+    try:
+        old = [r for r in csv.DictReader(open(FLAGS)) if r["date"] != date]
+    except OSError:
+        old = []
+    new = []
+    for gid, g in snap.items():
+        for x in g.get("flags", []):
+            p = BX.lookup(box, x["player"]) if box else None
+            fin = BX.stat(p, x["market"]) if p else None
+            row = {"date": date, "game_id": gid, "game": g.get("game"), "flagged_at": g.get("at"), "player": x["player"],
+                   "team": x.get("team"), "market": x["market"], "side": x["side"], "line": x["line"], "half": x["half"],
+                   "pace": x["pace"], "min": x.get("min"), "pf": x.get("pf"), "margin": x.get("margin"),
+                   "skip": "; ".join(x.get("skip") or []), "final": "", "finished": "", "second_half": "", "hit": ""}
+            if fin is not None:
+                row.update(final=fin, second_half=fin - x["half"],
+                           finished="over" if fin > x["line"] else "under" if fin < x["line"] else "push",
+                           hit="" if fin == x["line"] else ("W" if (fin > x["line"]) == (x["side"] == "over") else "L"))
+            if x["side"] == "under" and x["half"] > x["line"]:
+                row["hit"] = "decided at half"            # already over the pregame line: not a live question
+            new.append(row)
+    with open(FLAGS, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=FLAG_FIELDS)
+        w.writeheader()
+        w.writerows(old + new)
+    return sum(1 for r in new if r["hit"])
+
+
+def flag_summary():
+    """For the Record tab: flags per night and hit rate by type (side x skip / no skip)."""
+    try:
+        rows = list(csv.DictReader(open(FLAGS)))
+    except OSError:
+        rows = []
+    nights = {}
+    for r in rows:
+        n = nights.setdefault(r["date"], {"date": r["date"], "flags": 0, "skipped": 0, "graded": 0, "games": set()})
+        n["flags"] += 1
+        n["skipped"] += bool(r["skip"])
+        n["graded"] += r["hit"] in ("W", "L")
+        n["games"].add(r["game_id"])
+    by_type = []
+    for side in ("over", "under"):
+        for sk in (False, True):
+            sub = [r for r in rows if r["side"] == side and bool(r["skip"]) == sk and r["hit"] in ("W", "L")]
+            w = sum(r["hit"] == "W" for r in sub)
+            sh = [float(r["second_half"]) / float(r["line"]) for r in sub if r["second_half"] not in ("", None) and float(r["line"])]
+            by_type.append({"type": f"{side}, {'skip' if sk else 'no skip'}", "n": len(sub), "w": w, "l": len(sub) - w,
+                            "hit": round(100 * w / len(sub), 1) if sub else None,
+                            "second_half_pct": round(100 * sum(sh) / len(sh)) if sh else None})
+    return {"nights": [dict(v, games=len(v["games"])) for _, v in sorted(nights.items(), reverse=True)], "by_type": by_type,
+            "n": len(rows), "decided_at_half": sum(r["hit"] == "decided at half" for r in rows)}
+
+
 def snapshot_path(date):
     return os.path.join(HERE, "history", date, f"halftime_{date}.json")
 
@@ -208,4 +278,7 @@ def run(date, watch=False, seen=None):
 
 if __name__ == "__main__":
     d = next((a for a in sys.argv[1:] if re.match(r"\d{4}-\d{2}-\d{2}$", a)), et_today())
-    run(d, watch="--watch" in sys.argv)
+    if "--grade" in sys.argv:
+        print(f"Halftime flags {d}: {grade_flags(d)} graded -> {FLAGS}")
+    else:
+        run(d, watch="--watch" in sys.argv)
