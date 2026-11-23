@@ -449,6 +449,20 @@ def cno_rows(date, cands, led, gkey, cap):
     return out
 
 
+def daily_counts(date):
+    """(Unabated BETs, CNO +EV, both, CNO-only) logged for `date`, by player|market|side|line."""
+    led = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date]
+    k = lambda r: (r["player"], r["market"], r["side"], str(_f(r.get("line"))))
+    u = {k(r) for r in led if r["strategy"] in bp_learn.BET_KEYS}
+    c = {k(r) for r in led if r["strategy"] in bp_learn.CNO_KEYS}
+    return len(u), len(c), len(u & c), len(c - u)
+
+
+def counts_line(date):
+    u, c, both, only = daily_counts(date)
+    return f"{date}: Unabated BETs {u}, CNO +EV {c}, both {both}, CNO-only {only}"
+
+
 def run_board(args):
     if args.go and not args.board_file and U.key():
         try:                                       # discovery refresh (free; no odds interval): current player ids
@@ -567,8 +581,8 @@ def run_board(args):
                          + cno_note(ledger[-1]))
     lines_out += rejects
     ledger += cno_rows(args.date, cno_cands, led_now, gkey, cap)
-    lines_out.append(f"  CrazyNinja +EV (own record): {sum(1 for x in ledger if x['strategy'] == 'cno')} lines logged "
-                     f"(median worst-case EV >= +{100 * CNO_MIN_EV:g}%).")
+    lines_out.append(f"  CrazyNinja +EV (own record): {sum(1 for x in ledger if x['strategy'] == 'cno')} lines this run "
+                     f"(median worst-case EV >= +{100 * CNO_MIN_EV:g}%). CNO calls only for sides with Unabated EV >= +2%.")
     bet_keys = {(b[0]["player"], b[0]["market"]) for b in bets}
     for p in shortlist:
         if (p["player"], p["market"]) in bet_keys:
@@ -578,6 +592,7 @@ def run_board(args):
         e.update(decision="watch")
         ledger.append(value_row(args.date, r, "watch", p["side"], e["sides"].get(p["side"]), 0.0, _f(r.get("model_prob"))))
     bp_learn.log_value_decisions(args.date, ledger)
+    print("Daily counts: " + counts_line(args.date))
     path = os.path.join(HERE, f"value_{args.date}.json")
     old = {}
     try:
@@ -1003,6 +1018,7 @@ def run_watch(args):
     every = args.every * 60
     close_before = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + every))   # first scan: games before the next
     while True:
+        t0 = time.time()
         try:
             tips = watch_scan(args.date, state, close_before)
         except U.Unavailable as e:
@@ -1012,7 +1028,8 @@ def run_watch(args):
             print(f"{_et_now():%H:%M} scan failed ({e}); next in {args.every} min.", flush=True)
             tips = [bp_learn.utc_now()[:11] + "23:59:59Z"]
         json.dump(state, open(path, "w"), indent=1)
-        print(f"{_et_now():%H:%M} ET scan done; {len(tips)} tip times still ahead.", flush=True)
+        print(f"{_et_now():%H:%M} ET scan done in {time.time() - t0:.0f} s; {len(tips)} tip times still ahead. "
+              f"{counts_line(args.date)}", flush=True)
         if not tips:
             print("All games have tipped. Watch done.", flush=True)
             return
