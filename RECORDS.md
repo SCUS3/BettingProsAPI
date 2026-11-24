@@ -33,6 +33,16 @@ Claude show v2 by default; the Record tab has a v1-archive toggle and Copy for C
 | **BettingPros Projection Model** (research) | Top 5 by balanced, projection gap, learned; watch list; 3PM-overs split. Flat 1u, no stake. (The old "your score" formula stopped logging in v2.) | `bal`, `gap`, `learned`, `watch` | `bp_ledger.csv`; `bp_graded.csv`; `bp_model.json` | Record tab (research) |
 | **Sims** (research) | Slates without a live pull, simmed from near-closing lines with that game removed from form. | (sim strategies) | `sim/sim_ledger.csv`; `sim/<date>/` | Record tab "Sims" |
 
+## Tonight's bets (the betting list)
+
+Not a separate record: the list you actually bet, built from the ledger (`nbaprops/rules/tonight.py`), top of the note
+and of the dashboard's Tonight tab. The union of **BETs** (`bet_agree`, `bet_only`: Unabated EV ≥ +2% and CrazyNinja
+worst case > 0; a BET logged while CNO was down stays in, flagged "no CNO check"), **alt BETs** (`alt_mkt`, `alt_proj`) and
+**Your rule** (`my_rule`). Each prop (player, market, side, line) is listed once at its largest qualifying ¼K stake (not
+summed), with the records it belongs to; then 1.5u per player and 3.5u per game are applied across the whole list.
+Every other record (Unabated +EV & BP agrees, CrazyNinja +EV, CNO screener, All +EV, Reddit, halftime, models) is a
+paper record. Each underlying record keeps its own stakes and results.
+
 ## Prices: entry, latest, close
 
 Every ledger row freezes an **entry snapshot** the first time it is written (`entry_at`, `entry_fd_line`, `entry_price`,

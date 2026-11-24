@@ -213,6 +213,7 @@ footer b { color: var(--ink); font-weight: 600; }
   </div>
 
   <div class="view" id="view-tonight" role="tabpanel" aria-labelledby="tab-tonight">
+  <div id="tonight-bets"></div>
   <section class="best" aria-labelledby="best-label">
     <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
     <div class="best-list" id="best"></div>
@@ -342,6 +343,24 @@ footer b { color: var(--ink); font-weight: 600; }
     });
   }
 
+  // Tonight's bets: the only list to bet (union of BETs, alt BETs and Your rule; largest stake; global caps)
+  function renderTonightBets() {
+    var tb = DATA.tonight_bets || [];
+    var u = function (v) { return (Math.round(v * 100) / 100).toFixed(2) + "u"; };
+    var body = tb.map(function (x, i) {
+      return '<tr><td class="l">' + (i + 1) + '</td><td class="l"><b>' + esc(x.player) + "</b></td><td class=\"l\">" + esc(x.market) + " " + (x.side === "over" ? "o" : "u") + x.line +
+        "</td><td>" + odds(x.price) + "</td><td>" + (x.ev == null ? "–" : (x.ev > 0 ? "+" : "") + Math.round(x.ev * 1000) / 10 + "%") +
+        "</td><td><b>" + u(x.stake) + '</b></td><td class="l">' + x.records.map(function (r) { return '<span class="chip">' + esc(r) + "</span>"; }).join(" ") +
+        (x.flags ? ' <span class="dim">' + esc(x.flags) + "</span>" : "") + '</td><td class="l hide-sm">' + (x.cap ? esc(x.cap) + " from " + u(x.stake_raw) : "") +
+        '</td><td class="l">' + (x.status === "started" ? '<span class="dim">started</span>' : esc(x.status || "")) + "</td></tr>";
+    }).join("");
+    var total = tb.reduce(function (s, x) { return s + x.stake; }, 0);
+    document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) : ""),
+      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game caps apply across the whole list. Everything else is a paper record.",
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["Entry EV"], ["Stake"], ["Records", "l"], ["Cap", "l hide-sm"], ["Game", "l"]]),
+      body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>');
+  }
+
   // Strongest tonight
   function renderBest() {
     var sets = ["gap", "score", "bal"].map(function (by) {
@@ -376,6 +395,7 @@ footer b { color: var(--ink); font-weight: 600; }
   function render() {
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
     dtdBox.checked = state.hideDtd;
+    renderTonightBets();
     renderBest();
     var rows = ranked(state.cat, state.rank, state.limit);
     var label = RANKS.filter(function (x) { return x[0] === state.rank; })[0][1];

@@ -81,7 +81,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                 cell(r["balanced"]), inj(r)]
 
     lines = [f"# NBA props: {date}", "",
-             "FanDuel-priced props only. Only BETs (market +EV, below) are bets; every other list is model picks (research, not a bet, no stake). DvP: 1 = softest matchup. Form: recent hit rate of the "
+             "FanDuel-priced props only. Only Tonight's bets (the first list) are bets; every other list is a paper record (no money). DvP: 1 = softest matchup. Form: recent hit rate of the "
              "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
@@ -92,8 +92,27 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
              "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
              "injury report (Y/N). ▼ = the column the list is ranked by.", "",
              "**Rules v2 (from 2026-11-24):** your rule = CrazyNinja +EV and BettingPros agrees (section 2); BET = Unabated "
-             "EV +2% and CrazyNinja worst case > 0. Stakes (¼K, exposure caps) only on BETs and the market records; the model "
-             "lists below are research with no stake.", ""]
+             "EV +2% and CrazyNinja worst case > 0. Tonight's bets = BETs + alt BETs + your rule, "
+             "each prop once at its largest ¼K stake, capped 1.5u/player and 3.5u/game across the list; the other records' "
+             "stakes are paper.", ""]
+    from nbaprops.rules import tonight as _tn
+    tb = _tn.payload(date)
+    lines += ["## Tonight's bets", "",
+              "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule "
+              "props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
+              "game across this whole list. Records = every record the prop qualifies for. Everything else in this note is a "
+              "paper record.", ""]
+    if tb:
+        body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), odds_s(x["price"]),
+                 "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%", f"{x['stake']:.2f}u",
+                 " + ".join(x["records"]) + (f" ({x['flags']})" if x["flags"] else ""),
+                 (x["cap"] or "").replace("capped: ", "capped ") + (f" from {x['stake_raw']:.2f}u" if x["cap"] else ""), x["status"]]
+                for i, x in enumerate(tb, 1)]
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("Entry EV", "r"),
+                           ("Stake ▼", "r"), ("Records", "l"), ("Cap", "l"), ("Game", "l")], body)
+        lines += ["", f"Total {sum(x['stake'] for x in tb):.2f}u on {len(tb)} props.", ""]
+    else:
+        lines += ["_No bets yet tonight._", ""]
     rec = bp_learn.record()
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]

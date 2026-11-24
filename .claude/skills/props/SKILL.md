@@ -131,3 +131,7 @@ Report the v2 record (current rules, from 2026-11-24) by default; mention the v1
 
 When the user pastes the r/sportsbook NBA thread text, save it to `history/<date>/reddit_thread_<date>.txt` and run `python3 bp_value.py --reddit-paste <file> --dry`, then without `--dry` (no API calls; there is no Reddit app, so `--reddit` is not used for now). Report: comments read, picks parsed, image-only skipped, proven posters, any staked "Proven poster + market +EV" plays, and note §7.
 
+## Tonight's bets
+
+The note and the dashboard open with "Tonight's bets" (BETs + alt BETs + your rule, largest ¼K stake per prop, 1.5u/player and 3.5u/game across the list). Lead every report with that table (player, prop, FD, entry EV, stake, records, cap) and its total; everything else is a paper record.
+
