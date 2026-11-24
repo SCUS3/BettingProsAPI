@@ -43,6 +43,11 @@ summed), with the records it belongs to; then 1.5u per player and 3.5u per game 
 Every other record (Unabated +EV & BP agrees, CrazyNinja +EV, CNO screener, All +EV, Reddit, halftime, models) is a
 paper record. Each underlying record keeps its own stakes and results.
 
+Each row shows the BettingPros projection (🟢/🔴 dot, number, gap) and the side-aware DvP dot and number, like the other
+sections. **Tonight's bets record** (`key: tonight`, first on the Record tab and in Copy for Claude): every listed prop
+once, graded with its ledger result, ¼K units at the **capped** stake, flat 1u alongside, CLV from the prop's row; only
+plays logged before tip count. It is computed from the ledger each time (no extra rows).
+
 ## Prices: entry, latest, close
 
 Every ledger row freezes an **entry snapshot** the first time it is written (`entry_at`, `entry_fd_line`, `entry_price`,

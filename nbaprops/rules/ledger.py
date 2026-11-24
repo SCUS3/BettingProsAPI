@@ -977,6 +977,13 @@ def record(version: str = "v2") -> dict:
         weights = sorted(({"name": FEATURE_LABELS[f], "coef": round(c, 3)} for f, c in zip(FEATURES, model["weights"])),
                          key=lambda x: -abs(x["coef"]))
     try:
+        from nbaprops.rules import tonight as _tn
+        tr, tc = _tn.record_rows(version)
+        if tr:
+            strategies.insert(0, dict(_summ(tr, tc), key="tonight", group="tonight", label="Tonight's bets (what you bet)", n=len(tr)))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from nbaprops.rules import reddit_picks as _rp
         posters = _rp.poster_stats(version)
     except Exception:  # noqa: BLE001

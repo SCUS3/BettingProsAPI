@@ -97,23 +97,33 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
              "stakes are paper.", ""]
     from nbaprops.rules import tonight as _tn
     tb = _tn.payload(date)
+    rec = bp_learn.record()
+    _tr = next((x for x in rec["strategies"] if x.get("key") == "tonight"), None)
     lines += ["## Tonight's bets", "",
               "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule "
               "props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
               "game across this whole list. Records = every record the prop qualifies for. Everything else in this note is a "
               "paper record.", ""]
+    if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
+        lines += [f"Tonight's bets record (v2): {_tr['w']}-{_tr['l']}-{_tr['p']} | ¼K at the capped stakes {_tr['kelly_units']:+.2f}u"
+                  + (f" ({_tr['kelly_roi']:+}% ROI)" if _tr.get("kelly_roi") is not None else "") + f" | flat 1u {_tr['units']:+.2f}u"
+                  + (f" | CLV {_tr['clv']:+}% EV ({_tr['clv_n']})" if _tr.get("clv") is not None else ""), ""]
     if tb:
-        body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), odds_s(x["price"]),
-                 "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%", f"{x['stake']:.2f}u",
+        def _bp(x):
+            t = x.get("bp_tag") or "none"
+            return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
+        body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), _bp(x),
+                 "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
+                 odds_s(x["price"]), "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%",
+                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u",
                  " + ".join(x["records"]) + (f" ({x['flags']})" if x["flags"] else ""),
                  (x["cap"] or "").replace("capped: ", "capped ") + (f" from {x['stake_raw']:.2f}u" if x["cap"] else ""), x["status"]]
                 for i, x in enumerate(tb, 1)]
-        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("Entry EV", "r"),
-                           ("Stake ▼", "r"), ("Records", "l"), ("Cap", "l"), ("Game", "l")], body)
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r"), ("Records", "l"), ("Cap", "l"), ("Game", "l")], body)
         lines += ["", f"Total {sum(x['stake'] for x in tb):.2f}u on {len(tb)} props.", ""]
     else:
         lines += ["_No bets yet tonight._", ""]
-    rec = bp_learn.record()
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
     if played:

@@ -20,3 +20,17 @@ def test_union_largest_stake_not_summed_and_global_caps(monkeypatch):
     assert {x["player"] for x in tb} == {"A", "B", "C", "D"}
     assert round(sum(x["stake"] for x in tb if x["player"] == "A"), 2) <= 1.5
     assert round(sum(x["stake"] for x in tb), 2) <= 3.5                                     # one game: game cap across records
+
+
+def test_record_uses_capped_stake_and_one_result_per_prop(monkeypatch):
+    rows = [dict(_row("bet_agree", "A", "PTS", 1.0), result="W", profit_u="0.91", profit_kelly="0.91"),
+            dict(_row("my_rule", "A", "PTS", 0.6), result="W", profit_u="0.91", profit_kelly="0.55"),
+            dict(_row("bet_only", "A", "REB", 1.0, line="7.5"), result="L", profit_u="-1", profit_kelly="-1")]
+    monkeypatch.setattr(L, "_read", lambda path: rows)
+    monkeypatch.setattr(L, "counted_flags", lambda led: ([True] * len(led), [1.0] * len(led)))
+    tr, clvs = tonight.record_rows()
+    assert len(tr) == 2                                                   # A PTS once (two records), A REB once
+    s = L._summ(tr, clvs)
+    assert (s["w"], s["l"]) == (1, 1)
+    assert round(sum(r["kelly_u"] for r in tr), 2) == 1.5                 # 2.0u wanted, capped at 1.5u per player
+    assert s["kelly_units"] == round(0.91 * 0.75 - 0.75, 2)

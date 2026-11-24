@@ -11,11 +11,11 @@ from nbaprops.sources.rotowire import norm
 SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_proj": "Alt BET", "my_rule": "Your rule"}
 
 
-def build(date: str) -> list[dict]:
+def build(date: str, led: list[dict] | None = None) -> list[dict]:
     """-> [{player, team, market, side, line, price, ev, stake, stake_raw, records, cap, tip, event_id, flags, rows}],
     biggest stake first. Reads the ledger only (no API calls)."""
     from nbaprops.app import value as V
-    rows = [r for r in L._read(L.LEDGER) if r["date"] == date and r["strategy"] in SOURCES and (L._num(r.get("kelly_u")) or 0) > 0]
+    rows = [r for r in (L._read(L.LEDGER) if led is None else led) if r["date"] == date and r["strategy"] in SOURCES and (L._num(r.get("kelly_u")) or 0) > 0]
     groups: dict = {}
     for r in rows:
         groups.setdefault((norm(r["player"]), r["market"], r["side"], L._num(r["line"])), []).append(r)
@@ -39,12 +39,43 @@ def build(date: str) -> list[dict]:
     return sorted(out, key=lambda x: (-x["stake"], -(x["ev"] or 0)))
 
 
+def record_rows(version: str | None = None) -> tuple[list[dict], list]:
+    """Graded 'Tonight's bets' plays across every slate: one synthetic row per listed prop, at the CAPPED stake.
+    Result and flat units come from the prop's ledger row (all its records share one result); ¼K profit = flat profit per
+    1u x capped stake; CLV from that row. Only plays counted for their record (logged before tip) count. -> (rows, clvs)."""
+    led = L._read(L.LEDGER)
+    counted, clv = L.counted_flags(led)
+    ok = {id(r): (c, v) for r, c, v in zip(led, counted, clv)}
+    out, clvs = [], []
+    for date in sorted({r["date"] for r in led if r["strategy"] in SOURCES}):
+        for x in build(date, led):
+            best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
+            c, v = ok.get(id(best), (False, None))
+            if not c or best.get("result") not in ("W", "L", "P") or (version and L.rule_version(best) != version):
+                continue
+            pu = L._num(best.get("profit_u")) or 0.0
+            out.append(dict(best, strategy="tonight", kelly_u=x["stake"], profit_kelly=round(pu * x["stake"], 4)))
+            clvs.append(v)
+    return out, clvs
+
+
 def payload(date: str) -> list[dict]:
-    """JSON-safe rows for the dashboard (with game status)."""
+    """JSON-safe rows for the note and dashboard: game status, BettingPros projection (dot, number, gap) and side-aware DvP."""
+    from nbaprops.pricing import projctx as P
     from nbaprops.rules import tipoff as T
     res = []
     for x in build(date):
         y = {k: v for k, v in x.items() if k != "rows"}
+        try:
+            c = P.context(date, x["player"], x["market"], x["side"], x["line"])
+            y.update(bp_tag=c["tag"], bp_proj=c["proj"], bp_gap=c["gap"], bp_note=c["text"])
+        except Exception:  # noqa: BLE001
+            y.update(bp_tag="none", bp_proj=None, bp_gap=None, bp_note="")
+        try:
+            d = P.dvp_of(date, x["player"], x["market"])
+            y.update(dvp=d, dvp_tag=P.dvp_effect(x["side"], d) if d is not None else None)
+        except Exception:  # noqa: BLE001
+            y.update(dvp=None, dvp_tag=None)
         try:
             y["status"] = "open" if not x.get("tip") or T.is_open(x["tip"], [x.get("team")] if x.get("team") else None) else "started"
         except Exception:  # noqa: BLE001
