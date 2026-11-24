@@ -11,11 +11,16 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
                   ("R+A", "Rebounds + Assists")]
 
 
+DROP_COLS = {"Score", "Game"}    # left out of every note table (one-page note); Tonight's bets keeps "Sam score"
+
+
 def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
     """Markdown table with padded, aligned columns. cols = [(header, "l"|"r"|"c")]; rows = lists of strings."""
     import unicodedata
     def w(s):                                       # display width (emoji dots are double width)
         return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
+    keep = [i for i, (h, _) in enumerate(cols) if h.replace("▼", "").strip() not in DROP_COLS]
+    cols, rows = [cols[i] for i in keep], [[r[i] for i in keep] for r in rows]
     rows = [[c if c not in ("", None) else "–" for c in r] for r in rows]
     widths = [max([w(h), 3] + [w(r[i]) for r in rows]) for i, (h, _) in enumerate(cols)]
     def pad(s, i, a):
