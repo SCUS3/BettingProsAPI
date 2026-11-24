@@ -72,3 +72,9 @@ def test_screener_helpers():
     assert S.page_settings(page) == {"devig": "LW-M", "min_books": 2, "max_odds": 400.0}
     assert S.ev_header("LW-M EV%    Calc    Bet Name    Odds    Sportsbook") == "LW-M EV%"
     assert S._when("Today at 8:00 PM", "2026-11-22") == "2026-11-23T01:00:00Z"
+
+
+def test_dvp_dot_follows_the_side():
+    assert P.dvp_dot("under", 25) == "🟢 25" and P.dvp_dot("under", 8) == "🔴 8"      # hard D helps an under
+    assert P.dvp_dot("over", 8) == "🟢 8" and P.dvp_dot("over", 25) == "🔴 25"        # soft D helps an over
+    assert P.dvp_dot("under", 15) == "15" and P.dvp_dot("over", 15) == "15"           # 11-20 neutral, no dot

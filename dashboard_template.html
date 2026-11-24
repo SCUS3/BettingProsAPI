@@ -397,6 +397,12 @@ footer b { color: var(--ink); font-weight: 600; }
     ["ev", "EV", "hide-sm"], ["oa", "Mkt EV", "hide-sm"], ["src", "Fair src", "hide-sm"],
     ["score", "Score", ""], ["bal", "Bal", ""], ["learned", "Lrn", "hide-sm"], ["kelly", "Stake", "hide-sm"]
   ];
+  function dvpTxt(side, v) {            // side-aware DvP for text: 🟢 helps the side (1-10 over, 21-30 under), 🔴 hurts, plain 11-20
+    if (v == null) return "–";
+    var soft = v <= 10, hard = v >= 21;
+    var helps = (side === "over" && soft) || (side === "under" && hard), hurts = (side === "over" && hard) || (side === "under" && soft);
+    return (helps ? "🟢 " : hurts ? "🔴 " : "") + v;
+  }
   function pctEv(v) { return v == null ? '<span class="dim">–</span>' : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%</span>"; }
   function render() {
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
@@ -491,7 +497,7 @@ footer b { color: var(--ink); font-weight: 600; }
       (r.note ? " | " + r.note : "") +
       (r.ev != null ? " | EV " + (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%" : "") +
       (r.oa_ev != null ? " | mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "% (" + (r.fair_src || "OddsAPI") + (r.oa_books ? ", " + r.oa_books + " books" : "") + ")" : "") +
-      (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + r.dvp : "") +
+      (r.form != null ? " | form " + Math.round(r.form * 100) + "%" : "") + (r.dvp != null ? " | DvP " + dvpTxt(r.bet_side || r.side, r.dvp) : "") +
       (r.inj ? " | " + r.inj : "");
   }
   function signed(v, suffix) { return v == null ? "–" : (v > 0 ? "+" : "") + v + suffix; }
@@ -574,7 +580,7 @@ footer b { color: var(--ink); font-weight: 600; }
       bets.forEach(function (b, i) {
         out.push("  " + (i + 1) + ". BET [" + b.tag + "] " + b.player + " " + b.market + " " + (b.side === "over" ? "O " : "U ") + num(b.line) + " " + odds(b.price) +
           " | mkt EV " + p1(b.ev) + " | fair " + b.fair + " (" + b.src + ", " + b.n + " sources" + (b.exchange ? ", exchange" : "") + ")" +
-          " | form " + (b.form == null ? "–" : Math.round(b.form * 100) + "%") + " | DvP " + (b.dvp == null ? "–" : b.dvp) + " | stake " + num(b.stake) + "u ¼K" + (b.cap ? " (" + b.cap + ")" : "") +
+          " | form " + (b.form == null ? "–" : Math.round(b.form * 100) + "%") + " | DvP " + dvpTxt(b.side, b.dvp) + " | stake " + num(b.stake) + "u ¼K" + (b.cap ? " (" + b.cap + ")" : "") +
           (b.close && b.close.mkt_ev != null ? " | 6:30 CLV " + p1(b.close.clv_ev) + ", mkt EV now " + p1(b.close.mkt_ev) + (b.close.mkt_ev < 0 ? " FLAG" : "") : ""));
       });
       out.push("Watch (shortlist, not bet): " + watch.map(function (r) { return r.player + " " + r.market + " " + sideTxt(r) + (r.oa_ev != null ? " (mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%)" : ""); }).join("; "), "");
