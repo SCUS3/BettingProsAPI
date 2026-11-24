@@ -116,11 +116,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                  "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
                  odds_s(x["price"]), "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%",
                  bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u",
-                 " + ".join(x["records"]) + (f" ({x['flags']})" if x["flags"] else ""),
-                 (x["cap"] or "").replace("capped: ", "capped ") + (f" from {x['stake_raw']:.2f}u" if x["cap"] else ""), x["status"]]
+                 " + ".join(x["records"]) + (f" ({x['flags']})" if x["flags"] else "")]
                 for i, x in enumerate(tb, 1)]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r"), ("Records", "l"), ("Cap", "l"), ("Game", "l")], body)
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r"), ("Records", "l")], body)
         lines += ["", f"Total {sum(x['stake'] for x in tb):.2f}u on {len(tb)} props.", ""]
     else:
         lines += ["_No bets yet tonight._", ""]
