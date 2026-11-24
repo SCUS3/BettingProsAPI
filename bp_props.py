@@ -723,7 +723,8 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                            ("Pastes", "r"), ("First seen", "r")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
-    by_pm = {(r["player"], r["market"]): r for r in rows}
+    from bp_rotowire import norm as _norm
+    by_pm = {(_norm(r["player"]), r["market"]): r for r in rows}
     ua3 = []
     try:
         import bp_tipoff
@@ -745,7 +746,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     if ua3:
         body = []
         for i, e in enumerate(ua3[:n], 1):
-            r = by_pm.get((e["player"], e["market"])) or {}
+            r = by_pm.get((_norm(e["player"]), e["market"])) or {}
             pr = _num(e.get("proj_raw"))
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
@@ -763,7 +764,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     if miss:
         body = []
         for i, e in enumerate(miss[:n], 1):
-            r = by_pm.get((e["player"], e["market"])) or {}
+            r = by_pm.get((_norm(e["player"]), e["market"])) or {}
             pr = _num(e.get("proj_raw"))
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🔴",
                          "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
