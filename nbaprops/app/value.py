@@ -1120,7 +1120,8 @@ def watch_scan(date, state, close_before=None):
     from nbaprops.rules import tipoff as T
     state.setdefault("closed", [])
     led = bp_learn._read(bp_learn.LEDGER)
-    keys = (bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS | bp_learn.UA_KEYS)
+    keys = (bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS | bp_learn.UA_KEYS
+            | bp_learn.REDDIT_KEYS | bp_learn.ALL_EV_KEYS)
     live_rows = [r for r in led if r["date"] == date and r["strategy"] in keys and r.get("tip") and _open(r, now)]
     if live_rows:
         cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
@@ -1345,6 +1346,38 @@ def run_proj(args):
         print(f"  {player} {MARKET_WORDS[t[mi].lower()]} {side} {float(sm.group(2)):g}: {c['text']}")
 
 
+def run_reddit(args):
+    """--reddit: today's r/sportsbook NBA picks thread -> per-poster research picks and the proven + market +EV record."""
+    from nbaprops.rules import reddit_picks as RP
+    from nbaprops.sources import reddit as RD
+    try:
+        if args.thread:
+            m = re.search(r"comments/([a-z0-9]+)", args.thread)
+            post = {"id": m.group(1) if m else args.thread, "title": args.thread}
+        else:
+            d = dt.date.fromisoformat(args.date)
+            post = RD.find_thread(f"{d:%B} {d.day}")
+        if not post:
+            sys.exit("No NBA picks thread found on r/sportsbook in the last day (pass --thread URL).")
+        comments = RD.comments(post["id"])
+    except RD.NotConfigured as e:
+        sys.exit(f"Reddit not set up: {e}. See README 'Reddit picks' for the app steps.")
+    picks, counts = RP.parse_comments(comments, args.date)
+    print(f"Thread: {post.get('title')} | {counts['comments']} comments, {counts['with_props']} with player props, "
+          f"{counts['image_only']} image-only (skipped), {counts['unresolved']} props not matched to tonight's players; "
+          f"{len(picks)} picks parsed from {len({p['author'] for p in picks})} posters.")
+    if args.dry:
+        for p in picks[:40]:
+            print(f"  u/{p['author']}: {p['player']} {p['market']} {p['side']} {p['line']:g}")
+        return
+    research, staked = RP.log(args.date, picks)
+    proven = RP.proven_posters()
+    print(f"Logged {len(research)} picks (research); proven posters: {len(proven)}; staked 'Proven poster + market +EV': {len(staked)}.")
+    for r in staked:
+        print(f"  {r['fair_src']}: {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}, "
+              f"mkt EV {100 * float(r['oa_ev']):+.1f}%, {r['kelly_u']}u ¼K")
+
+
 def run_placed(args):
     """Log a bet the user actually placed and match it to the day's logged BET (or CrazyNinja row), else off-board."""
     try:
@@ -1396,10 +1429,13 @@ def main():
                                                    "pull (0 requests): \"Toppin 3PM o1.5; Brunson PTS u27.5\"")
     g.add_argument("--picks-paste", metavar="FILE", help="outside picks (Reddit/X/RotoWire cards), one per line: logged per "
                                                           "--source as their own record and graded from ESPN box scores")
+    g.add_argument("--reddit", action="store_true", help="read the r/sportsbook NBA picks thread (Reddit API, free) and log "
+                                                          "every player-prop pick per poster; proven poster + market +EV is staked")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
     ap.add_argument("--source", default="Outside card", help="--picks-paste: source label for the record")
+    ap.add_argument("--thread", help="--reddit: a specific thread URL or id instead of finding today's")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
     ap.add_argument("--all", action="store_true", help="--cno-paste: also log +EV rows under +2% (separate tracking record)")
     ap.add_argument("--live", action="store_true", help="--cno-paste: live rows vs. BettingPros projection and halftime "
@@ -1426,6 +1462,8 @@ def main():
         return run_placed(args)
     if args.cno_paste:
         return run_cno_paste(args)
+    if args.reddit:
+        return run_reddit(args)
     if args.picks_paste:
         from nbaprops.rules import outside as O
         text = sys.stdin.read() if args.picks_paste == "-" else open(args.picks_paste).read()

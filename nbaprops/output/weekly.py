@@ -58,6 +58,20 @@ def build(end: str) -> str:
         if sub:
             body.append(_row(label, [r for r, _ in sub], [v for _, v in sub if v is not None]))
     lines += ["## Every record", ""] + (md_table(COLS, body) if body else ["_Nothing graded this week._"]) + [""]
+    # Entry-EV signal across all records (all graded history, not just this week); watched, not acted on
+    allg = [(r, v) for r, ok, v in zip(led, counted, clv) if ok and r.get("result") in ("W", "L", "P")]
+    sig = []
+    for lo, hi, name in L.EV_BUCKETS:
+        g = [(r, v) for r, v in allg if r["strategy"] in {s for _, ks in L.EV_RECORDS for s in ks}
+             and (e := L._num(r.get("entry_ev") or r.get("oa_ev"))) is not None and lo <= e < hi]
+        if g:
+            s = L._summ([r for r, _ in g], [v for _, v in g])
+            sig.append(f"{name}: {len(g)} plays, {s['w']}-{s['l']}, {s['units']:+.2f}u" + (f", CLV {s['clv']:+}% EV ({s['clv_n']})" if s["clv"] is not None else ""))
+    if sig:
+        lines += ["## Entry-EV signal (watched, not acted on)", "",
+                  "All graded +EV-record plays to date, by entry EV: " + "; ".join(sig) + ". Early read: higher entry EV has "
+                  "carried better CLV (4%+ about +2.0% vs. 2-4% about -0.75% at the first look), but no rule changes until every "
+                  "bucket has 50+ graded plays.", ""]
     for label, keys in GROUPS:
         sub = [(r, v) for r, v in graded if r["strategy"] in keys]
         if len(sub) < 2:

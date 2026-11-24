@@ -127,3 +127,7 @@ Report the v2 record (current rules, from 2026-11-24) by default; mention the v1
 
 `python3 bp_props.py --weekly --date YYYY-MM-DD` (0 requests) for the weekly review. When the user pastes outside pick cards (Reddit / X / RotoWire), save them and run `python3 bp_value.py --picks-paste <file> --date <card date> --source "<source>" --dry`, then without `--dry`. Skip game totals/spreads.
 
+## Reddit picks
+
+Before the first tip each day, run `python3 bp_value.py --reddit` (free Reddit API; needs REDDIT_* in .env, otherwise tell the user the README steps). Report: comments read, picks parsed, image-only skipped, proven posters, any staked "Proven poster + market +EV" plays, and note §7.
+

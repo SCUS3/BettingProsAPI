@@ -244,6 +244,29 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                            ("Mkt EV ▼", "r"), ("Sources", "r"), ("Why not", "l"), ("Game", "l")], body) + [""]
     else:
         lines += ["_None saved for this date yet (saved from each board run and watch scan from 11/24)._", ""]
+    from nbaprops.rules import reddit_picks as _rp
+    _proven = _rp.proven_posters()
+    _today = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] == "reddit_pick"
+              and r.get("fair_src") in _proven]
+    lines += ["## 7. Proven posters today", "",
+              f"Reddit (r/sportsbook) picks tonight from posters with {_rp.PROVEN_MIN}+ graded picks, positive average CLV and "
+              "positive units (re-checked every run). FanDuel price and market EV at the time of the post; '+EV' when the market "
+              "agrees, which also logs the staked 'Proven poster + market +EV' record.", ""]
+    if _today:
+        body = []
+        for i, r in enumerate(sorted(_today, key=lambda r: -(_num(r.get("entry_ev")) or -9)), 1):
+            rr = by_pm.get((_norm(r["player"]), r["market"])) or {}
+            ev = _num(r.get("entry_ev"))
+            body.append([str(i), (r.get("fair_src") or "").replace("Reddit ", ""), r["player"], r["market"], side_s(r["side"]),
+                         f"{float(r['line']):g}", odds_s(r.get("entry_price")), "" if ev is None else f"{100 * ev:+.2f}%",
+                         "+EV" if ev is not None and ev > 0 else "", bp_dot({"player": r["player"], "market": r["market"],
+                                                                            "rec_side": r["side"], "line": _num(r["line"])}),
+                         dvp_s(rr, r["side"]) if rr else "", status(r.get("tip"), r.get("team"))])
+        lines += md_table([("#", "r"), ("Poster", "l"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"),
+                           ("Mkt EV", "r"), ("", "l"), ("BP", "c"), ("DvP", "r"), ("Game", "l")], body) + [""]
+    else:
+        lines += [f"_No proven posters yet ({len(_proven)} qualify), or none posted tonight. Picks are logged per poster with "
+                  "`bp_value.py --reddit`; posters qualify after 30 graded picks._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from BettingPros' line", "",

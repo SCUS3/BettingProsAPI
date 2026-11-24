@@ -43,3 +43,10 @@ that source's "bet side/other side", FinalOdds = FanDuel's price; never several 
 prices as a parlay). DevigMethod=4 with all four WorstCase flags. Throttled to 1 call per second, cached in
 `cno_cache.json`, errors skipped silently. Part of the BET rule (median worst-case EV > 0); if CNO is down the BET
 is flagged "no CNO check". No permission needed for CNO calls; `bp_boost.py --go` makes one Unabated odds call (ask).
+
+## Reddit (picks threads, nbaprops/sources/reddit.py)
+
+Reddit's official API, app-only OAuth, read-only. Free; the client keeps to at most one call per 1.1 s and honours the
+rate-limit headers. Keys `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` (and `REDDIT_USERNAME` for the User-Agent) in `.env`,
+never printed. No permission needed for these calls; run `bp_value.py --reddit` once a day before the first tip.
+

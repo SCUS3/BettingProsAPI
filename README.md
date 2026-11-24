@@ -276,3 +276,20 @@ Checks: `.venv/bin/ruff check nbaprops tests bp_*.py` and `.venv/bin/pytest` (de
 `python3 -m venv .venv && .venv/bin/pip install pytest ruff`). The refactor was verified by re-scoring 11/18-11/23,
 grading 11/20 and 11/22 and running offline board/alt/screener/pricing checks with the old and new code back to back:
 every output identical.
+
+## Reddit picks (r/sportsbook)
+
+`python3 bp_value.py --reddit [--date D] [--thread URL] [--dry]` reads the day's NBA picks thread through Reddit's official
+API (free; at most one call per 1.1 s, rate-limit headers honoured), logs every player-prop pick per poster as research
+with the FanDuel price and market EV at posting time, skips and counts image-only picks, and stakes only proven posters'
+picks that the market also shows as +EV ("Proven poster + market +EV"). Note §7 lists tonight's proven-poster picks;
+the Record tab has the poster leaderboard.
+
+Create the Reddit app once:
+1. Sign in to Reddit and open https://www.reddit.com/prefs/apps
+2. Click "create another app..." (or "are you a developer? create an app...").
+3. Name: `nbaprops`; type: **script**; redirect uri: `http://localhost:8080` (not used, but required); description optional.
+4. Click "create app". The **client id** is the string under the app name ("personal use script"); the **secret** is labelled "secret".
+5. Add to `.env` (never commit it): `REDDIT_CLIENT_ID=...`, `REDDIT_CLIENT_SECRET=...`, `REDDIT_USERNAME=<your username>` (used only in the User-Agent Reddit requires).
+6. Reddit's Data API terms apply (https://support.reddithelp.com/hc/en-us/articles/16160319875092); this is personal, non-commercial, read-only use.
+

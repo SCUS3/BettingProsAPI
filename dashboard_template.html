@@ -475,7 +475,7 @@ footer b { color: var(--ink); font-weight: 600; }
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       var hasHalf = G[0] === "half" && R.half && ((R.half.flags || {}).n || R.half.oddsapi);
@@ -490,10 +490,12 @@ footer b { color: var(--ink); font-weight: 600; }
       }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
-          (["bet", "cno", "screener", "half", "alt", "rule", "ua", "allev"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
+          (["bet", "cno", "screener", "half", "alt", "rule", "ua", "allev", "reddit"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
+    var POS = (R.posters || []).filter(function (p) { return p.n >= 5; }).slice(0, 8);
+    if (POS.length) out.push("Reddit posters (5+ graded): " + POS.map(function (p) { return (p.proven ? "⭐" : "") + p.poster + " " + p.w + "-" + p.l + " " + signed(p.units, "u") + (p.clv != null ? " CLV " + signed(p.clv, "") : ""); }).join("; "));
     (R.ev_buckets || []).forEach(function (r) {
       out.push("Entry EV buckets, " + r.record + ": " + r.buckets.map(function (b) { return b.bucket + " " + b.w + "-" + b.l + "-" + b.p + " (" + b.n + ") " + signed(b.units, "u") + " flat, " + signed(b.kelly_units, "u") + " ¼K" + (b.clv != null ? ", CLV " + signed(b.clv, "% EV") : ""); }).join(" | "));
     });
@@ -659,6 +661,7 @@ footer b { color: var(--ink); font-weight: 600; }
       ["cno", "CrazyNinja +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
       ["allev", "All +EV (any source, deduped)", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
+      ["reddit", "Reddit picks", "Picks from r/sportsbook's daily NBA thread, per poster (research, flat 1u); 'Proven poster + market +EV' is the only staked Reddit record (¼K, BET caps).", true],
       ["ext", "Outside picks (cards)", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
       ["alt", "Alt ladder", "FanDuel alternate rungs vs. other sources at the same rung (3+ two-sided), market EV +4% or more, FanDuel price +300 or shorter, CrazyNinja worst case above 0, one rung per player, ¼K capped 0.5u. 'Market only' for PTS/REB/AST/P+A/PRA/R+A; 'market + projection' for 3PM/P+R (the BettingPros projection must agree at the rung). CLV at the rung's closing fair price.", true],
       ["half", "Halftime live (experimental)", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
@@ -690,13 +693,21 @@ footer b { color: var(--ink); font-weight: 600; }
         html += board(G[1], G[2], bHead, rs.map(bRow).join("") || '<tr><td class="l dim" colspan="7">No HALF BETs yet.</td></tr>') + hh;
         return;
       }
-      if (!rs.length && G[0] === "ext") return;
+      if (!rs.length && (G[0] === "ext" || G[0] === "reddit")) return;
       if (!rs.length && REC_VERSION !== "v2" && (G[0] === "sim" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" || G[0] === "ua")) return;
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');
     });
 
+    var PO = REC.posters || [];
+    html += board("Reddit posters: leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
+      th([["Poster", "l"], ["Picks"], ["Graded"], ["W-L-P"], ["Units"], ["ROI"], ["CLV"], ["Entry mkt EV", "hide-sm"]]),
+      PO.filter(function (p) { return p.n >= 5; }).slice(0, 20).map(function (p) {
+        return '<tr><td class="l">' + (p.proven ? "⭐ " : "") + esc(p.poster) + "</td><td>" + p.picks + "</td><td>" + p.n + "</td><td>" + p.w + "-" + p.l + "-" + p.p +
+          "</td><td>" + units(p.units) + "</td><td>" + pct(p.roi) + "</td><td>" + (p.clv == null ? '<span class="dim">–</span>' : (p.clv > 0 ? "+" : "") + p.clv) +
+          '</td><td class="hide-sm">' + (p.entry_ev == null ? "–" : (p.entry_ev > 0 ? "+" : "") + p.entry_ev + "%") + "</td></tr>"; }).join("") ||
+        '<tr><td class="l dim" colspan="8">No poster has 5+ graded picks yet.</td></tr>');
     var EVB = REC.ev_buckets || [];
     html += board("Entry EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
       th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat units"], ["¼K units"], ["CLV"]]),
