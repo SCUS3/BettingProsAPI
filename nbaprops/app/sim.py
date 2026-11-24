@@ -9,6 +9,7 @@ Results come from public box scores (bp_boxscore). Everything is written under s
 sim/sim_ledger.csv; bp_ledger.csv, bp_graded.csv, the model, the Kelly cap and the dashboard are untouched.
 Market BETs aren't simulated (no historical Unabated consensus), so this tests the model-pick strategies only.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import argparse
 import datetime as dt
 import glob
@@ -57,8 +58,8 @@ def offer_from(p, fd):
     return off
 
 
-PER_GAME = 1.5          # BettingPros /props pages per game for a past date (11/21: 9 pages, 6 games)
-SEASON_START = "2026-10-20"
+PER_GAME = C.SIM_PER_GAME  # nbaprops/config.py
+SEASON_START = C.SEASON_START  # nbaprops/config.py
 
 
 def regular_season_games(date):

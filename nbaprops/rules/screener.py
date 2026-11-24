@@ -13,6 +13,7 @@ Logged as strategy "cno_scr" at ¼K on the fair probability with the same caps (
 show positive CLV; 1.5u per player, 3.5u per game, counted within this record). Graded from box scores and given
 closing CLV by the watch like the other records. Plays already logged for the day aren't logged twice.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import csv
 import glob
 import os
@@ -88,10 +89,10 @@ def _dec(a):
     return _odds.american_to_decimal(a)
 
 
-MIN_EV = 0.02        # same bar as our other +EV records
-ALT_GAP = 2.0        # a screener line this far from the pull's FanDuel main line is an alternate line (dropped)
+MIN_EV = C.SCREENER_MIN_EV  # nbaprops/config.py
+ALT_GAP = C.SCREENER_ALT_GAP  # nbaprops/config.py
 # The user's fixed screener settings: rows that break them are dropped.
-FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 200.0, "book": "FanDuel", "league": "NBA"}
+FIXED = C.SCREENER_FIXED  # nbaprops/config.py
 PASTE_LOG = os.path.join(HERE, "cno_screener_log.json")
 
 
@@ -495,7 +496,7 @@ def rule_rows(date, include_started=False):
 NEAR_KEY = "near_miss"        # CNO +EV but BettingPros disagrees: research (flat 1u, no stake), next to your rule
 
 
-NEAR_LOW = -0.01            # a prop with BettingPros agreeing and CNO EV in [-1%, 0) "just missed" on EV
+NEAR_LOW = C.NEAR_MISS_LOW_EV  # nbaprops/config.py
 
 
 def miss_reason(p):

@@ -10,6 +10,7 @@ Tags / ledger strategies:
   alt_proj  "alt, market + projection"  3PM, P+R: the BettingPros projection must also be on the bet side of the rung
 The FanDuel main line itself is never an alt rung (main lines are the BET record's job).
 """
+from nbaprops import config as CFG  # thresholds, caps and settings
 import statistics
 
 from nbaprops.sources import crazyninja as C
@@ -19,7 +20,7 @@ from nbaprops.sources import unabated as U
 from nbaprops.sources.rotowire import norm
 from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 
-MIN_EV, MIN_SOURCES, MAX_ODDS, CAP = 0.04, 3, 300, 0.5
+MIN_EV, MIN_SOURCES, MAX_ODDS, CAP = CFG.ALT_MIN_EV, CFG.ALT_MIN_SOURCES, CFG.ALT_MAX_ODDS, CFG.ALT_CAP  # nbaprops/config.py
 PROJ_MARKETS = {"3PM", "P+R"}
 KEYS = {"alt_mkt": "alt, market only", "alt_proj": "alt, market + projection"}
 

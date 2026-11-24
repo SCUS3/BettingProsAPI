@@ -13,6 +13,7 @@ used for learning come from the same pre-tip snapshot. Files (local, git-ignored
 bp_graded.csv, bp_model.json, history/. Standard library only.
 """
 
+from nbaprops import config as C  # thresholds, caps and settings
 import csv
 import datetime as dt
 import glob
@@ -37,7 +38,7 @@ GRADED = os.path.join(HERE, "bp_graded.csv")
 MODEL = os.path.join(HERE, "bp_model.json")
 HISTORY = os.path.join(HERE, "history")
 
-PICKS_PER_STRATEGY = 5
+PICKS_PER_STRATEGY = C.PICKS_PER_STRATEGY  # nbaprops/config.py
 MARKETS = ("PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A")
 STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", "Top 5 projection gap"),
               ("learned", "Top 5 learned")]
@@ -102,7 +103,7 @@ def _read(path):
 
 # Rule versions by first slate date (see RECORDS.md). A rule change adds a line here and bumps the version; older
 # versions stay in the ledger as archives and are never deleted.
-RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24")]
+RULE_VERSIONS = C.RULE_VERSIONS  # nbaprops/config.py
 V2_START = dict(RULE_VERSIONS)["v2"]
 CURRENT_VERSION = RULE_VERSIONS[-1][0]
 
@@ -548,7 +549,7 @@ def closing_lines(date):
     return out
 
 
-BET_CAP_MIN_BETS = 50     # graded BETs needed before the BET stake cap lifts
+BET_CAP_MIN_BETS = C.BET_CAP_MIN_BETS  # nbaprops/config.py
 
 
 def bet_clv_status():

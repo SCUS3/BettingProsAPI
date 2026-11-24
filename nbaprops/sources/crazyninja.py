@@ -9,6 +9,7 @@ Throttled to 1 call per second, cached by (odds, final odds, method, boost) in c
 (down, timeout, odd response) is skipped silently: the caller gets None and says "no CNO check".
 Only odds numbers are sent.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import json
 import os
 import statistics
@@ -19,7 +20,7 @@ import urllib.request
 from nbaprops.config import ROOT as HERE  # noqa: E402
 URL = "http://api.crazyninjaodds.com/api/devigger/v1/sportsbook_devigger.aspx"
 CACHE = os.path.join(HERE, "cno_cache.json")
-MIN_INTERVAL = 1.0          # seconds between calls
+MIN_INTERVAL = C.CNO_MIN_INTERVAL  # nbaprops/config.py
 WORST_CASE = 4
 _last = [0.0]
 _cache = [None]

@@ -25,6 +25,7 @@ Elite gets 1,000 per day and 50 per page. The allowance resets at midnight UTC
 (7 PM Eastern in winter, 8 PM in summer).
 """
 
+from nbaprops import config as C  # thresholds, caps and settings
 import argparse
 import csv
 import datetime as dt
@@ -76,7 +77,7 @@ def eastern_today():
     except Exception:
         return dt.date.today().isoformat()
 
-MAX_PICK_LOOKUPS = 8   # per slate per run: single game+market lookups for picks the FanDuel pull missed
+MAX_PICK_LOOKUPS = C.BP_MAX_PICK_LOOKUPS  # nbaprops/config.py
 
 
 
@@ -362,7 +363,7 @@ def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows
 # Each prop gets a 0-100 score built from three parts (weights below), then an
 # injury multiplier. The parts are scaled so threes, rebounds and points compete
 # fairly: the gap is measured in standard deviations, not % of the line.
-W_EDGE, W_EV, W_DVP = 0.40, 0.35, 0.25
+W_EDGE, W_EV, W_DVP = C.SCORE_WEIGHTS  # nbaprops/config.py
 INJURY_MULT = {"": 1.0, "probable": 1.0, "prob": 1.0, "dtd": 0.85, "questionable": 0.85, "ques": 0.85, "gtd": 0.85,
                "doubtful": 0.5, "doubt": 0.5, "out": 0.0, "ofs": 0.0}
 
@@ -499,9 +500,9 @@ def no_vig_prob(r):
     return (io if (r.get("rec_side") or "").lower() == "over" else iu) / (io + iu)
 
 
-KELLY_MAX = 2.5            # u, once the model is calibrated
+KELLY_MAX = C.MODEL_KELLY_MAX  # nbaprops/config.py
 KELLY_SCALE = 1.0          # set by finish(): 0.5 (max 1.25u) until calibrated
-CALIBRATION_MIN_PICKS = 50
+CALIBRATION_MIN_PICKS = C.CALIBRATION_MIN_PICKS  # nbaprops/config.py
 
 
 def calibration_status():
@@ -535,7 +536,7 @@ def kelly_units(r):
 
 # BettingPros publishes PTS, REB, AST, P+A and PRA projections as whole numbers, nearly always the line +-0.5
 # (every saved pull: 100% whole). That's a side lean, not a projection. Only these markets carry real projections:
-REAL_PROJ_MARKETS = {"3PM", "P+R"}
+REAL_PROJ_MARKETS = C.REAL_PROJ_MARKETS  # nbaprops/config.py
 W_NP_FORM, W_NP_DVP, W_NP_MKT = 0.25, 0.25, 0.20   # no projection: form, matchup and market value only (renormalized)
 
 

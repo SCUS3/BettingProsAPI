@@ -13,6 +13,7 @@ down -> not logged). Skip: 3+ fouls, 20+ point margin, injury mention or ejectio
 Stake ¼K on the market fair probability, capped 0.5u per bet and 1.5u per game. A later paste of the same prop
 logs its CLV (EV of the bet at the newer fair price; the next scan = start of the 3rd quarter).
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import os
 import re
 import statistics
@@ -28,8 +29,8 @@ KEY = "half"
 PASTES = os.path.join(HERE, "half_pastes.csv")
 PASTE_FIELDS = ["date", "at", "player", "market", "side", "line", "fd", "books_n", "books", "fair", "market_ev", "cno_ev",
                 "cno_min_ev", "decision", "reason", "min", "pf", "margin", "pregame_line", "half", "exp_final", "exp_side", "exp_tag"]
-MIN_EV, MIN_SOURCES = 0.03, 3
-BET_CAP, GAME_CAP = 0.5, 1.5
+MIN_EV, MIN_SOURCES = C.HALF_MIN_EV, C.HALF_MIN_SOURCES  # nbaprops/config.py
+BET_CAP, GAME_CAP = C.HALF_BET_CAP, C.HALF_GAME_CAP  # nbaprops/config.py
 PAIR = re.compile(r"([A-Za-z][A-Za-z0-9 .&'-]*?)\s*:?\s*([+-]\d{3,5})\s*/\s*([+-]\d{3,5})")
 FDP = re.compile(r"\b(?:fd|fanduel)\b\s*:?\s*([+-]\d{3,5})(?:\s*/\s*([+-]\d{3,5}))?", re.I)
 

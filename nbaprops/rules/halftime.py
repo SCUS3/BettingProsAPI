@@ -13,6 +13,7 @@ Then you paste live odds (bp_value.py --half-paste).
 Pregame FanDuel lines: today's saved pull (bp_props_<date>.csv), the day's value file, and the latest saved Unabated
 board for the date (its FanDuel lines freeze at tip, i.e. the closing pregame line). No BettingPros requests.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import csv
 import datetime as dt
 import glob
@@ -26,10 +27,10 @@ from nbaprops.sources import espn as BX
 from nbaprops.sources.rotowire import norm
 
 from nbaprops.config import ROOT as HERE  # noqa: E402
-OVER_PACE, UNDER_PACE = 0.25, 0.80      # strong flags only (alerts); every player's snapshot is logged regardless
-MIN_HALF_MIN = 12                        # overs: at least 12 first-half minutes
-MIN_LINE = {"PTS": 14.5, "REB": 6.5, "AST": 4.5, "3PM": 2.5, "P+A": 20.5, "P+R": 20.5, "PRA": 20.5}
-FOUL_FLAG, MARGIN_FLAG = 3, 20
+OVER_PACE, UNDER_PACE = C.HALF_OVER_PACE, C.HALF_UNDER_PACE  # nbaprops/config.py
+MIN_HALF_MIN = C.HALF_MIN_MINUTES  # nbaprops/config.py
+MIN_LINE = C.HALF_MIN_LINE  # nbaprops/config.py
+FOUL_FLAG, MARGIN_FLAG = C.HALF_FOUL_FLAG, C.HALF_MARGIN_FLAG  # nbaprops/config.py
 PARTS = {"PTS": ("PTS",), "REB": ("REB",), "AST": ("AST",), "3PM": ("3PM",), "P+A": ("PTS", "AST"),
          "P+R": ("PTS", "REB"), "PRA": ("PTS", "REB", "AST"), "R+A": ("REB", "AST")}
 
@@ -118,7 +119,7 @@ def half_box(game_id):
 
 
 BUCKETS = [(0.0, 0.25, "<=25%"), (0.25, 0.5, "25-50%"), (0.5, 0.8, "50-80%"), (0.8, 1.0, "80-100%"), (1.0, 99, ">=100%")]
-SHRINK_N = 100           # shrink the 2nd-half share toward 50% while a bucket has fewer than 100 graded rows
+SHRINK_N = C.HALF_SHRINK_N  # nbaprops/config.py
 
 
 def bucket(pace):

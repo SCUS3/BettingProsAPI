@@ -2,6 +2,7 @@
 and the guard that stops before a call would leave fewer than MIN_REMAINING credits. Every event-odds call costs
 credits: ask before calling (CLAUDE.md). /events is free.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import datetime as dt
 import json
 import os
@@ -19,7 +20,7 @@ BASE = "https://api.the-odds-api.com/v4/sports/basketball_nba"
 CREDITS = os.path.join(HERE, "odds_credits.json")
 
 
-MIN_REMAINING = 50
+MIN_REMAINING = C.ODDSAPI_MIN_REMAINING  # nbaprops/config.py
 
 
 # ------------------------------------------------------------------ credits

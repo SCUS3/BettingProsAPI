@@ -17,6 +17,7 @@ than 50 credits. Results go to value_<date>.json, the ledger (oa_fair, oa_ev) an
 Key: ODDS_API_KEY in .env (never printed).
 """
 
+from nbaprops import config as C  # thresholds, caps and settings
 import argparse
 import csv
 import datetime as dt
@@ -40,12 +41,12 @@ from nbaprops.sources.oddsapi import (  # noqa: E402 -- moved, re-exported for e
     guard,
     load_credits,
 )
-MIN_BOOKS = 3
-DAILY_CREDITS = 8          # aim per day; --top N is cut to the games with the most shortlist plays
-BET_MIN_EV = 0.02          # BET: market EV (multiplicative) at FanDuel's price, and
-BET_MIN_BOOKS = 4          #      The Odds API: at least 4 other books at FanDuel's line (Unabated: U.MIN_SOURCES = 3)
-BET_KELLY_MAX = 2.5        # u; quarter-Kelly on the market's fair probability, once BET CLV is proven
-BET_KELLY_CAP = 1.25       # u; until 50 graded BETs show positive average CLV
+MIN_BOOKS = C.ODDSAPI_PLAN_MIN_BOOKS  # nbaprops/config.py
+DAILY_CREDITS = C.ODDSAPI_DAILY_CREDITS  # nbaprops/config.py
+BET_MIN_EV = C.BET_MIN_EV  # nbaprops/config.py
+BET_MIN_BOOKS = C.ODDSAPI_MIN_BOOKS  # nbaprops/config.py
+BET_KELLY_MAX = C.BET_KELLY_MAX  # nbaprops/config.py
+BET_KELLY_CAP = C.BET_KELLY_CAP  # nbaprops/config.py
 
 # Checked against https://the-odds-api.com/sports-odds-data/betting-markets.html (NBA player props, Over/Under).
 MARKET_KEYS = {"PTS": "player_points", "REB": "player_rebounds", "AST": "player_assists", "3PM": "player_threes",
@@ -671,8 +672,8 @@ def fmtn(v):
     return "-" if v is None else f"{v:g}"
 
 
-PLAYER_CAP = 1.5     # max units per player, all of his BETs combined (that day)
-GAME_CAP = 3.5       # max units per game
+PLAYER_CAP = C.PLAYER_CAP  # nbaprops/config.py
+GAME_CAP = C.GAME_CAP  # nbaprops/config.py
 
 
 def game_resolver(rows):
@@ -755,13 +756,13 @@ def _proj_fields(r):
 
 
 
-BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]   # Unabated board + watch
-R_A_FROM = "2026-11-24"      # R+A turned back on from this slate
+BOARD_MARKETS = C.BOARD_MARKETS  # nbaprops/config.py
+R_A_FROM = C.R_A_FROM  # nbaprops/config.py
 
 
 def board_markets(date):
     return [m for m in BOARD_MARKETS if m != "R+A" or date >= R_A_FROM]
-CNO_MIN_EV = 0.02     # CrazyNinja +EV strategy: median worst-case EV across sources >= +2% (our bar)
+CNO_MIN_EV = C.CNO_MIN_EV  # nbaprops/config.py
 
 
 def cno_check(side, v):
@@ -916,8 +917,8 @@ def apply_close(date, led, bets, res, at, show=False):
 
 
 # --------------------------------------------------------------------- watch
-WATCH_EVERY = 20 * 60        # seconds between scans
-CLOSE_LEAD = 5 * 60          # scans land 5 min before each tip and 5 min after it (closing: tip + 5)
+WATCH_EVERY = C.WATCH_EVERY_S  # nbaprops/config.py
+CLOSE_LEAD = C.CLOSE_LEAD_S  # nbaprops/config.py
 
 
 def _et_now():

@@ -4,6 +4,7 @@ the .env key loader, the books/markets cache, market classification, and the /pr
 Request state (REQUESTS_MADE, RUN_CAP, PULL_LOG) lives here only; callers read and set it as module attributes
 (``bettingpros.RUN_CAP = n``), never through copied names. Every call costs requests; ask before calling (CLAUDE.md).
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import datetime as dt
 import json
 import os
@@ -22,7 +23,7 @@ BASE = "https://api.bettingpros.com/v3"
 REQUESTS_MADE = 0
 
 
-DAILY_LIMIT = 100       # Free/Plus requests per UTC day (resets 7 PM ET in winter)
+DAILY_LIMIT = C.BP_DAILY_LIMIT  # nbaprops/config.py
 
 
 REQUEST_LOG = os.path.join(_ROOT, "bp_requests.json")

@@ -14,6 +14,7 @@ A 401/403 marks Unabated unavailable (unabated_state.json) so bp_value.py switch
 Key: UNABATED_API_KEY in .env, never printed.
 """
 
+from nbaprops import config as C  # thresholds, caps and settings
 import argparse
 import email.utils
 import json
@@ -33,8 +34,8 @@ BASE = os.environ.get("UNABATED_API_BASE_URL", "https://data.unabated.com")
 DISCOVERY = os.path.join(HERE, "unabated_discovery.json")
 STATE = os.path.join(HERE, "unabated_state.json")
 LAST_ODDS = os.path.join(HERE, ".unabated_last_odds")
-ODDS_INTERVAL = 5.0          # seconds between odds calls, per key
-ODDS_TIMEOUT = 90            # the full props board is a large response
+ODDS_INTERVAL = C.UNABATED_ODDS_INTERVAL  # nbaprops/config.py
+ODDS_TIMEOUT = C.UNABATED_ODDS_TIMEOUT  # nbaprops/config.py
 TIMEOUT = 30
 LEAGUE = "nba"
 # Consensus sources (names as /market/nba/props/sources lists them), used only when both over and under are
@@ -42,7 +43,7 @@ LEAGUE = "nba"
 # Duplicate feeds are left out too (TheScore CA / TheScore (Fast); Polymarket only if Polymarket US is missing).
 BOOK_SOURCES = ["DraftKings", "BetMGM", "Caesars", "Fanatics", "TheScore US"]
 EXCHANGE_SOURCES = ["Novig", "Prophet Exchange", "Kalshi", "Polymarket US", "Polymarket"]
-MIN_SOURCES = 3
+MIN_SOURCES = C.UNABATED_MIN_SOURCES  # nbaprops/config.py
 # Player over/under single-game bet types (from /bettype; names are shared across sports, so match exactly
 # and require betOn=player, sides=ou, betRange=event, not a future). Some names have two ids (e.g. Points 73/275);
 # both go in the odds query, which is still one call.

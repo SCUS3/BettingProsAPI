@@ -5,6 +5,7 @@ factor = sum(actual) / sum(projection) over graded props (one per player-game), 
 toward 1.0 while n < SHRINK_N:  factor = w * raw + (1 - w) * 1.0,  w = min(n, SHRINK_N) / SHRINK_N.
 calibrated projection = raw projection x factor.
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import csv
 import glob
 import json
@@ -12,8 +13,8 @@ import os
 
 from nbaprops.config import ROOT as HERE  # noqa: E402
 MARKETS = ("3PM", "P+R")
-SHRINK_N = 200
-USE_CALIBRATION = False      # off for now: display and tags use BettingPros' raw projection; factors are still logged
+SHRINK_N = C.CALIB_SHRINK_N  # nbaprops/config.py
+USE_CALIBRATION = C.USE_CALIBRATION  # nbaprops/config.py
 _cache = {}
 
 

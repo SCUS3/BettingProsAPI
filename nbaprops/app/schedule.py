@@ -3,14 +3,15 @@
 
     python3 bp_schedule.py [YYYY-MM-DD]
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import datetime as dt
 import math
 import sys
 
 from nbaprops.sources import espn as BX
-PULL_LEAD_MIN = 90        # first pull this long before the earliest tip
-PULL_PER_GAME = 5.7       # full pull: ~2.4 /offers + ~3.3 /props pages per game, + 1 /events
-REPRICE_PER_GAME = 2.4    # 6:30 re-price: /offers only
+PULL_LEAD_MIN = C.PULL_LEAD_MIN  # nbaprops/config.py
+PULL_PER_GAME = C.PULL_PER_GAME  # nbaprops/config.py
+REPRICE_PER_GAME = C.REPRICE_PER_GAME  # nbaprops/config.py
 
 
 def et(ts):

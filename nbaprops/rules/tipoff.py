@@ -10,6 +10,7 @@ A game is bettable until its scheduled start + GRACE (10 min), unless ESPN's sco
                                                      play-by-play, saved per date) or tip + GRACE if unknown
   save_actual_starts(date)                           at grading: first-play times for the date's final games
 """
+from nbaprops import config as C  # thresholds, caps and settings
 import csv
 import datetime as dt
 import json
@@ -19,8 +20,8 @@ import time
 
 from nbaprops.sources import espn as BX
 from nbaprops.config import ROOT as HERE  # noqa: E402
-GRACE = dt.timedelta(minutes=10)
-CLOSE_AFTER = dt.timedelta(minutes=5)       # closing-CLV scan: scheduled start + 5 min
+GRACE = dt.timedelta(minutes=C.GRACE_MIN)  # nbaprops/config.py
+CLOSE_AFTER = dt.timedelta(minutes=C.CLOSE_AFTER_MIN)  # closing-CLV scan: scheduled start + 5 min  # nbaprops/config.py
 CACHE_S = 60
 _sb = {}
 ALIAS = {"GSW": "GS", "NYK": "NY", "SAS": "SA", "NOR": "NO", "NOP": "NO", "UTA": "UTAH", "UTH": "UTAH", "WAS": "WSH",
