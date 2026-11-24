@@ -33,3 +33,4 @@ unabated_live_probe_*.json
 halftime_flags.csv
 half_pastes.csv
 halftime_*.log
+.venv/
