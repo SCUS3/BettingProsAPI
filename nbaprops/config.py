@@ -78,3 +78,7 @@ HALF_SHRINK_N = 100            # expected-final share shrinks to 50% under this 
 # ---------------------------------------------------------------- projection calibration (3PM, P+R)
 CALIB_SHRINK_N = 200
 USE_CALIBRATION = False        # off: display and tags use BettingPros' raw projection; calibrated value still logged
+
+# ---------------------------------------------------------------- situation finder (candidate rules; never auto-adopted)
+SITUATION_MIN_N = 100          # graded plays a split needs before it can be a candidate rule
+SITUATION_P = 0.05             # and p below this that its average profit per play is really above 0

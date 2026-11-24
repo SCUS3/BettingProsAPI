@@ -980,6 +980,16 @@ def print_record():
     _print_record("v2")
     print("v1 archive (before the v2 fresh start; kept, not counted in v2):")
     _print_record("v1")
+    try:
+        from nbaprops.rules import situations
+        for v in ("v2", "v1"):
+            sx = situations.find(v)
+            c = sx["candidates"]
+            print(f"Situations {v}: " + (f"{len(c)} candidate rule(s)" if c else f"no candidate rules yet (needs {sx['min_n']}+ plays in a split)"))
+            for s in c:
+                print(f"  * {s['record']}: {s['dimension']} = {s['value']}  {s['w']}-{s['l']}-{s['p']}  {s['units']:+.2f}u  CLV {s['clv']}  p {s['p_value']}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Situations: not computed ({e})")
 
 
 def _print_record(version):

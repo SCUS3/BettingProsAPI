@@ -494,6 +494,10 @@ footer b { color: var(--ink); font-weight: 600; }
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
+    var SX = DATA.situations || { records: [], candidates: [] };
+    out.push("Situations (v2): " + (SX.candidates.length ? SX.candidates.length + " candidate rule(s)" : "no candidate rules yet (needs " + (SX.min_n || 100) + "+ plays in a split)"));
+    SX.candidates.forEach(function (s) { out.push("  ⭐ " + s.record + ": " + s.dimension + " = " + s.value + " | " + s.w + "-" + s.l + "-" + s.p + " | " + signed(s.units, "u") + " | CLV " + signed(s.clv, "% EV") + " | p " + s.p_value); });
+    SX.records.forEach(function (rec) { rec.splits.slice(0, 3).forEach(function (s) { out.push("  " + rec.record + " · " + s.dimension + " = " + s.value + ": " + s.w + "-" + s.l + "-" + s.p + ", " + signed(s.units, "u")); }); });
     var R1 = DATA.record_v1;
     if (R1 && R1.strategies) {
       out.push("v1 archive (before Nov 24, 2026; kept, not counted in v2):");
@@ -685,6 +689,24 @@ footer b { color: var(--ink); font-weight: 600; }
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');
+    });
+
+    var SIT = (REC_VERSION === "v1" ? DATA.situations_v1 : DATA.situations) || { records: [], candidates: [] };
+    var sitHead = th([["Split", "l"], ["W-L-P"], ["Hit"], ["Flat units"], ["ROI"], ["CLV", "hide-sm"], ["p", "hide-sm"]]);
+    function sitRow(s, withRec) {
+      return '<tr><td class="l">' + (s.candidate ? "⭐ " : "") + (withRec ? esc(s.record) + ": " : "") + esc(s.dimension) + " = <b>" + esc(s.value) + "</b></td><td>" +
+        s.w + "-" + s.l + "-" + s.p + "</td><td>" + pct(s.hit) + "</td><td>" + units(s.units) + "</td><td>" + pct(s.roi) + '</td><td class="hide-sm">' +
+        (s.clv == null ? '<span class="dim">–</span>' : (s.clv > 0 ? "+" : "") + s.clv + "% EV") + '</td><td class="hide-sm">' + (s.p_value == null ? "–" : s.p_value) + "</td></tr>";
+    }
+    var sitNote = "Each record's graded plays split by market, side, EV size, odds, DvP (side-aware), BettingPros gap, sources and time before tip. " +
+      "⭐ candidate rule = " + (SIT.min_n || 100) + "+ plays, positive units, CLV above 0 and p < " + (SIT.p || 0.05) +
+      " that it beats breakeven. Candidates are never switched on automatically: adopting one is a new rule version (RECORDS.md).";
+    html += board("Situations: candidate rules", sitNote, sitHead,
+      SIT.candidates.length ? SIT.candidates.map(function (s) { return sitRow(s, true); }).join("") :
+        '<tr><td class="l dim" colspan="7">No candidate rules yet (needs ' + (SIT.min_n || 100) + "+ graded plays in a split).</td></tr>");
+    SIT.records.forEach(function (rec) {
+      html += board("Situations: " + rec.record, rec.n + " graded plays. Best splits first; splits under 5 plays hidden.", sitHead,
+        rec.splits.slice(0, 12).map(function (s) { return sitRow(s, false); }).join("") || '<tr><td class="l dim" colspan="7">Not enough plays to split yet.</td></tr>');
     });
 
     var left = "", right = "";

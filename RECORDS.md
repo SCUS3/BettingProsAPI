@@ -29,6 +29,14 @@ Claude show v2 by default; the Record tab has a v1-archive toggle and Copy for C
 | **BettingPros Projection Model** (research) | Top 5 by balanced, projection gap, learned; watch list; 3PM-overs split. Flat 1u, no stake. (The old "your score" formula stopped logging in v2.) | `bal`, `gap`, `learned`, `watch` | `bp_ledger.csv`; `bp_graded.csv`; `bp_model.json` | Record tab (research) |
 | **Sims** (research) | Slates without a live pull, simmed from near-closing lines with that game removed from form. | (sim strategies) | `sim/sim_ledger.csv`; `sim/<date>/` | Record tab "Sims" |
 
+## Situation finder
+
+`nbaprops/rules/situations.py` splits every record's graded plays by market, side, EV at logging, FanDuel odds, side-aware DvP,
+BettingPros gap, sources and time before tip (Record tab "Situations" boards, Copy for Claude, terminal). A split is a
+**candidate rule** at 100+ graded plays with positive units, CLV above 0 and p < 0.05 that it beats breakeven
+(`SITUATION_MIN_N`, `SITUATION_P` in `nbaprops/config.py`). Candidates are never switched on automatically: adopting one
+is a new rule version here and in `RULE_VERSIONS`.
+
 ## v1 archive
 
 All rows dated before 2026-11-24 (227 ledger rows, 20 sim rows at the cutover), including the retired "Top 5 your
