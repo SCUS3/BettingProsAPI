@@ -91,7 +91,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
              "(soft 1-10 for an over, hard 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Mkt EV = market EV at FanDuel's price. Mkt value = "
              "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
              "injury report (Y/N). ▼ = the column the list is ranked by.", "",
-             f"**{kelly_note}**" if kelly_note else "", ""]
+             "**Rules v2 (from 2026-11-24):** your rule = CrazyNinja +EV and BettingPros agrees (section 2); BET = Unabated "
+             "EV +2% and CrazyNinja worst case > 0. Stakes (¼K, exposure caps) only on BETs and the market records; the model "
+             "lists below are research with no stake.", ""]
     rec = bp_learn.record()
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]

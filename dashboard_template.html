@@ -256,8 +256,8 @@ footer b { color: var(--ink); font-weight: 600; }
   <div class="view" id="view-record" role="tabpanel" aria-labelledby="tab-record" hidden></div>
 
   <footer>
-    <div><b>Gap</b>: projection minus line, as a % of the line. <b>Score</b>: 40% edge (gap in standard deviations) + 35% EV at FanDuel's price + 25% matchup. <b>Balanced</b>: 40% score + 25% recent form + 20% market value + 15% BettingPros rating. Both scores are cut for DTD (×0.85). <b>Learned</b>: the model's own score from graded results, blended with balanced until it has enough history.</div>
-    <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line). It claims no edge, its EV uses FanDuel's no-vig price, and it ranks below every real projection unless the price alone is +EV. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Kelly</b>: quarter-Kelly stake, 1u = 1% of bankroll; 0u means no edge at this price. Tap a row for its score breakdown.</div>
+    <div><b>Rules v2 (from Nov 24)</b>: <b>Your rule</b> = a CrazyNinja screener prop with any +EV where BettingPros agrees (marked <b>your rule</b>); <b>BET</b> = Unabated market EV +2% or more with CrazyNinja's worst case above 0. Only those market records carry stakes (¼K, exposure caps). The model columns below (Gap, old Score, Balanced, Learned) are research and carry no stake. <b>Gap</b>: projection minus line, as a % of the line. <b>Old score</b> (v1 formula, retired as your score): 40% edge + 35% EV + 25% matchup. <b>Balanced</b>: 40% old score + 25% form + 20% market value + 15% BettingPros rating.</div>
+    <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line). It claims no edge, its EV uses FanDuel's no-vig price, and it ranks below every real projection unless the price alone is +EV. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Stake</b>: only BETs and the market records carry one (quarter-Kelly, 1u = 1% of bankroll). DvP and BP dots: 🟢 helps / agrees with the listed side, 🔴 hurts / disagrees. Tap a row for its breakdown.</div>
     <div>FanDuel-priced props only. Projections, not guarantees.</div>
   </footer>
 </div>
@@ -272,8 +272,8 @@ footer b { color: var(--ink); font-weight: 600; }
   var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"], ["R+A", "R+A"]];
   CATS = CATS.filter(function (c) { return (DATA.disabled || []).indexOf(c[0]) < 0; });   // categories left out of pulls
   var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists", "R+A": "Rebounds + Assists" };
-  var RANKS = [["gap", "Gap"], ["score", "Score"], ["bal", "Balanced"], ["learned", "Learned"]];
-  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by your score: edge, FanDuel EV and matchup.", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
+  var RANKS = [["gap", "Gap"], ["score", "Old score (v1)"], ["bal", "Balanced"], ["learned", "Learned"]];
+  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by the old v1 score (edge, FanDuel EV, matchup): research only; your score in v2 is your rule (see the Your rule chips and the note's section 2).", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
   var LIMITS = [[10, "Top 10"], [25, "Top 25"]];
 
   var state = { cat: "ALL", rank: "bal", limit: 10, hideDtd: false, open: null };
@@ -314,7 +314,7 @@ footer b { color: var(--ink); font-weight: 600; }
   var dtd = ROWS.filter(function (r) { return r.inj; }).length;
   var strong = ROWS.filter(function (r) { return r.bal != null && r.bal >= 65; }).length;
   document.getElementById("sub").textContent = DATA.date_label + " · FanDuel lines · updated " + DATA.updated +
-    (DATA.kelly_note ? " · " + DATA.kelly_note : "");
+    " · Rules v2: stakes only on BETs and the market records; model lists are research.";
   document.getElementById("stats").innerHTML =
     stat(ROWS.length, "props") + stat(strong, "balanced 65+") + stat(dtd, "DTD tagged");
   function stat(v, l) { return '<div class="stat"><b>' + v + "</b><span>" + l + "</span></div>"; }
@@ -394,6 +394,7 @@ footer b { color: var(--ink); font-weight: 600; }
         player: (r.decision === "BET" ? '<span class="chip bet" title="' + esc(r.bet_tag || "") + '">BET' + (r.bet_side && r.bet_side !== r.side ? " " + (r.bet_side === "over" ? "O" : "U") : "") + (r.bet_tag === "+EV only" ? " ·EV" : "") + "</span>" +
           (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") +
+          (r.rule ? '<span class="chip bet" title="Your rule: CrazyNinja +EV and BettingPros agrees (' + esc(r.rule) + ')">your rule</span>' : "") +
           (r.pick ? '<span class="chip pick" title="Model pick (' + esc(r.pick) + '): research, not a bet">model pick</span>' : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
         proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" :
@@ -526,7 +527,7 @@ footer b { color: var(--ink); font-weight: 600; }
     return out;
   }
   function slateText() {
-    var out = ["NBA props " + DATA.date + " (FanDuel lines). Score = 40% edge + 35% EV + 25% matchup. Bal = 40% score + 25% form + 20% market value + 15% BettingPros rating. DvP 1 = softest. Kelly = quarter-Kelly units.", DATA.kelly_note || "", ""];
+    var out = ["NBA props " + DATA.date + " (FanDuel lines). Rules v2: your rule = CrazyNinja +EV and BettingPros agrees; BET = Unabated EV +2% and CrazyNinja worst case > 0; stakes ¼K on those only. Model lists (gap, old score, balanced) are research, no stake. DvP 1 = softest.", ""];
     out = out.concat(recordText());
     var bets = DATA.bets || [], watch = ROWS.filter(function (r) { return r.decision === "watch"; });
     function p1(v) { return v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%"; }
@@ -680,7 +681,7 @@ footer b { color: var(--ink); font-weight: 600; }
         html += board(G[1], G[2], bHead, rs.map(bRow).join("") || '<tr><td class="l dim" colspan="7">No HALF BETs yet.</td></tr>') + hh;
         return;
       }
-      if (!rs.length && (G[0] === "sim" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" || G[0] === "ua")) return;
+      if (!rs.length && REC_VERSION !== "v2" && (G[0] === "sim" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" || G[0] === "ua")) return;
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');

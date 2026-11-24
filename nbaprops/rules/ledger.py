@@ -838,8 +838,10 @@ def record(version: str = "v2") -> dict:
     graded = [(r, v) for r, v in live if r.get("result") in ("W", "L", "P")]   # voids ('V') don't count
     strategies = []
     for strat, label in STRATEGIES + VALUE_STRATEGIES:
+        if version != "v1" and strat in LOG_SKIP:
+            continue                                       # retired in v2 (the old score formula); kept in the v1 archive
         sub = [(r, v) for r, v in graded if r["strategy"] == strat]
-        if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
+        if strat in VALUE_KEYS and version == "v1" and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
         if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS:

@@ -17,6 +17,8 @@ DASH_OUT = os.path.join(_ROOT, "bp_dashboard.html")
 def write_dashboard(rows, date, kelly_note=""):
     """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
     from nbaprops.app.props import _num, REAL_PROJ_MARKETS, DISABLED, WANTED  # scoring helpers (imported here: props imports this module)
+    from nbaprops.rules import screener as _scr
+    rule_of = {(e["player"], e["market"], e["side"], float(e["line"])): f"CNO EV {100 * e['ev']:+.2f}%" for e in _scr.rule_rows(date)}
     try:
         with open(DASH_TEMPLATE) as f:
             tpl = f.read()
@@ -43,6 +45,7 @@ def write_dashboard(rows, date, kelly_note=""):
             "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
             "lean": r.get("bp_lean") if r.get("lean_only") in (True, "True") else None,
             "pick": r.get("model_pick") or None,
+            "rule": rule_of.get((r.get("player"), r.get("market"), r.get("rec_side"), _num(r.get("line")))),
             "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")), "bet_cap": r.get("bet_cap_note") or None,
             "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
             "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),

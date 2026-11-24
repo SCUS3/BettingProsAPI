@@ -1048,7 +1048,6 @@ def finish(rows, date, snapshot=False, rw_players=None):
     print(f"Top 10 lists (overall + gap and score per category) -> {note}")
     if dash:
         print(f"Dashboard -> {dash}")
-    print(kelly_note)
     print(f"Logged {n_logged} picks for {date} (top {bp_learn.PICKS_PER_STRATEGY} per strategy); graded next run.")
     print_record()
     print("Top 15 by gap:")
