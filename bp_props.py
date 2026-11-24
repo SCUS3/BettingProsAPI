@@ -701,8 +701,28 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
               "real projection unless the price alone is +EV.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
     lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
-    lines += ["## 2. Top 10 by your score", "", "Edge, FanDuel EV and matchup.", ""]
-    lines += table(ranked(fd, lambda r: r["score"]), "score")
+    import bp_cno_screener
+    mine = bp_cno_screener.rule_rows(date)
+    lines += ["## 2. Top 10 by your score", "",
+              "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +200 or shorter, "
+              "main line) AND BettingPros' projection or lean agrees with the side. Built from today's pastes; EV and price "
+              "are from the latest paste that listed the prop. Ranked by CrazyNinja EV.", ""]
+    if mine:
+        by = {(r["player"], r["market"]): r for r in rows}
+        body = []
+        for i, e in enumerate(mine[:n], 1):
+            r = by.get((e["player"], e["market"])) or {}
+            pr = _num(e.get("proj_raw"))
+            gap = "" if pr is None else f"{pr - float(e['line']):+.1f}"
+            seen_et = bp_projctx._et(e.get("first_seen", "")).replace(" ET", "") if e.get("first_seen") else ""
+            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
+                         "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
+                         str(e.get("books") or ""), dvp_s(r) if r else "", str(e.get("seen", 1)), seen_et])
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
+                           ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
+                           ("Pastes", "r"), ("First seen", "r")], body) + [""]
+    else:
+        lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
     lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
     lines += table(ranked(fd, lambda r: r["balanced"]), "balanced")
     np_rows = [r for r in rows if r["price_is_fanduel"] and r.get("noproj") and r.get("balanced") is not None]
@@ -717,7 +737,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                   "Gap, side, EV and Kelly use FanDuel's line; BettingPros' win chance and rating are dropped for these.", ""]
         lines += [f"- {r['player']} {r['market']} {r['rec_side']}: {r['line_note']}" for r in ranked(diffs, lambda r: r["balanced"])[:15]]
         lines.append("")
-    lines += ["---", "", "# Each category", "", "3PM and P+R: top 10 by projection gap and by your score. PTS, REB, AST, P+A "
+    lines += ["---", "", "# Each category", "", "3PM and P+R: top 10 by projection gap. PTS, REB, AST, P+A "
               "and PRA: BettingPros publishes whole-number side leans, so those are ranked on form, matchup and market value.", ""]
     for tag, name in CATEGORY_ORDER:
         if tag in DISABLED:
@@ -740,8 +760,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
             continue
         lines += [f"### {tag}: by projection gap", ""]
         lines += table(ranked(group, lambda r: abs(r["pct_gap"])), "gap")
-        lines += [f"### {tag}: by your score", ""]
-        lines += table(ranked(group, lambda r: r["score"]), "score")
+
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
@@ -1449,7 +1468,7 @@ def print_record():
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
+    heads = [("rule", "Your rule: CNO +EV + BP agrees"), ("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]
@@ -1461,7 +1480,7 @@ def print_record():
             br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
             unit = "% EV" if x.get("clv_unit") else " pts"
             clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
-            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half", "alt") else ""
+            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half", "alt", "rule") else ""
             print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}".rstrip())
 
 

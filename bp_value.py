@@ -1139,8 +1139,18 @@ def run_cno_paste(args):
             print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
                   f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']}) | now {r['now']}")
         return
+    every, _ = S.parse(text, args.date, 0.0)            # every +EV row (fixed settings) feeds your rule's daily store
     plays, dropped = S.parse(text, args.date, 0.0 if args.all else None)
     st = S.settings(text, plays, args.devig, args.min_books, args.max_odds) if not args.dry else None
+    if not args.dry:
+        S.update_store(args.date, every)
+        mine = [p for p in every if p.get("proj_tag") in ("agrees", "lean agrees")]
+        rows = S.log(mine, args.date, st, key=S.RULE_KEY)
+        print(f"Your rule (CNO +EV and BettingPros agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
+              f"{len(S.rule_rows(args.date))} on today's list.")
+        for r in rows:
+            print(f"  NEW {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: CNO EV "
+                  f"{100 * float(r['oa_ev']):+.2f}%, {r['kelly_u']}u ¼K  |  {r.get('proj_note')}")
     if st:
         inherited = [k for k in st["assumed"] if st.get(k) is not None]
         print("Screener settings: " + S.settings_text(st) + (f" (same as last paste: {', '.join(inherited)})" if inherited else ""))

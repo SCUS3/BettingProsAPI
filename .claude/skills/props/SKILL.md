@@ -103,6 +103,8 @@ Every finished slate with no live pull gets simmed with `bp_sim.py` (model picks
 
 ## CrazyNinja screener paste
 
+Your rule (your score): every paste also feeds the day's store, and any +EV prop where BettingPros agrees is logged once as "Your rule". After each paste, report the new ones and today's list (section 2 of bp_top10_<date>.md).
+
 If the pasted games are already live, run `python3 bp_value.py --cno-paste <file> --live` instead (display only): each NBA FanDuel row vs. BettingPros' projection/lean and the halftime expected final, with the stat now.
 
 When the user pastes CrazyNinja's +EV screener text, save it to a scratch file and run `python3 bp_value.py --cno-paste <file> --dry` first, then without `--dry` to log (no API calls). It keeps NBA player props at FanDuel with EV >= +2% whose game hasn't started (tip from the screener's "Today at 8:00 PM"), and logs them as the "CNO screener" record (¼K on fair prob, same caps). Report kept vs. dropped by reason, each play's BettingPros projection number and gap vs. the line (3PM/P+R: proj agrees/disagrees; other markets: lean, marked lean only; "–" if not in the pull), and any settings WARNING. Pass `--devig/--min-books/--max-odds` when the user states their screener settings; otherwise the last paste's are assumed. The screener bar stays +2%.

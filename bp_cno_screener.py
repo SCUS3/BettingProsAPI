@@ -368,7 +368,8 @@ def log(plays, date, st=None, key=KEY):
     import bp_value as V
     led = L._read(L.LEDGER)
     k = lambda r: (r["player"], r["market"], r["side"], str(V._f(r.get("line"))))
-    have = {k(r) for r in led if r["date"] == date and r["strategy"] in (KEY, KEY_SUB)}   # one record per play per day
+    have = ({k(r) for r in led if r["date"] == date and r["strategy"] in (KEY, KEY_SUB)} if key != RULE_KEY else
+            {k(r) for r in led if r["date"] == date and r["strategy"] == RULE_KEY})   # one record per play per day
     board = {}
     try:
         for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))):
@@ -447,3 +448,45 @@ def live_compare(text, date):
         out.append({"player": pl, "market": mk, "side": side, "line": line, "odds": t.get("odds"), "ev": t.get("ev"),
                     "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now})
     return out, skipped
+
+
+# ------------------------------------------------------------------ your rule
+RULE_KEY = "my_rule"          # your score: CNO +EV (any EV > 0) AND BettingPros' projection/lean agrees
+
+
+def _store_path(date):
+    return os.path.join(HERE, "history", date, f"cno_rows_{date}.json")
+
+
+def store(date):
+    import json
+    try:
+        return json.load(open(_store_path(date)))
+    except (OSError, ValueError):
+        return {}
+
+
+def update_store(date, plays):
+    """Every +EV row from today's pastes (fixed settings applied), keyed player|market|side|line. Latest paste updates
+    EV/odds; first seen, times seen and best EV are kept."""
+    import json
+    st, now = store(date), L.utc_now()
+    for p in plays:
+        k = f"{p['player']}|{p['market']}|{p['side']}|{float(p['line']):g}"
+        e = st.get(k) or {"first_seen": now, "seen": 0, "ev_max": p["ev"]}
+        e.update(player=p["player"], market=p["market"], side=p["side"], line=p["line"], odds=p["odds"], ev=p["ev"],
+                 fair=p["fair"], books=p["books"], tip=p.get("tip"), event=p.get("event"), last_seen=now,
+                 seen=e["seen"] + 1, ev_max=max(e["ev_max"], p["ev"]), proj_tag=p.get("proj_tag"), proj_note=p.get("proj_note"),
+                 proj_raw=p.get("proj_raw"))
+        st[k] = e
+    os.makedirs(os.path.dirname(_store_path(date)), exist_ok=True)
+    json.dump(st, open(_store_path(date), "w"), indent=1)
+    return st
+
+
+def rule_rows(date, include_started=False):
+    """Today's props meeting your rule (CNO EV > 0 at the latest paste and BettingPros agrees), best EV first."""
+    import bp_tipoff
+    out = [e for e in store(date).values() if e.get("ev", 0) > 0 and e.get("proj_tag") in ("agrees", "lean agrees")
+           and (include_started or not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event")))]
+    return sorted(out, key=lambda e: -e["ev"])
