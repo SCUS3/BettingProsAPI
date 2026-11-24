@@ -46,14 +46,19 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
                     ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
-                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
+                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("all_ev", "All +EV (any source, deduped)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("alt_mkt", "Alt, market only"),
                     ("alt_proj", "Alt, market + projection")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
 RULE_KEYS = {"my_rule", "near_miss"}
 UA_KEYS = {"ua_agree"}
-EXT_KEYS = {"ext_pick"}       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+EXT_KEYS = {"ext_pick"}
+ALL_EV_KEYS = {"all_ev"}      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
+EV_BUCKETS = [(0.0, 0.02, "0-2%"), (0.02, 0.04, "2-4%"), (0.04, 99, "4%+")]
+EV_RECORDS = [("Your rule", {"my_rule"}), ("Unabated +EV & BP agrees", {"ua_agree"}), ("BETs (Unabated)", {"bet_agree", "bet_only"}),
+              ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
+              ("All +EV (any source)", {"all_ev"})]       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}
@@ -585,7 +590,7 @@ def log_value_decisions(date, rows):
     old = _read(LEDGER)
     cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS
     have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
     new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
@@ -794,6 +799,25 @@ def half_summary(version="v2"):
     return out
 
 
+def ev_buckets(graded):
+    """Each +EV record split by ENTRY EV (the frozen snapshot, never a later price): 0-2%, 2-4%, 4%+.
+    graded = [(row, clv)] counted, graded rows. -> [{"record", "buckets": [{"bucket", n, w, l, p, units, kelly_units, clv}]}]."""
+    out = []
+    for label, keys in EV_RECORDS:
+        sub = [(r, v) for r, v in graded if r["strategy"] in keys]
+        if not sub:
+            continue
+        bk = []
+        for lo, hi, name in EV_BUCKETS:
+            g = [(r, v) for r, v in sub if (e := _num(r.get("entry_ev") or r.get("oa_ev"))) is not None and lo <= e < hi]
+            if g:
+                s = _summ([r for r, _ in g], [v for _, v in g])
+                bk.append({"bucket": name, "n": len(g), "w": s["w"], "l": s["l"], "p": s["p"], "units": s["units"],
+                           "kelly_units": s["kelly_units"], "clv": s["clv"], "clv_n": s["clv_n"]})
+        out.append({"record": label, "buckets": bk})
+    return out
+
+
 def sim_record_rows(version="v2"):
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
     rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P") and rule_version(r) == version]
@@ -854,14 +878,14 @@ def record(version: str = "v2") -> dict:
         if strat in VALUE_KEYS and version == "v1" and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
         x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
                       "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
-                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "model")
+                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
@@ -950,7 +974,7 @@ def record(version: str = "v2") -> dict:
     if model.get("weights"):
         weights = sorted(({"name": FEATURE_LABELS[f], "coef": round(c, 3)} for f, c in zip(FEATURES, model["weights"])),
                          key=lambda x: -abs(x["coef"]))
-    return {"version": version, "half": half_summary(version), "strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
+    return {"version": version, "half": half_summary(version), "ev_buckets": ev_buckets(graded), "strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
             "recent": recent, "pending": pending, "dropped_after_tip": dropped,
             "model_n": model.get("n", 0), "trust": round(100 * trust(model)), "proven": model.get("proven", False),
             "cap_unproven": round(100 * CAP_UNPROVEN), "validation": model.get("validation"),

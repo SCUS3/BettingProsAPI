@@ -440,6 +440,7 @@ def save_ua_store(date, rows, ua):
     entries get the latest price (the first sighting also sets a frozen entry_* snapshot); games already started are
     never touched, so nothing written after a tip can change or drop them."""
     now = bp_learn.utc_now()
+    pos = []
     try:
         out = json.load(open(ua_store_path(date)))
     except (OSError, ValueError):
@@ -461,11 +462,47 @@ def save_ua_store(date, rows, ua):
             e.update(price=v.get("price_used"), ev=v["ev_mult"], fair=v.get("fair_mult"), books=v.get("books"),
                      exchange=bool(v.get("exchange")), at=now)
             out[k] = e
+            if v["ev_mult"] > 0 and (v.get("books") or 0) >= 3:
+                pos.append({"player": r["player"], "market": r["market"], "side": sd, "line": float(r["line"]),
+                            "odds": v.get("price_used"), "fair": v.get("fair_mult"), "ev": v["ev_mult"], "books": v.get("books"),
+                            "tip": r.get("tip"), "team": r.get("team"), "event_id": r.get("event_id"), "src": "Unabated"})
     try:
         os.makedirs(os.path.dirname(ua_store_path(date)), exist_ok=True)
         json.dump(out, open(ua_store_path(date), "w"))
     except OSError:
         pass
+    log_all_ev(date, pos)
+
+
+def log_all_ev(date, items):
+    """'All +EV' log: every +EV prop from any source, once per day per player|market|side|line (first source wins;
+    later sources are added to the note). Entry snapshot is the first sighting; ¼K on its entry fair, capped 1.25u."""
+    items = [x for x in items if (x.get("ev") or 0) > 0 and x.get("fair") and x.get("odds") is not None]
+    if not items:
+        return []
+    led = bp_learn._read(bp_learn.LEDGER)
+    k = lambda p, m, s, ln: (norm(p), m, s, str(_f(ln)))
+    have = {k(r["player"], r["market"], r["side"], r.get("line")): r for r in led
+            if r["date"] == date and r["strategy"] in bp_learn.ALL_EV_KEYS}
+    now, out, changed = bp_learn.utc_now(), [], False
+    for x in items:
+        key = k(x["player"], x["market"], x["side"], x["line"])
+        if key in have:
+            r = have[key]
+            if x["src"] not in (r.get("cap_note") or ""):
+                r["cap_note"] = ((r.get("cap_note") or "") + f"; also {x['src']}").lstrip("; ")
+                changed = True
+            continue
+        row = {"date": date, "pulled_at": now, "tip": x.get("tip") or "", "strategy": "all_ev", "player": x["player"],
+               "team": x.get("team"), "market": x["market"], "side": x["side"], "line": x["line"], "odds": x["odds"],
+               "our_prob": x["fair"], "nv_prob": x["fair"], "oa_fair": x["fair"], "oa_ev": x["ev"], "sources": x.get("books"),
+               "fair_src": x["src"], "event_id": x.get("event_id") or "",
+               "kelly_u": _odds.quarter_kelly_units(x["fair"], x["odds"], BET_KELLY_CAP)}
+        have[key] = row
+        out.append(row)
+    if out or changed:
+        bp_learn._write(bp_learn.LEDGER, led + out, bp_learn.LEDGER_FIELDS)
+    return out
 
 
 def log_ua_agree(date, rows, ua):
@@ -1253,6 +1290,7 @@ def run_cno_paste(args):
         mine = [p for p in every if p["ev"] > 0 and p.get("proj_tag") in ("agrees", "lean agrees")]
         rows = S.log(mine, args.date, st, key=S.RULE_KEY)
         miss = S.log_near_misses(every, args.date)
+        log_all_ev(args.date, [dict(p, src="CNO screener") for p in every if p["ev"] > 0])
         print(f"Your rule (CNO +EV and BettingPros agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
               f"{len(S.rule_rows(args.date))} on today's list; {len(miss)} new near misses"
               + (" (" + "; ".join(f"{m['player']} {m['market']}: {m['cap_note']}" for m in miss) + ")" if miss else "") + ".")

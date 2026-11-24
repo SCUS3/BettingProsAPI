@@ -148,6 +148,8 @@ def log(date, cands, now):
                      "cap_note": f"alt (FanDuel main {c['main']:g})" if c.get("main") is not None else "alt"})
     if rows:
         L._write(L.LEDGER, led + rows, L.LEDGER_FIELDS)
+        V.log_all_ev(date, [{"player": r["player"], "market": r["market"], "side": r["side"], "line": r["line"], "odds": r["odds"],
+                             "fair": r["oa_fair"], "ev": r["oa_ev"], "books": r["sources"], "tip": r["tip"], "src": "Alt ladder"} for r in rows])
     return rows
 
 
