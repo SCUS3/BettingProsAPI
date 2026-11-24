@@ -31,7 +31,6 @@ import datetime as dt
 import json
 import math
 import os
-from nbaprops.config import ROOT as _ROOT  # project folder (data files live here)
 import sys
 
 from nbaprops.rules import ledger as bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
@@ -56,6 +55,15 @@ from nbaprops.sources.bettingpros import (  # noqa: E402 -- moved, re-exported f
     pull_props,
     save_cache,
     used_today,
+)
+from nbaprops.output.common import (  # noqa: E402 -- moved, re-exported for existing callers
+    load_value,
+)
+from nbaprops.output.note import (  # noqa: E402 -- moved, re-exported for existing callers
+    write_top_by_market,
+)
+from nbaprops.output.dashboard import (  # noqa: E402 -- moved, re-exported for existing callers
+    write_dashboard,
 )
 
 
@@ -357,241 +365,10 @@ def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows
         **(extra or {})}, prefix="pull_" if kind == "full" else kind + "_")
 
 
-CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("3PM", "Threes"),
-                  ("P+A", "Points + Assists"), ("P+R", "Points + Rebounds"), ("PRA", "Points + Rebounds + Assists"),
-                  ("R+A", "Rebounds + Assists")]
 
 
-def md_table(cols, rows):
-    """Markdown table with padded, aligned columns. cols = [(header, "l"|"r"|"c")]; rows = lists of strings."""
-    import unicodedata
-    def w(s):                                       # display width (emoji dots are double width)
-        return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
-    rows = [[c if c not in ("", None) else "–" for c in r] for r in rows]
-    widths = [max([w(h), 3] + [w(r[i]) for r in rows]) for i, (h, _) in enumerate(cols)]
-    def pad(s, i, a):
-        gap = widths[i] - w(s)
-        return s + " " * gap if a == "l" else " " * gap + s if a == "r" else " " * (gap // 2) + s + " " * (gap - gap // 2)
-    out = ["| " + " | ".join(pad(h, i, a) for i, (h, a) in enumerate(cols)) + " |",
-           "| " + " | ".join({"l": ":" + "-" * (widths[i] - 1), "r": "-" * (widths[i] - 1) + ":",
-                              "c": ":" + "-" * (widths[i] - 2) + ":"}[a] for i, (_, a) in enumerate(cols)) + " |"]
-    out += ["| " + " | ".join(pad(c, i, a) for i, (c, (_, a)) in enumerate(zip(r, cols))) + " |" for r in rows]
-    return out
 
 
-def write_top_by_market(rows, date, n=10, kelly_note=""):
-    """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
-    out = f"bp_top10_{date}.md"
-    def cell(v):
-        return "" if v is None else fmt(v)
-    from nbaprops.pricing import projctx as bp_projctx
-    def bp_dot(r):                                  # BettingPros (calibrated for 3PM/P+R) vs. the listed side
-        if r.get("line") is None or not r.get("rec_side"):
-            return "–"
-        t = bp_projctx.context(date, r["player"], r["market"], r["rec_side"], r["line"])["tag"]
-        return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
-    def odds_s(v):
-        v = _num(v)
-        return "" if v is None else f"{v:+.0f}"
-    def side_s(s):
-        return {"over": "Over", "under": "Under"}.get(s or "", s or "")
-    def inj(r):
-        return "Y" if (r.get("injury") or "").strip() else "N"
-    def form_s(r):
-        return "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
-    def proj_s(r):
-        p = _num(r.get("bp_proj"))
-        if p is None:
-            return ""
-        c = _calib(r.get("market"), p)
-        return (f"{p:.1f}→{c:.1f}" if c is not None and c != p else f"{p:.1f}".rstrip("0").rstrip(".") if p == int(p) else f"{p:.1f}") \
-            + ("*" if r.get("placeholder") else "")
-    def dvp_s(r, side=None):                        # side-aware: 🟢 matchup helps the listed side, 🔴 hurts, 11-20 plain
-        return bp_projctx.dvp_dot(side or r.get("rec_side"), r.get("dvp_softness"))
-    fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
-    def table(group, bold):
-        ranked_col = {"gap": "Gap %", "score": "Score", "balanced": "Bal"}[bold]
-        cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("Proj", "r"),
-                ("Gap %", "r"), ("FD", "r"), ("Mkt EV", "r"), ("DvP", "r"), ("Form", "r"), ("Score", "r"), ("Bal", "r"),
-                ("Sig", "r"), ("Inj", "c")]
-        cols = [(h + " ▼" if h == ranked_col else h, a) for h, a in cols]
-        body = []
-        for i, r in enumerate(group[:n], 1):
-            mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"   # market EV; model lists carry no stake
-            body.append([str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
-                         proj_s(r), cell(r["pct_gap"]), odds_s(r["fd_odds_rec"]), mev, dvp_s(r), form_s(r),
-                         cell(r["score"]), cell(r["balanced"]), cell(r.get("signals")), inj(r)])
-        return md_table(cols, body) + [""]
-    lean_cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                 ("FD", "r"), ("Mkt EV", "r"), ("DvP", "r"), ("Form", "r"), ("Mkt value", "r"), ("Bal ▼", "r"), ("Inj", "c")]
-    def lean_row_cells(i, r):
-        mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"
-        return [str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
-                proj_s(r) or "–", odds_s(r["fd_odds_rec"]), mev, dvp_s(r), form_s(r), cell(r.get("s_market")),
-                cell(r["balanced"]), inj(r)]
-
-    lines = [f"# NBA props: {date}", "",
-             "FanDuel-priced props only. Only BETs (market +EV, below) are bets; every other list is model picks (research, not a bet, no stake). DvP: 1 = softest matchup. Form: recent hit rate of the "
-             "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
-             "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
-             "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
-             "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
-             "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side (an under projected below the line is 🟢), "
-             "🔴 = the other side, – = no projection. Proj = BettingPros' raw projection. DvP 🟢 = the matchup helps the listed side "
-             "(soft 1-10 for an over, hard 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Mkt EV = market EV at FanDuel's price. Mkt value = "
-             "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
-             "injury report (Y/N). ▼ = the column the list is ranked by.", "",
-             f"**{kelly_note}**" if kelly_note else "", ""]
-    rec = bp_learn.record()
-    lines += ["## Record", ""]
-    played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
-    if played:
-        lines += [f"{rec['slates']} graded slates, pre-tip picks only, flat 1u.", "",
-                  "| Strategy | W-L-P | Hit | Units | Kelly units | Brier ours / mkt | CLV |", "|---|---|---|---|---|---|---|"]
-        for x in played:
-            br = f"{x['brier']} / {x['brier_mkt']}" if x["brier"] is not None else ""
-            clv = f"{x['clv']:+} pts" if x["clv"] is not None else ""
-            lines.append(f"| {x['label']} | {x['w']}-{x['l']}-{x['p']} | {x['hit'] if x['hit'] is not None else ''}% | "
-                         f"{x['units']:+.2f} | {x['kelly_units']:+.2f} | {br} | {clv} |")
-        lines.append("")
-    else:
-        lines += ["No graded picks yet.", ""]
-    bets = value_bets(date)
-    watch = [r for r in rows if r.get("decision") == "watch"]
-    if bets or watch:
-        lines += ["## BET", "", "Every FanDuel line priced against the market (Unabated consensus of devigged books and exchanges; "
-                  "The Odds API only for shortlist plays Unabated can't price). BET = market EV +2% or more at FanDuel's line "
-                  "with 3+ sources (Unabated) or 4+ books (The Odds API). Stake = quarter-Kelly (¼K) on the fair probability. "
-                  + ((load_value(date).get("_meta") or {}).get("bet_cap_note") or "") + " "
-                  "Tag: '+EV + proj agrees' when BettingPros' projection is on the same side, else '+EV only'.", ""]
-        lines += [f"- BET [{b['tag']}] {b['player']} {b['market']} {b['side']} {fmt(b['line'])} {fmt(b['price'])}: market EV "
-                  f"{100 * b['ev']:+.1f}%, fair {b['fair']} ({b['src']}, {b['n']} sources{', exchange' if b['exchange'] else ''}); "
-                  f"form {'-' if b['form'] is None else str(round(100 * b['form'])) + '%'}, DvP {'-' if b['dvp'] is None else fmt(b['dvp'])}; "
-                  f"stake {fmt(b['stake'])}u ¼K" + (f"; 6:30 CLV {100 * b['close']['clv_ev']:+.1f}%, market EV now "
-                  f"{100 * b['close']['mkt_ev']:+.1f}%" + (" FLAG" if b['close']['mkt_ev'] < 0 else "")
-                  if b.get("close") and b["close"].get("mkt_ev") is not None else "") for b in bets] or ["- No BET plays today."]
-        lines += ["", "Watch (not bets): " + "; ".join(
-            f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * r['oa_ev']:+.1f}%)" if r.get("oa_ev") is not None else "")
-            for r in watch), ""]
-    lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
-              "real projection unless the price alone is +EV.", ""]
-    lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
-    lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
-    from nbaprops.rules import screener as bp_cno_screener
-    mine = bp_cno_screener.rule_rows(date)
-    _led = bp_learn._read(bp_learn.LEDGER)
-    stake_of = {(x["player"], x["market"], x["side"], float(x["line"])): f"{float(x['kelly_u']):g}u" for x in _led
-                if x["date"] == date and x["strategy"] == "my_rule" and x.get("kelly_u") not in (None, "")}
-    _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
-    lines += ["## 2. Top 10 by your score", "",
-              "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +200 or shorter, "
-              "main line) AND BettingPros' projection or lean agrees with the side. Built from today's pastes; EV and price "
-              "are from the latest paste that listed the prop. Ranked by CrazyNinja EV. ¼K = the logged stake.", ""]
-    if _rr and _rr[0]["w"] + _rr[0]["l"] + _rr[0]["p"]:
-        x = _rr[0]
-        lines += [f"Your rule record: {x['w']}-{x['l']}-{x['p']} | flat 1u {x['units']:+.2f}u | ¼K {x['kelly_units']:+.2f}u"
-                  + (f" | CLV {x['clv']:+}% EV" if x.get("clv") is not None else ""), ""]
-    if mine:
-        by = {(r["player"], r["market"]): r for r in rows}
-        body = []
-        for i, e in enumerate(mine[:n], 1):
-            r = by.get((e["player"], e["market"])) or {}
-            pr = _num(e.get("proj_raw"))
-            gap = "" if pr is None else f"{pr - float(e['line']):+.1f}"
-            seen_et = bp_projctx._et(e.get("first_seen", "")).replace(" ET", "") if e.get("first_seen") else ""
-            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
-                         "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
-                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", str(e.get("seen", 1)), seen_et,
-                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), "")])
-        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
-                           ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
-                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r")], body) + [""]
-    else:
-        lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
-    from nbaprops.sources.rotowire import norm as _norm
-    by_pm = {(_norm(r["player"]), r["market"]): r for r in rows}
-    ua3 = []
-    try:
-        from nbaprops.rules import tipoff as bp_tipoff
-        from nbaprops.app import value as _V
-        for e in json.load(open(_V.ua_store_path(date))).values():
-            if (e.get("ev") or 0) <= 0 or (e.get("books") or 0) < 3 or (e.get("tip") and not bp_tipoff.is_open(e["tip"], e.get("team"))):
-                continue
-            c = bp_projctx.context(date, e["player"], e["market"], e["side"], e["line"])
-            if c["tag"] in ("agrees", "lean agrees"):
-                ua3.append(dict(e, proj_raw=c.get("proj")))
-    except (OSError, ValueError):
-        pass
-    ua3.sort(key=lambda e: -e["ev"])
-    upd = max((e.get("at", "") for e in ua3), default="")
-    lines += ["## 3. Unabated +EV & BettingPros agrees", "",
-              "Every FanDuel line Unabated prices (median of devigged books and exchanges at FanDuel's line, 3+ sources) with market "
-              "EV above 0, where BettingPros' projection or lean is on the same side. Ranked by market EV."
-              + (f" Prices as of {bp_projctx._et(upd)}." if upd else ""), ""]
-    if ua3:
-        body = []
-        for i, e in enumerate(ua3[:n], 1):
-            r = by_pm.get((_norm(e["player"]), e["market"])) or {}
-            pr = _num(e.get("proj_raw"))
-            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
-                         "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
-                         odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "",
-                         inj(r) if r else ""])
-        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c")], body) + [""]
-    else:
-        lines += ["_None yet (needs a board run or watch scan with Unabated prices)._", ""]
-    miss = bp_cno_screener.near_miss_rows(date)
-    lines += ["## 4. Near misses to your rule", "",
-              "From today's CrazyNinja pastes: CNO EV between -1% and 0% with BettingPros agreeing (EV just short), or CNO EV "
-              "above 0 with BettingPros disagreeing or no BettingPros projection. Logged once as research (flat 1u, no stake) "
-              "next to your rule, so the record shows whether skipping them was right.", ""]
-    if miss:
-        body = []
-        for i, e in enumerate(miss[:n], 1):
-            r = by_pm.get((_norm(e["player"]), e["market"])) or {}
-            pr = _num(e.get("proj_raw"))
-            dot = "🟢" if e.get("proj_tag") in ("agrees", "lean agrees") else "🔴" if e.get("proj_tag") in ("disagrees", "lean disagrees") else "–"
-            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", dot,
-                         "" if pr is None else f"{pr:.1f}", odds_s(e.get("odds")), f"{100 * e['ev']:+.2f}%", e["why"],
-                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else ""])
-        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("FD", "r"), ("CNO EV", "r"), ("Why it missed", "l"), ("Books", "r"), ("DvP", "r")], body) + [""]
-    else:
-        lines += ["_None right now._", ""]
-    diffs = [r for r in fd if r.get("line_note")]
-    if diffs:
-        lines += ["## FanDuel line differs from BettingPros' line", "",
-                  "Gap, side, EV and Kelly use FanDuel's line; BettingPros' win chance and rating are dropped for these.", ""]
-        lines += [f"- {r['player']} {r['market']} {r['rec_side']}: {r['line_note']}" for r in ranked(diffs, lambda r: r["balanced"])[:15]]
-        lines.append("")
-    lines += ["---", "", "# Each category", "", "3PM and P+R: top 10 by projection gap. PTS, REB, AST, P+A "
-              "and PRA: BettingPros publishes whole-number side leans, so those are ranked on form, matchup and market value.", ""]
-    for tag, name in CATEGORY_ORDER:
-        if tag in DISABLED:
-            continue
-        lines += [f"## {name} ({tag})", ""]
-        if tag not in REAL_PROJ_MARKETS:
-            lean = [r for r in rows if r["price_is_fanduel"] and r["market"] == tag and r.get("lean_only") is True
-                    and r.get("balanced") is not None]
-            if not lean:
-                lines += ["_No FanDuel-priced props found._", ""]
-                continue
-            lines += [f"BettingPros publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
-                      f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", ""]
-            lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1)])
-            lines.append("")
-            continue
-        group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
-        if not group:
-            lines += ["_No FanDuel-priced props found._", ""]
-            continue
-        lines += [f"### {tag}: by projection gap", ""]
-        lines += table(ranked(group, lambda r: abs(r["pct_gap"])), "gap")
-
-    with open(out, "w") as f:
-        f.write("\n".join(lines))
-    return out
 
 
 
@@ -1159,8 +936,6 @@ def measure(key, date, fd, market_ids):
     print(f"Saved to history/{date}/. Requests used: {BP.REQUESTS_MADE}")
 
 
-DASH_TEMPLATE = os.path.join(_ROOT, "dashboard_template.html")
-DASH_OUT = os.path.join(_ROOT, "bp_dashboard.html")
 
 
 def mark_model_picks(rows, date):
@@ -1175,27 +950,8 @@ def mark_model_picks(rows, date):
         r["model_pick"] = ",".join(picks.get((r.get("player"), r.get("market"), r.get("rec_side")), [])) or None
 
 
-def load_value(date):
-    try:
-        with open(os.path.join(_ROOT, f"value_{date}.json")) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
 
 
-def value_bets(date):
-    """BETs from the day's value check (bp_value.py --board), best market EV first."""
-    out = []
-    for k, e in load_value(date).items():
-        if k.startswith("_") or e.get("decision") != "BET" or "sides" not in e:
-            continue
-        player, market, line = k.split("|")
-        v = e["sides"].get(e["bet_side"]) or {}
-        out.append({"player": player, "market": market, "side": e["bet_side"], "line": float(line), "price": e.get("bet_price"),
-                    "ev": e.get("bet_ev"), "fair": v.get("fair_mult"), "src": v.get("fair_src"), "n": v.get("books"),
-                    "exchange": bool(v.get("exchange")), "tag": e.get("tag"), "form": e.get("form"), "dvp": e.get("dvp"),
-                    "stake": e.get("bet_kelly"), "cap": e.get("cap_note") or None, "close": e.get("close")})
-    return sorted(out, key=lambda b: -(b["ev"] or 0))
 
 
 def attach_value(rows, date):
@@ -1222,63 +978,8 @@ def attach_value(rows, date):
         r["bet_kelly"] = v.get("bet_kelly") if v else None        # quarter-Kelly on the market's fair probability
 
 
-def _calib(market, proj):
-    from nbaprops.pricing import calib as bp_calib
-    p = _num(proj)
-    return (bp_calib.calibrate(market, p) if p is not None and market in bp_calib.MARKETS and bp_calib.USE_CALIBRATION
-            else None)
 
 
-def write_dashboard(rows, date, kelly_note=""):
-    """Fill dashboard_template.html with tonight's FanDuel-priced props -> bp_dashboard.html."""
-    try:
-        with open(DASH_TEMPLATE) as f:
-            tpl = f.read()
-    except OSError:
-        return None
-    def n(v):
-        return _num(v)
-    data = []
-    for r in rows:
-        if not r["price_is_fanduel"] or r.get("balanced") is None:
-            continue
-        data.append({
-            "player": r["player"], "team": r["team"], "inj": r["injury"] or None, "market": r["market"],
-            "side": r["rec_side"], "line": n(r["line"]), "proj": n(r["bp_proj"]), "gap": n(r["pct_gap"]),
-            "proj_cal": n(_calib(r.get("market"), r.get("bp_proj"))),
-            "odds": n(r["fd_odds_rec"]), "dvp": n(r["dvp_softness"]), "form": n(r.get("form_rate")),
-            "score": r["score"], "bal": r.get("balanced"), "kelly": n(r.get("kelly_u")), "sig": r.get("signals"),
-            "s_edge": r.get("s_edge"), "s_ev": r.get("s_ev"), "s_dvp": r.get("s_dvp"), "s_form": r.get("s_form"),
-            "s_market": r.get("s_market"), "nv": n(r.get("nv_edge")), "cons": n(r.get("consensus_line")),
-            "streak": r.get("streak") or None, "l10": r.get("form_l10") or None, "season": r.get("form_season") or None,
-            "learned": r.get("learned"), "tm_out": r.get("tm_out"), "tm_dtd": r.get("tm_dtd"),
-            "tm_out_names": r.get("tm_out_names") or None, "ph": bool(r.get("placeholder")), "demoted": bool(r.get("ph_demoted")),
-            "starter": r.get("starter") in (True, "True"), "rw": r.get("rw_status") or None,
-            "noproj": bool(r.get("noproj")), "bp_line": n(r.get("bp_line")), "note": r.get("line_note") or None,
-            "lean": r.get("bp_lean") if r.get("lean_only") in (True, "True") else None,
-            "pick": r.get("model_pick") or None,
-            "decision": r.get("decision") or None, "bet_kelly": n(r.get("bet_kelly")), "bet_cap": r.get("bet_cap_note") or None,
-            "bet_side": r.get("bet_side") or None, "bet_tag": r.get("bet_tag") or None, "bet_ev": n(r.get("bet_ev")),
-            "close_mkt_ev": n(r.get("close_mkt_ev")), "close_clv": n(r.get("close_clv")),
-            "fair_src": r.get("fair_src") or None,
-            "ev": n(r.get("model_ev")), "oa_ev": n(r.get("oa_ev")), "oa_fair": n(r.get("oa_fair")), "oa_books": r.get("oa_books"),
-        })
-    d = dt.date.fromisoformat(date)
-    try:
-        from zoneinfo import ZoneInfo
-        now = dt.datetime.now(ZoneInfo("America/New_York"))
-        updated = now.strftime("%b %-d, %-I:%M %p ET")
-    except Exception:
-        updated = dt.datetime.now().strftime("%b %d, %I:%M %p")
-    payload = {"date": date, "date_label": d.strftime("%A, %B %-d"), "updated": updated, "rows": data,
-               "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
-               "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
-               "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1")}
-    blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
-    with open(DASH_OUT, "w") as f:
-        f.write(tpl.replace("__BP_DATA__", blob))
-    return DASH_OUT
 
 
 def fmt(v):
