@@ -100,8 +100,8 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     rec = bp_learn.record()
     _tr = next((x for x in rec["strategies"] if x.get("key") == "tonight"), None)
     lines += ["## Tonight's bets", "",
-              "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule "
-              "props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
+              "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule "
+              "and Triple green props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
               "game across this whole list. Everything else in this note is a "
               "paper record.", ""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
@@ -294,6 +294,28 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     else:
         lines += [f"_No proven posters yet ({len(_proven)} qualify), or none posted tonight. Picks are logged per poster with "
                   "`bp_value.py --reddit`; posters qualify after 30 graded picks._", ""]
+    _tg = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] == "triple"]
+    _tgr = next((x for x in rec["strategies"] if x.get("key") == "cmp_triple"), None)
+    lines += ["## 8. Triple green", "",
+              "All three at the same sighting: +EV (CrazyNinja screener EV > 0, or Unabated market EV > 0 with 3+ sources), "
+              "BettingPros agrees (🟢) and DvP helps the side (🟢: 1-10 for an over, 21-30 for an under). No DvP or no "
+              "projection = no. ¼K on the fair of the source that qualified it (higher EV if both), BET caps. Logged once at "
+              "its first qualifying sighting; part of Tonight's bets.", ""]
+    if _tgr and _tgr["w"] + _tgr["l"] + _tgr["p"]:
+        lines += [f"Triple green record: {_tgr['w']}-{_tgr['l']}-{_tgr['p']} | flat 1u {_tgr['units']:+.2f}u | ¼K {_tgr['kelly_units']:+.2f}u"
+                  + (f" | CLV {_tgr['clv']:+}% EV" if _tgr.get("clv") is not None else ""), ""]
+    if _tg:
+        body = []
+        for i, r in enumerate(sorted(_tg, key=lambda r: -(_num(r.get("entry_ev") or r.get("oa_ev")) or 0)), 1):
+            pr, ln = _num(r.get("bp_proj_raw")), float(r["line"])
+            body.append([str(i), r["player"], r["market"], side_s(r["side"]), f"{ln:g}", "🟢", "" if pr is None else f"{pr:.1f}",
+                         "" if pr is None else f"{pr - ln:+.1f}", odds_s(r.get("entry_price") or r["odds"]),
+                         f"{100 * (_num(r.get('entry_ev') or r.get('oa_ev')) or 0):+.2f}%", r.get("fair_src") or "",
+                         bp_projctx.dvp_dot(r["side"], r.get("dvp")), f"{float(r['kelly_u']):g}u", status(r.get("tip"), r.get("team"))])
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Game", "l")], body) + [""]
+    else:
+        lines += ["_None yet (the record starts with the 11/24 slate; checked on every CrazyNinja paste, board run and watch scan)._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from BettingPros' line", "",

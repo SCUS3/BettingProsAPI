@@ -9,7 +9,7 @@ change here, and bump the version.** Older versions stay in the ledger as archiv
 | Version | First slate | What changed |
 |---|---|---|
 | v1 | (start) to 2026-11-23 | Archive. Original strategies: top-5 model lists (incl. the old "your score" formula), Unabated BETs, CrazyNinja +EV, CNO screener, halftime experiment, sims. |
-| v2 | 2026-11-24 | Fresh start. "Your score" = your rule (CNO +EV + BettingPros agrees); Unabated +EV & BP agrees record; near misses to your rule; alt ladder split by DvP; R+A back on; tip-time rule; raw BettingPros projections (calibration logged, off). |
+| v2 | 2026-11-24 | Fresh start. "Your score" = your rule (CNO +EV + BettingPros agrees); Unabated +EV & BP agrees record; Triple green (added before the first v2 slate, so it is part of v2, not a new version); near misses to your rule; alt ladder split by DvP; R+A back on; tip-time rule; raw BettingPros projections (calibration logged, off). |
 
 Every ledger row carries `rule_version` (stamped by `bp_learn._write`, from the slate date). The Record tab and Copy for
 Claude show v2 by default; the Record tab has a v1-archive toggle and Copy for Claude ends with a v1 summary.
@@ -26,6 +26,7 @@ Claude show v2 by default; the Record tab has a v1-archive toggle and Copy for C
 | **CNO screener** | Screener paste rows ≥ +2% (fixed settings) → `cno_scr`; `--all` rows under +2% → `cno_scr_sub` (tracking). Split by BettingPros agree/disagree. | `cno_scr`, `cno_scr_sub` | `bp_ledger.csv`; `cno_screener_log.json` | Record tab |
 | **Alt ladder** | FanDuel alt rungs (not the main line): 3+ sources pricing both sides at that rung, FD ≤ +300, market EV ≥ +4%, CNO worst case > 0, one rung per player, ¼K capped 0.5u. "Market only" (PTS/REB/AST/P+A/PRA/R+A) or "market + projection" (3PM/P+R, BP must agree). Ranked by DvP helps > neutral > hurts; record split by DvP. | `alt_mkt`, `alt_proj` (`dvp_tag`) | `bp_ledger.csv` | Record tab (Alt ladder + DvP rows) |
 | **Halftime live** (experimental) | ESPN halftime snapshot of every player with a pregame line; alerts on strong pace flags (no side); expected final = 1st half + base-rate 2nd-half share × line (shrunk to 50% under n = 100). HALF BET from `--half-paste`: 3+ books, EV ≥ +3%, CNO > 0, skips; ¼K cap 0.5u/bet, 1.5u/game; split by expected-final agree. | `half` | `halftime_flags.csv`; `half_pastes.csv`; `history/<date>/halftime_<date>.json` | Record tab "Halftime live" (expected-final accuracy, HALF BETs) |
+| **Triple green** | All three at the same sighting: +EV (CrazyNinja screener EV > 0, or Unabated EV > 0 with 3+ sources), BettingPros projection/lean on the side (🟢), DvP helps the side (🟢, side-aware: 1-10 overs, 21-30 unders). Missing DvP or projection = no. ¼K on the fair of the source that qualified it (higher EV if both), BET cap and caps. Logged once at its first qualifying sighting. Split by source (CNO / Unabated / both) and entry EV bucket; **Compare** rows: Triple green vs. Your rule vs. Your rule without DvP green. Part of Tonight's bets. | `triple` (source in `fair_src`) | `bp_ledger.csv` | Record tab (under Your rule); note §8 |
 | **All +EV (any source)** (research log) | Every +EV prop from Unabated (EV > 0, 3+ sources), CrazyNinja pastes (EV > 0) and the alt ladder, logged once per day at its first sighting (later sources noted); ¼K on the entry fair, capped 1.25u. Note §5. | `all_ev` | `bp_ledger.csv` | Record tab; note §5 |
 | **Outside picks** | Reddit / X / RotoWire cards pasted with `bp_value.py --picks-paste FILE --date D --source "..."`; one record per source; flat 1u (no price on the card: units at -110); graded from ESPN box scores. | `ext_pick` (source in `fair_src`) | `bp_ledger.csv` | Record tab "Outside picks" |
 | **Reddit picks** (research, per poster) | Every NBA player-prop pick in r/sportsbook's daily NBA thread (`bp_value.py --reddit-paste FILE` with the pasted thread text, or `--reddit` with a Reddit app; before the first tip), one row per poster/prop with entry time and FanDuel price + market EV at that time (Unabated, else CrazyNinja paste store); image-only comments skipped and counted; posts after tip not logged. Flat 1u. Per-poster leaderboard (picks, W-L, units, ROI, CLV, entry EV). | `reddit_pick` (poster in `fair_src`) | `bp_ledger.csv` | Record tab leaderboard; note §7 |
@@ -37,9 +38,9 @@ Claude show v2 by default; the Record tab has a v1-archive toggle and Copy for C
 
 Not a separate record: the list you actually bet, built from the ledger (`nbaprops/rules/tonight.py`), top of the note
 and of the dashboard's Tonight tab. The union of **BETs** (`bet_agree`, `bet_only`: Unabated EV ≥ +2% and CrazyNinja
-worst case > 0; a BET logged while CNO was down stays in, flagged "no CNO check"), **alt BETs** (`alt_mkt`, `alt_proj`) and
-**Your rule** (`my_rule`). Each prop (player, market, side, line) is listed once at its largest qualifying ¼K stake (not
-summed), with the records it belongs to; then 1.5u per player and 3.5u per game are applied across the whole list.
+worst case > 0; a BET logged while CNO was down stays in, flagged "no CNO check"), **alt BETs** (`alt_mkt`, `alt_proj`),
+**Your rule** (`my_rule`) and **Triple green** (`triple`). Each prop (player, market, side, line) is listed once at its largest qualifying ¼K stake (not
+summed); then 1.5u per player and 3.5u per game are applied across the whole list.
 Every other record (Unabated +EV & BP agrees, CrazyNinja +EV, CNO screener, All +EV, Reddit, halftime, models) is a
 paper record. Each underlying record keeps its own stakes and results.
 
@@ -47,6 +48,13 @@ Each row shows the BettingPros projection (🟢/🔴 dot, number, gap) and the s
 sections. **Tonight's bets record** (`key: tonight`, first on the Record tab and in Copy for Claude): every listed prop
 once, graded with its ledger result, ¼K units at the **capped** stake, flat 1u alongside, CLV from the prop's row; only
 plays logged before tip count. It is computed from the ledger each time (no extra rows).
+
+## Re-evaluation
+
+Every CrazyNinja paste, Unabated board run and watch scan re-runs every store-based record from the day's CNO screener
+store and Unabated EV store (`nbaprops/rules/reeval.py`): Your rule, CNO screener, near misses, Unabated +EV & BP agrees,
+All +EV and Triple green. Anything newly qualifying is logged at that sighting (its price and EV become the frozen entry);
+started games are skipped. The alt ladder needs the live Unabated board, so it is re-scanned on board runs and watch scans.
 
 ## Prices: entry, latest, close
 

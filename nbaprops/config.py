@@ -6,6 +6,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ---------------------------------------------------------------- rule versions (see RECORDS.md)
 RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24")]   # a rule change adds a line here and in RECORDS.md
+RULE_NOTES = {                  # what each version's staked rules are (RECORDS.md has the full text)
+    "v1": "Unabated BETs, CrazyNinja +EV, CNO screener, alt ladder, halftime; old 'your score' model lists",
+    "v2": "Your rule (CNO +EV + BP agrees); Unabated +EV & BP agrees; Triple green (+EV + BP agrees + DvP helps, added "
+          "before the first v2 slate); BETs with CNO > 0; alt ladder by DvP; Tonight's bets = BETs + alt BETs + your rule + "
+          "Triple green, largest stake per prop, caps across the list",
+}
 
 # ---------------------------------------------------------------- BettingPros (requests cost; ask first)
 BP_DAILY_LIMIT = 100           # Free/Plus requests per UTC day (resets 7 PM ET in winter)

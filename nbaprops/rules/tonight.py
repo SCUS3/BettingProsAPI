@@ -8,7 +8,8 @@ from __future__ import annotations
 from nbaprops.rules import ledger as L
 from nbaprops.sources.rotowire import norm
 
-SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_proj": "Alt BET", "my_rule": "Your rule"}
+SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_proj": "Alt BET", "my_rule": "Your rule",
+           "triple": "Triple green"}
 
 
 def build(date: str, led: list[dict] | None = None) -> list[dict]:
@@ -23,7 +24,7 @@ def build(date: str, led: list[dict] | None = None) -> list[dict]:
     out = []
     for g in groups.values():
         best = max(g, key=lambda r: L._num(r["kelly_u"]))
-        recs = sorted({SOURCES[r["strategy"]] for r in g}, key=["BET", "Alt BET", "Your rule"].index)
+        recs = sorted({SOURCES[r["strategy"]] for r in g}, key=["BET", "Alt BET", "Your rule", "Triple green"].index)
         ev = L._num(best.get("entry_ev") or best.get("oa_ev"))
         out.append({"player": best["player"], "team": best.get("team"), "market": best["market"], "side": best["side"],
                     "line": L._num(best["line"]), "price": L._num(best.get("entry_price") or best.get("odds")), "ev": ev,

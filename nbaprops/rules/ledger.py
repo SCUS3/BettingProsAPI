@@ -49,18 +49,19 @@ VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: 
                     ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("all_ev", "All +EV (any source, deduped)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("reddit_pick", "Reddit picks (research, per poster)"),
                     ("proven_ev", "Proven poster + market +EV"), ("alt_mkt", "Alt, market only"),
-                    ("alt_proj", "Alt, market + projection")]
+                    ("alt_proj", "Alt, market + projection"), ("triple", "Triple green (+EV, BP agrees, DvP helps)")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
 RULE_KEYS = {"my_rule", "near_miss"}
 UA_KEYS = {"ua_agree"}
 EXT_KEYS = {"ext_pick"}
 ALL_EV_KEYS = {"all_ev"}
+TRIPLE_KEYS = {"triple"}      # Triple green: +EV (CNO or Unabated) + BettingPros agrees + DvP helps the side; staked
 REDDIT_KEYS = {"reddit_pick", "proven_ev"}   # Reddit picks (research, per poster) and the staked proven + market +EV record      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
 EV_BUCKETS = [(0.0, 0.02, "0-2%"), (0.02, 0.04, "2-4%"), (0.04, 99, "4%+")]
 EV_RECORDS = [("Your rule", {"my_rule"}), ("Unabated +EV & BP agrees", {"ua_agree"}), ("BETs (Unabated)", {"bet_agree", "bet_only"}),
               ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
-              ("All +EV (any source)", {"all_ev"}), ("Proven poster + market +EV", {"proven_ev"})]       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+              ("All +EV (any source)", {"all_ev"}), ("Triple green", {"triple"}), ("Proven poster + market +EV", {"proven_ev"})]       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}
@@ -592,7 +593,7 @@ def log_value_decisions(date, rows):
     old = _read(LEDGER)
     cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS
     have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
     new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
@@ -820,6 +821,46 @@ def ev_buckets(graded):
     return out
 
 
+_DVP: dict = {}
+
+
+def _dvp_tag(r):
+    """Side-aware DvP effect for a ledger row: its stamped dvp_tag, else from that slate's pull (cached)."""
+    if r.get("dvp_tag"):
+        return r["dvp_tag"]
+    from nbaprops.pricing import projctx as P
+    k = (r["date"], r["player"], r["market"])
+    if k not in _DVP:
+        try:
+            _DVP[k] = P.dvp_of(r["date"], r["player"], r["market"])
+        except Exception:  # noqa: BLE001
+            _DVP[k] = None
+    return P.dvp_effect(r.get("side"), _DVP[k])
+
+
+def triple_rows(graded):
+    """Triple green splits (source; entry EV bucket) and the DvP comparison: Triple green vs. Your rule vs. Your rule
+    without DvP green (my_rule plays whose matchup did not help the side)."""
+    out = []
+
+    def add(key, label, sub):
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=key, group="triple", label=label, n=len(sub))
+            x["clv_unit"] = "% EV at closing fair"
+            out.append(x)
+    tg = [(r, v) for r, v in graded if r["strategy"] in TRIPLE_KEYS]
+    for src in ("CNO", "Unabated", "both"):
+        add("triple_src_" + src, f"Triple green: {src}", [(r, v) for r, v in tg if r.get("fair_src") == src])
+    for lo, hi, name in EV_BUCKETS:
+        add("triple_ev_" + name, f"Triple green: entry EV {name}",
+            [(r, v) for r, v in tg if (e := _num(r.get("entry_ev") or r.get("oa_ev"))) is not None and lo <= e < hi])
+    mr = [(r, v) for r, v in graded if r["strategy"] == "my_rule"]
+    add("cmp_triple", "Compare: Triple green", tg)
+    add("cmp_rule", "Compare: Your rule", mr)
+    add("cmp_rule_nodvp", "Compare: Your rule without DvP green", [(r, v) for r, v in mr if _dvp_tag(r) != "helps"])
+    return out
+
+
 def sim_record_rows(version="v2"):
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
     rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P") and rule_version(r) == version]
@@ -880,14 +921,14 @@ def record(version: str = "v2") -> dict:
         if strat in VALUE_KEYS and version == "v1" and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
         x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
                       "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
-                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "model")
+                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
@@ -935,6 +976,7 @@ def record(version: str = "v2") -> dict:
             x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="alt_dvp_" + tag, group="alt", label="Alt: " + lab)
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
+    strategies += triple_rows(graded)
     ext = [(r, v) for r, v in graded if r["strategy"] in EXT_KEYS]
     for src in sorted({r.get("fair_src") or "?" for r, _ in ext}):
         sub = [(r, v) for r, v in ext if (r.get("fair_src") or "?") == src]

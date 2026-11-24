@@ -603,6 +603,12 @@ def run_board(args):
             ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}))
             save_ua_store(args.date, rows, ua)
             ua_logged = log_ua_agree(args.date, rows, ua)
+            from nbaprops.rules import reeval as _RE
+            _re = _RE.run(args.date)
+            print("  Re-evaluated every record from today's stores: " + _RE.summary(_re) + ".")
+            for x in _re.get("Triple green", []):
+                print(f"  TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
+                      f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K")
             n_lines = sum(1 for r in rows if any((ua.get((r["player"], r["market"], sd)) or {}).get("fair_mult") is not None
                                                   for sd in ("over", "under")))
             print(f"  Unabated priced {n_lines} of {len(rows)} FanDuel lines ({U.MIN_SOURCES}+ sources at FanDuel's line).")
@@ -1024,6 +1030,13 @@ def watch_scan(date, state, close_before=None):
     for x in log_ua_agree(date, rows, ua):
         print(f"[{_et_now():%H:%M}] UA+BP {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
               f"mkt EV {100 * float(x['oa_ev']):+.1f}% ({x['sources']} sources), {x['kelly_u']}u ¼K | {x.get('proj_note')}", flush=True)
+    from nbaprops.rules import reeval as _RE
+    _re = _RE.run(date)
+    if _re:
+        print(f"[{_et_now():%H:%M}] re-evaluated: {_RE.summary(_re)}", flush=True)
+    for x in _re.get("Triple green", []):
+        print(f"[{_et_now():%H:%M}] TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
+              f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K", flush=True)
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
@@ -1121,7 +1134,7 @@ def watch_scan(date, state, close_before=None):
     state.setdefault("closed", [])
     led = bp_learn._read(bp_learn.LEDGER)
     keys = (bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS | bp_learn.UA_KEYS
-            | bp_learn.REDDIT_KEYS | bp_learn.ALL_EV_KEYS)
+            | bp_learn.REDDIT_KEYS | bp_learn.ALL_EV_KEYS | bp_learn.TRIPLE_KEYS)
     live_rows = [r for r in led if r["date"] == date and r["strategy"] in keys and r.get("tip") and _open(r, now)]
     if live_rows:
         cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
@@ -1156,7 +1169,7 @@ def tips_to_close(date, data, d, t_now):
     tips = {x["tip"] for x in slate_lines(data, date, d)}
     tips |= {r["tip"] for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r.get("tip")
              and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS
-             | bp_learn.UA_KEYS | bp_learn.ALT_KEYS}
+             | bp_learn.UA_KEYS | bp_learn.ALT_KEYS | bp_learn.TRIPLE_KEYS}
     return sorted(t for t in tips if t_now < T._t(t) + T.CLOSE_AFTER)
 
 
@@ -1298,6 +1311,12 @@ def run_cno_paste(args):
         for r in rows:
             print(f"  NEW {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: CNO EV "
                   f"{100 * float(r['oa_ev']):+.2f}%, {r['kelly_u']}u ¼K  |  {r.get('proj_note')}")
+        from nbaprops.rules import reeval as _RE
+        _re = _RE.run(args.date)
+        print("Re-evaluated every record from today's stores (CNO pastes + Unabated): " + _RE.summary(_re) + ".")
+        for x in _re.get("Triple green", []):
+            print(f"  TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
+                  f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K")
     if st:
         inherited = [k for k in st["assumed"] if st.get(k) is not None]
         print("Screener settings: " + S.settings_text(st) + (f" (same as last paste: {', '.join(inherited)})" if inherited else ""))
