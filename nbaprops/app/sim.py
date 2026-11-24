@@ -39,12 +39,12 @@ def pull(date, cap):
     markets = B.nba_markets(key, cache)
     B.save_cache(cache)
     ids = ":".join(str(m) for m, (tag, _) in sorted(markets.items()) if tag and tag not in B.DISABLED)
-    B.RUN_CAP = cap
+    B.BP.RUN_CAP = cap
     props = B.pull_props(key, date, fd, ids, 50)
     os.makedirs(os.path.dirname(raw_path(date)), exist_ok=True)
     json.dump({"fd": fd, "labels": {str(m): t for m, (t, _) in markets.items() if t}, "props": props,
-               "pages": B.PULL_LOG, "requests": B.REQUESTS_MADE}, open(raw_path(date), "w"))
-    print(f"Pulled {len(props)} FanDuel props for {date} ({B.REQUESTS_MADE} BettingPros requests) -> {raw_path(date)}")
+               "pages": B.BP.PULL_LOG, "requests": B.BP.REQUESTS_MADE}, open(raw_path(date), "w"))
+    print(f"Pulled {len(props)} FanDuel props for {date} ({B.BP.REQUESTS_MADE} BettingPros requests) -> {raw_path(date)}")
 
 
 def offer_from(p, fd):
@@ -128,14 +128,14 @@ def backfill(today, cap, go):
     for ds, g, c in reversed(todo):                   # newest first
         if spent + c > cap:
             continue
-        B.REQUESTS_MADE = 0
+        B.BP.REQUESTS_MADE = 0
         try:
             pull(ds, min(cap - spent, c + 3))
         except B.RunCapReached as e:
             print(f"  {ds}: stopped ({e}); not saved.")
-            spent += B.REQUESTS_MADE
+            spent += B.BP.REQUESTS_MADE
             continue
-        spent += B.REQUESTS_MADE
+        spent += B.BP.REQUESTS_MADE
         raw = json.load(open(raw_path(ds)))
         if not raw["props"]:
             print(f"  {ds}: BettingPros returned no props for this date; stopping the backfill (older dates likely empty too).")

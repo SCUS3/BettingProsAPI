@@ -33,14 +33,30 @@ import math
 import os
 from nbaprops.config import ROOT as _ROOT  # project folder (data files live here)
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 from nbaprops.rules import ledger as bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
 from nbaprops.sources import rotowire as bp_rotowire  # noqa: E402  (projected lineups and injuries)
 from nbaprops.sources import espn as bp_boxscore  # noqa: E402  (final box scores: ESPN, NBA.com fallback)
+from nbaprops.sources import bettingpros as BP  # noqa: E402  request state: BP.REQUESTS_MADE / BP.RUN_CAP / BP.PULL_LOG
+from nbaprops.sources.bettingpros import (  # noqa: E402 -- moved, re-exported for existing callers
+    DAILY_LIMIT,
+    DISABLED,
+    RunCapReached,
+    WANTED,
+    fetch_pages,
+    find_fanduel,
+    get,
+    load_cache,
+    load_dotenv,
+    nba_markets,
+    offers_params,
+    pages_left,
+    parse_fd_offers,
+    props_params,
+    pull_props,
+    save_cache,
+    used_today,
+)
 
 
 def eastern_today():
@@ -51,194 +67,34 @@ def eastern_today():
     except Exception:
         return dt.date.today().isoformat()
 
-BASE = "https://api.bettingpros.com/v3"
-REQUESTS_MADE = 0
-DAILY_LIMIT = 100       # Free/Plus requests per UTC day (resets 7 PM ET in winter)
-REQUEST_LOG = os.path.join(_ROOT, "bp_requests.json")
-PULL_LOG = []         # one entry per /props page this run: rows returned vs. _pagination totals (saved to history/)
 MAX_PICK_LOOKUPS = 8   # per slate per run: single game+market lookups for picks the FanDuel pull missed
-RUN_CAP = None         # --max-requests: hard stop for this run, checked before every request
 
 
-class RunCapReached(RuntimeError):
-    pass
 
 
-def get(path, params, key, retries=3):
-    """GET a v3 endpoint, honouring 429/503 back-off."""
-    global REQUESTS_MADE
-    url = f"{BASE}{path}?{urllib.parse.urlencode(params)}"
-    for attempt in range(retries):
-        req = urllib.request.Request(url, headers={"x-api-key": key, "accept": "application/json"})
-        if RUN_CAP is not None and REQUESTS_MADE >= RUN_CAP:
-            raise RunCapReached(f"--max-requests {RUN_CAP} reached; request not sent")
-        try:
-            REQUESTS_MADE += 1
-            _count_request()
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return json.load(r)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode(errors="replace")
-            if e.code == 429 and "Limit Exceeded" in body:
-                sys.exit("Daily request allowance used up (resets midnight UTC).")
-            if e.code in (429, 503) and attempt < retries - 1:
-                wait = int(e.headers.get("Retry-After", 3))
-                time.sleep(wait)
-                continue
-            if e.code == 403:
-                sys.exit("403 Forbidden: check BP_API_KEY (missing, wrong, or deactivated).")
-            sys.exit(f"HTTP {e.code} on {path}: {body[:300]}")
-    sys.exit(f"Gave up on {path} after {retries} tries.")
 
 
-def _utc_day():
-    return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
 
-def _count_request():
-    """Keep a per-UTC-day count of every request this project sends (bp_requests.json)."""
-    try:
-        with open(REQUEST_LOG) as f:
-            log = json.load(f)
-    except (OSError, ValueError):
-        log = {}
-    day = _utc_day()
-    log[day] = log.get(day, 0) + 1
-    try:
-        with open(REQUEST_LOG, "w") as f:
-            json.dump(dict(sorted(log.items())[-30:]), f, indent=1)
-    except OSError:
-        pass
 
 
-def used_today():
-    try:
-        with open(REQUEST_LOG) as f:
-            return json.load(f).get(_utc_day(), 0)
-    except (OSError, ValueError):
-        return 0
 
 
-def load_dotenv():
-    """Read KEY=value lines from .env next to the script (without overriding real env vars)."""
-    path = os.path.join(_ROOT, ".env")
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip().removeprefix("export ").strip()
-                v = v.strip().strip('"').strip("'")
-                os.environ.setdefault(k, v)
-    except OSError:
-        pass
 
 
-CACHE = os.path.join(_ROOT, "bp_cache.json")
-
-MKT_CACHE_KEY = "nba_markets_v2"  # bump when classify() changes
-
-# The eight prop types to keep, described by their stat components.
-WANTED = {
-    frozenset({"pts"}): "PTS",
-    frozenset({"reb"}): "REB",
-    frozenset({"ast"}): "AST",
-    frozenset({"3pm"}): "3PM",
-    frozenset({"pts", "ast"}): "P+A",
-    frozenset({"pts", "reb"}): "P+R",
-    frozenset({"pts", "reb", "ast"}): "PRA",
-    frozenset({"reb", "ast"}): "R+A",
-}
-TOKEN_MAP = {
-    "points": "pts", "pts": "pts",
-    "rebounds": "reb", "rebound": "reb", "reb": "reb", "rebs": "reb",
-    "assists": "ast", "assist": "ast", "ast": "ast", "asts": "ast",
-    "threes": "3pm", "three": "3pm", "3pt": "3pm", "3pts": "3pm", "3-pt": "3pm", "3pm": "3pm",
-    "3-pointers": "3pm", "pointers": "3pm", "3s": "3pm",
-}
-# Categories classified but left out of every pull. R+A was off 11/19-11/23 (BettingPros carried no FanDuel R+A
-# offers); back on from 11/24 for projection/lean context, and Unabated prices FanDuel's R+A lines.
-DISABLED = set()
-
-# Any of these in a market slug/label means it is not one of the eight.
-BLOCK = {"steals", "steal", "blocks", "block", "turnovers", "turnover", "double", "triple", "first",
-         "attempted", "attempts", "attempt", "fantasy", "field", "free", "minutes", "quarter", "half",
-         "alt", "alternate", "milestone", "race", "most", "stocks",
-         "1q", "2q", "3q", "4q", "1h", "2h", "q1", "q2", "q3", "q4"}
 
 
-def load_cache():
-    try:
-        with open(CACHE) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
 
 
-def save_cache(c):
-    try:
-        with open(CACHE, "w") as f:
-            json.dump(c, f, indent=1)
-    except OSError:
-        pass
 
 
-def find_fanduel(key, location, cache):
-    ck = f"fanduel_{location}"
-    if ck in cache:
-        return cache[ck]
-    books = get("/books", {"location": location}, key)["books"]
-    for b in books:
-        if "fanduel" in (b.get("slug") or "").lower() or b.get("name", "").lower() == "fanduel":
-            cache[ck] = b["id"]
-            return b["id"]
-    sys.exit("FanDuel not found in /books for that location. Try --location NJ or NY.")
 
 
-def classify(m):
-    """Return the short tag (PTS, PRA, ...) if a market is one of the eight, else None."""
-    if m.get("period") not in (None, "", "game"):
-        return None
-    meta = m.get("meta") or {}
-    text = " ".join([m.get("slug") or "", m.get("stat") or "", meta.get("short_label") or ""]).lower()
-    text = text.replace("+", " ").replace("&", " ").replace("_", " ").replace("/", " ")
-    toks = set(text.replace("-", " ").split()) | set(text.split())
-    # Threes are often named "3-point field goals made"; let "field"/"points" through for them.
-    if any(TOKEN_MAP.get(t) == "3pm" for t in toks):
-        return None if toks & (BLOCK - {"field"}) else "3PM"
-    if toks & BLOCK:
-        return None
-    comps = frozenset(TOKEN_MAP[t] for t in toks if t in TOKEN_MAP)
-    return WANTED.get(comps)
 
 
-def nba_markets(key, cache, refresh=False):
-    """{market_id: (tag or None, label)} for every NBA player-prop market. Cached."""
-    if MKT_CACHE_KEY in cache and not refresh:
-        out = {int(k): tuple(v) for k, v in cache[MKT_CACHE_KEY].items()}
-        # A category added to WANTED after caching (e.g. R+A): tag it from its cached label, no request.
-        # Only categories no cached market has yet, so period markets the full classify() rejected stay out.
-        have = {t for t, _ in out.values() if t}
-        for mid, (tag, lbl) in out.items():
-            new = None if tag else classify({"slug": lbl})
-            if new and new not in have:
-                out[mid] = (new, lbl)
-        return out
-    out, page = {}, 1
-    while True:
-        data = get("/markets", {"sport": "NBA", "limit": 50, "page": page}, key)
-        for m in data.get("markets", []):
-            if m.get("category") not in ("player-props", "props"):
-                continue
-            label = (m.get("meta") or {}).get("short_label") or m.get("slug")
-            out[m["id"]] = (classify(m), label)
-        if page >= (data.get("_pagination") or {}).get("total_pages", 1):
-            break
-        page += 1
-    cache[MKT_CACHE_KEY] = {str(k): list(v) for k, v in out.items()}
-    return out
+
+
+
 
 
 def first(*vals):
@@ -253,94 +109,16 @@ def implied(american):
     return 100 / (a + 100) if a > 0 else -a / (-a + 100)
 
 
-def props_params(date, book_id, market_ids, limit, page=1, event_id=None, ev_threshold=False):
-    params = {
-        "sport": "NBA",
-        "limit": limit,
-        "page": page,
-        "include_injured": "true",
-        "sort": "diff",
-    }
-    if not ev_threshold:
-        params["ev_threshold"] = "false"   # return everything, not just the default EV band
-    if event_id:
-        params["event_id"] = event_id
-    elif date:
-        params["date"] = date
-    if book_id is not None:
-        params["book_id"] = book_id
-    if market_ids:
-        params["market_id"] = market_ids
-    return params
 
 
-def pull_props(key, date, book_id, market_ids, page_limit, event_id=None):
-    """Props for a date (or one game with event_id; the API rejects both). book_id=None = any book."""
-    props, page = [], 1
-    while True:
-        params = props_params(date, book_id, market_ids, page_limit, page, event_id)
-        data = get("/props", params, key)
-        props.extend(data.get("props", []))
-        pag = data.get("_pagination", {})
-        PULL_LOG.append({"date": None if event_id else date, "event_id": event_id, "book_id": book_id, "page": page,
-                         "rows": len(data.get("props", [])), "total_items": pag.get("total_items"),
-                         "total_pages": pag.get("total_pages")})
-        if page >= pag.get("total_pages", 1):
-            break
-        page += 1
-        time.sleep(0.4)
-    return props
 
 
-def pages_left(first):
-    return max(((first or {}).get("_pagination") or {}).get("total_pages", 1) - 1, 0)
 
 
-def fetch_pages(path, params, key, list_key, first):
-    """Every page of a paginated endpoint, starting from an already-fetched page 1."""
-    items, data, page = [], first, 1
-    while True:
-        items += data.get(list_key, [])
-        pag = data.get("_pagination") or {}
-        PULL_LOG.append({"path": path, "page": page, "rows": len(data.get(list_key, [])),
-                         "total_items": pag.get("total_items"), "total_pages": pag.get("total_pages")})
-        if page >= pag.get("total_pages", 1):
-            return items
-        page += 1
-        time.sleep(0.4)
-        data = get(path, dict(params, page=page), key)
 
 
-def offers_params(event_ids, market_ids, book_id, limit):
-    return {"sport": "NBA", "event_id": ":".join(str(e) for e in sorted(event_ids)), "market_id": market_ids,
-            "book_id": book_id, "condense": "true", "limit": limit}
 
 
-def parse_fd_offers(offers, fd):
-    """{(event_id, market_id, player_id): offer} with FanDuel's current main line and price per side."""
-    out = {}
-    for off in offers:
-        parts = off.get("participants") or []
-        p0 = parts[0] if parts else {}
-        # participants[] uses the same participant schema as /props (its id is what /props' player_id filters on)
-        rec = {"event_id": off.get("event_id"), "market_id": off.get("market_id"),
-               "player_id": str(p0.get("id") or off.get("player_id") or ""),
-               "player": p0.get("name"), "team": (p0.get("player") or {}).get("team")}
-        for sel in off.get("selections") or []:
-            side = (sel.get("selection") or sel.get("label") or "").lower()
-            if side not in ("over", "under"):
-                continue
-            for bk in sel.get("books") or []:
-                if bk.get("id") != fd:
-                    continue
-                for ln in bk.get("lines") or []:
-                    if ln.get("main") and ln.get("active", True) and not ln.get("is_off") and not ln.get("replaced"):
-                        m = ln.get("metrics") or {}
-                        rec[side] = {"line": ln.get("line"), "odds": ln.get("cost"),
-                                     "fair": m.get("fair_probability"), "mev": m.get("market_ev")}
-        if "over" in rec or "under" in rec:
-            out[(rec["event_id"], rec["market_id"], rec["player_id"])] = rec
-    return out
 
 
 PERF_WINDOWS = {"form_l5": "last_5", "form_l10": "last_10", "form_l20": "last_20", "form_season": "season", "form_h2h": "h2h"}
@@ -522,9 +300,9 @@ def budget_math(used_before, grading, pull, reprice_full, cap, label, enforce=Tr
     if not enforce:                       # estimate only: the exact check after /props page 1 decides
         return None
     if this_run > left:
-        sys.exit(f"Stopped: this run needs ~{this_run} but only {left} are left today. {REQUESTS_MADE} used so far this run.")
+        sys.exit(f"Stopped: this run needs ~{this_run} but only {left} are left today. {BP.REQUESTS_MADE} used so far this run.")
     if cap is not None and this_run > cap:
-        sys.exit(f"Stopped: this run needs ~{this_run}, over --max-requests {cap}. {REQUESTS_MADE} used so far this run.")
+        sys.exit(f"Stopped: this run needs ~{this_run}, over --max-requests {cap}. {BP.REQUESTS_MADE} used so far this run.")
     after = left - this_run
     if reprice_full <= after:
         return "full"
@@ -570,7 +348,7 @@ def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows
         g["fanduel_lines"] += 1
         g["with_projection"] += 0 if r["noproj"] else 1
     bp_learn.save_pull_log(date, pulled_at, {
-        "kind": kind, "pulled_at": pulled_at, "requests": REQUESTS_MADE, "pages": PULL_LOG,
+        "kind": kind, "pulled_at": pulled_at, "requests": BP.REQUESTS_MADE, "pages": BP.PULL_LOG,
         "props_rows": len(props), "fanduel_offers": len(offers), "board_rows": len(fd_rows),
         "fanduel_book_id": fd, "markets": market_ids, "per_game": per_game,
         "events": [{"id": e.get("id"), "tip": tips.get(e.get("id")),
@@ -1074,8 +852,7 @@ def main():
     ap.add_argument("--from-csv", action="store_true",
                     help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
-    global RUN_CAP
-    RUN_CAP = args.max_requests
+    BP.RUN_CAP = args.max_requests
 
     if args.from_csv:
         path = f"bp_props_{args.date}.csv"
@@ -1187,8 +964,8 @@ def main():
     # the players FanDuel prices (/props filtered by event_id + market_id + player_id). Budget math before
     # the /props pages: if pull + 6:30 re-price would pass the daily limit, the re-price is skipped instead.
     pulled_at = bp_learn.utc_now()
-    used_before = used_today() - REQUESTS_MADE           # other runs today (UTC day)
-    grading = REQUESTS_MADE
+    used_before = used_today() - BP.REQUESTS_MADE           # other runs today (UTC day)
+    grading = BP.REQUESTS_MADE
     events = get("/events", {"sport": "NBA", "date": args.date}, key).get("events", [])
     tips = {e.get("id"): bp_learn.tip_iso(e.get("scheduled")) for e in events}
     upcoming = warn_started(tips, pulled_at)
@@ -1202,7 +979,7 @@ def main():
     first_off = get("/offers", dict(off_params, page=1), key)
     reprice_est = 1 + pages_left(first_off)
     est_props = math.ceil(1.4 * ((first_off.get("_pagination") or {}).get("total_items") or 0) / args.page_limit) or 1
-    budget_math(used_before, grading, REQUESTS_MADE - grading + pages_left(first_off) + est_props, reprice_est,
+    budget_math(used_before, grading, BP.REQUESTS_MADE - grading + pages_left(first_off) + est_props, reprice_est,
                 args.max_requests, "estimate before /props (projections ~1.4 rows per FanDuel line)", enforce=False)
     offers = parse_fd_offers(fetch_pages("/offers", off_params, key, "offers", first_off), fd)
     no_lines = sorted(set(upcoming) - {int(k[0]) for k in offers})
@@ -1222,9 +999,9 @@ def main():
     if not args.unfiltered_props:
         check_projection_match(firsts[0], offers, labels)
     firsts += [get("/props", dict(q, page=1), key) for q in prop_queries[1:]]
-    mode = budget_math(used_before, grading, REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts), reprice_est,
+    mode = budget_math(used_before, grading, BP.REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts), reprice_est,
                        args.max_requests, "exact")
-    after = DAILY_LIMIT - used_before - (REQUESTS_MADE + sum(pages_left(f) for f in firsts))
+    after = DAILY_LIMIT - used_before - (BP.REQUESTS_MADE + sum(pages_left(f) for f in firsts))
     props = [p for q, f in zip(prop_queries, firsts) for p in fetch_pages("/props", q, key, "props", f)]
     bases = {}
     for p in props:
@@ -1289,7 +1066,7 @@ def check_projection_match(first_page, offers, labels):
     if offers and (share_page < 0.5 or cover < 0.5):
         sys.exit(f"Stopped after the first /props page: under 50% of FanDuel lines can match a projection, so the "
                  f"player_id filter may not line up with /offers. Ask before re-running with --unfiltered-props "
-                 f"(about 5-6 /props pages per game). {REQUESTS_MADE} requests used this run.")
+                 f"(about 5-6 /props pages per game). {BP.REQUESTS_MADE} requests used this run.")
 
 
 def reprice(key, args, fd, market_ids, labels):
@@ -1326,7 +1103,7 @@ def reprice(key, args, fd, market_ids, labels):
         cover &= {int(g) for g in log.get("reprice_games") or []}
         if not cover:
             sys.exit("Picks-only re-price: none of the games with 2 PM picks are still to tip.")
-    used_before = used_today() - REQUESTS_MADE
+    used_before = used_today() - BP.REQUESTS_MADE
     by_game = (log or {}).get("fanduel_lines_by_game") or {}
     est = lambda games: max(1, math.ceil(sum(by_game.get(str(g), 0) for g in games) / args.page_limit))
     print(f"Budget (re-price): {used_before} used earlier today; full re-price ~{est(upcoming)} vs. picks-only "
@@ -1377,9 +1154,9 @@ def measure(key, date, fd, market_ids):
         pag = get("/props", props_params(date, book, market_ids, 1, ev_threshold=evt), key).get("_pagination", {})
         out[name] = pag.get("total_items")
         print(f"{name:30} total_items {pag.get('total_items')}")
-    out["requests"] = REQUESTS_MADE
+    out["requests"] = BP.REQUESTS_MADE
     bp_learn.save_pull_log(date, out["at"], out, prefix="measure_")
-    print(f"Saved to history/{date}/. Requests used: {REQUESTS_MADE}")
+    print(f"Saved to history/{date}/. Requests used: {BP.REQUESTS_MADE}")
 
 
 DASH_TEMPLATE = os.path.join(_ROOT, "dashboard_template.html")
@@ -1579,7 +1356,7 @@ def finish(rows, date, snapshot=False, rw_players=None):
     note = write_top_by_market(rows, date, kelly_note=kelly_note)
     dash = write_dashboard(rows, date, kelly_note=kelly_note)
 
-    print(f"{len(rows)} props -> {out}   (requests used this run: {REQUESTS_MADE})")
+    print(f"{len(rows)} props -> {out}   (requests used this run: {BP.REQUESTS_MADE})")
     print(f"Top 10 lists (overall + gap and score per category) -> {note}")
     if dash:
         print(f"Dashboard -> {dash}")
