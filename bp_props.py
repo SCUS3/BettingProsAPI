@@ -583,27 +583,70 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
                   ("R+A", "Rebounds + Assists")]
 
 
+def md_table(cols, rows):
+    """Markdown table with padded, aligned columns. cols = [(header, "l"|"r"|"c")]; rows = lists of strings."""
+    import unicodedata
+    def w(s):                                       # display width (emoji dots are double width)
+        return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
+    rows = [[c if c not in ("", None) else "–" for c in r] for r in rows]
+    widths = [max([w(h), 3] + [w(r[i]) for r in rows]) for i, (h, _) in enumerate(cols)]
+    def pad(s, i, a):
+        gap = widths[i] - w(s)
+        return s + " " * gap if a == "l" else " " * gap + s if a == "r" else " " * (gap // 2) + s + " " * (gap - gap // 2)
+    out = ["| " + " | ".join(pad(h, i, a) for i, (h, a) in enumerate(cols)) + " |",
+           "| " + " | ".join({"l": ":" + "-" * (widths[i] - 1), "r": "-" * (widths[i] - 1) + ":",
+                              "c": ":" + "-" * (widths[i] - 2) + ":"}[a] for i, (_, a) in enumerate(cols)) + " |"]
+    out += ["| " + " | ".join(pad(c, i, a) for i, (c, (_, a)) in enumerate(zip(r, cols))) + " |" for r in rows]
+    return out
+
+
 def write_top_by_market(rows, date, n=10, kelly_note=""):
     """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     out = f"bp_top10_{date}.md"
     def cell(v):
         return "" if v is None else fmt(v)
+    import bp_projctx
+    def bp_dot(r):                                  # BettingPros (calibrated for 3PM/P+R) vs. the listed side
+        if r.get("line") is None or not r.get("rec_side"):
+            return "–"
+        t = bp_projctx.context(date, r["player"], r["market"], r["rec_side"], r["line"])["tag"]
+        return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
+    def odds_s(v):
+        v = _num(v)
+        return "" if v is None else f"{v:+.0f}"
+    def side_s(s):
+        return {"over": "Over", "under": "Under"}.get(s or "", s or "")
+    def inj(r):
+        return "Y" if (r.get("injury") or "").strip() else "N"
+    def form_s(r):
+        return "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
+    def proj_s(r):
+        p = _num(r.get("bp_proj"))
+        if p is None:
+            return ""
+        c = _calib(r.get("market"), p)
+        return (f"{p:g}→{c:g}" if c is not None and c != p else f"{p:g}") + ("*" if r.get("placeholder") else "")
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
-    head = ("| # | Player | Market | Side | Line | Proj | Gap % | FD odds | DvP | Form | Score | Balanced | Signals | Mkt EV | Injury |",
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     def table(group, bold):
-        # mark the column this list is ranked by in the header (no bold markers anywhere: Docs shows them literally)
-        cols = {"gap": "Gap %", "score": "Score", "balanced": "Balanced"}  # ranked column gets a ▼
-        t = [head[0].replace(f"| {cols[bold]} |", f"| {cols[bold]} ▼ |"), head[1]]
+        ranked_col = {"gap": "Gap %", "score": "Score", "balanced": "Bal"}[bold]
+        cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("Proj", "r"),
+                ("Gap %", "r"), ("FD", "r"), ("Mkt EV", "r"), ("DvP", "r"), ("Form", "r"), ("Score", "r"), ("Bal", "r"),
+                ("Sig", "r"), ("Inj", "c")]
+        cols = [(h + " ▼" if h == ranked_col else h, a) for h, a in cols]
+        body = []
         for i, r in enumerate(group[:n], 1):
-            vals = {"gap": cell(r["pct_gap"]), "score": cell(r["score"]), "balanced": cell(r["balanced"])}
-            form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
-            kelly = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"   # market EV; model lists carry no stake
-            t.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]),
-                                        cell(r["line"]), cell(r["bp_proj"]) + ("*" if r.get("placeholder") else ""), vals["gap"], cell(r["fd_odds_rec"]),
-                                        cell(r["dvp_softness"]), form, vals["score"], vals["balanced"],
-                                        cell(r.get("signals")), kelly, cell(r["injury"])]) + " |")
-        return t + [""]
+            mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"   # market EV; model lists carry no stake
+            body.append([str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
+                         proj_s(r), cell(r["pct_gap"]), odds_s(r["fd_odds_rec"]), mev, cell(r["dvp_softness"]), form_s(r),
+                         cell(r["score"]), cell(r["balanced"]), cell(r.get("signals")), inj(r)])
+        return md_table(cols, body) + [""]
+    lean_cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+                 ("FD", "r"), ("Mkt EV", "r"), ("DvP", "r"), ("Form", "r"), ("Mkt value", "r"), ("Bal ▼", "r"), ("Inj", "c")]
+    def lean_row_cells(i, r):
+        mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"
+        return [str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
+                proj_s(r) or "–", odds_s(r["fd_odds_rec"]), mev, cell(r["dvp_softness"]), form_s(r), cell(r.get("s_market")),
+                cell(r["balanced"]), inj(r)]
 
     lines = [f"# NBA props: {date}", "",
              "FanDuel-priced props only. Only BETs (market +EV, below) are bets; every other list is model picks (research, not a bet, no stake). DvP: 1 = softest matchup. Form: recent hit rate of the "
@@ -611,6 +654,10 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
              "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
+             "Columns: BP 🟢 = BettingPros' projection (calibrated for 3PM/P+R) or lean is on the listed side, 🔴 = the other side, "
+             "– = no projection. Proj shows raw→calibrated for 3PM/P+R. Mkt EV = market EV at FanDuel's price. Mkt value = "
+             "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
+             "injury report (Y/N). ▼ = the column the list is ranked by.", "",
              f"**{kelly_note}**" if kelly_note else "", ""]
     rec = bp_learn.record()
     lines += ["## Record", ""]
@@ -655,12 +702,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     lines += ["## 4. FanDuel lines without a BettingPros projection", "",
               f"{len(np_rows)} lines. Ranked on form, matchup and market value only: no edge, EV or Kelly, never a logged pick.", ""]
     if np_rows:
-        lines += ["| # | Player | Market | Side | Line | FD odds | DvP | Form | Market | Ranking | Injury |", "|---|---|---|---|---|---|---|---|---|---|---|"]
-        for i, r in enumerate(ranked(np_rows, lambda r: r["balanced"])[:n], 1):
-            form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
-            lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r["market"]), cell(r["rec_side"]), cell(r["line"]),
-                                            cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), form, cell(r.get("s_market")),
-                                            cell(r["balanced"]), cell(r["injury"])]) + " |")
+        lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(np_rows, lambda r: r["balanced"])[:n], 1)])
         lines.append("")
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
@@ -681,14 +723,8 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                 lines += ["_No FanDuel-priced props found._", ""]
                 continue
             lines += [f"BettingPros publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
-                      f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", "",
-                      "| # | Player | BP lean | Line | FD odds | DvP | Form | Market | Ranking | Injury |",
-                      "|---|---|---|---|---|---|---|---|---|---|"]
-            for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1):
-                form = "" if r.get("form_rate") is None else f"{round(r['form_rate'] * 100)}%"
-                lines.append("| " + " | ".join([str(i), cell(r["player"]), cell(r.get("bp_lean")), cell(r["line"]),
-                                                cell(r["fd_odds_rec"]), cell(r["dvp_softness"]), form, cell(r.get("s_market")),
-                                                cell(r["balanced"]), cell(r["injury"])]) + " |")
+                      f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", ""]
+            lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1)])
             lines.append("")
             continue
         group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
