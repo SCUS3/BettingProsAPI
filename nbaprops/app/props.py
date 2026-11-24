@@ -1001,7 +1001,7 @@ def _print_record(version):
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("rule", "Your rule: CNO +EV + BP agrees"), ("ua", "Unabated +EV & BP agrees"), ("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
+    heads = [("rule", "Your rule: CNO +EV + BP agrees"), ("ua", "Unabated +EV & BP agrees"), ("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("ext", "Outside picks (cards)"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]

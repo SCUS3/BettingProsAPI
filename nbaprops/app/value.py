@@ -1356,9 +1356,12 @@ def main():
     g.add_argument("--half-paste", metavar="FILE", help="halftime live odds paste (file or -): CNO worst case; logs HALF BETs")
     g.add_argument("--proj", metavar="PROPS", help="BettingPros projection context for props you send, from today's saved "
                                                    "pull (0 requests): \"Toppin 3PM o1.5; Brunson PTS u27.5\"")
+    g.add_argument("--picks-paste", metavar="FILE", help="outside picks (Reddit/X/RotoWire cards), one per line: logged per "
+                                                          "--source as their own record and graded from ESPN box scores")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
+    ap.add_argument("--source", default="Outside card", help="--picks-paste: source label for the record")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
     ap.add_argument("--all", action="store_true", help="--cno-paste: also log +EV rows under +2% (separate tracking record)")
     ap.add_argument("--live", action="store_true", help="--cno-paste: live rows vs. BettingPros projection and halftime "
@@ -1385,6 +1388,20 @@ def main():
         return run_placed(args)
     if args.cno_paste:
         return run_cno_paste(args)
+    if args.picks_paste:
+        from nbaprops.rules import outside as O
+        picks, skipped = O.parse(sys.stdin.read() if args.picks_paste == "-" else open(args.picks_paste).read())
+        print(f"Outside picks ({args.source}, {args.date}): {len(picks)} player props read; {len(skipped)} skipped"
+              + (": " + " || ".join(skipped[:6]) if skipped else ""))
+        if args.dry:
+            for p in picks:
+                price = "" if p["odds"] is None else format(p["odds"], "+g")
+                print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {price}")
+            return
+        rows = O.log(picks, args.date, args.source)
+        graded, pend = O.grade(args.date)
+        print(f"Logged {len(rows)} new; graded {graded} from ESPN box scores" + (f", {pend} pending (game not final or name not matched)" if pend else "") + ".")
+        return
     if args.proj:
         return run_proj(args)
     if args.half_paste:

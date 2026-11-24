@@ -46,13 +46,14 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
                     ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
-                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
+                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("alt_mkt", "Alt, market only"),
                     ("alt_proj", "Alt, market + projection")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
 RULE_KEYS = {"my_rule", "near_miss"}
-UA_KEYS = {"ua_agree"}        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+UA_KEYS = {"ua_agree"}
+EXT_KEYS = {"ext_pick"}       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}
@@ -519,13 +520,13 @@ def counted_flags(ledger):
     closing = {}
     for r in ledger:
         p, tip = r.get("pulled_at"), r.get("tip")
-        if r.get("strategy") in HALF_KEYS:
+        if r.get("strategy") in HALF_KEYS | EXT_KEYS:
             pass
         elif not p or not tip or p >= cut(r):
             counted.append(False)
             clv.append(None)
             continue
-        if r.get("strategy") in HALF_KEYS:                 # logged live at halftime by design: always counts
+        if r.get("strategy") in HALF_KEYS | EXT_KEYS:      # halftime (live by design) and outside cards: always count
             counted.append(True)
             clv.append(round(100 * _num(r["clv_ev"]), 2) if _num(r.get("clv_ev")) is not None else None)
             continue
@@ -860,7 +861,7 @@ def record(version: str = "v2") -> dict:
         x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
                       "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
-                      "alt" if strat in ALT_KEYS else "model")
+                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
@@ -908,6 +909,11 @@ def record(version: str = "v2") -> dict:
             x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="alt_dvp_" + tag, group="alt", label="Alt: " + lab)
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
+    ext = [(r, v) for r, v in graded if r["strategy"] in EXT_KEYS]
+    for src in sorted({r.get("fair_src") or "?" for r, _ in ext}):
+        sub = [(r, v) for r, v in ext if (r.get("fair_src") or "?") == src]
+        strategies.append(dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="ext_" + src, group="ext",
+                               label=f"Outside: {src}"))
     strategies += sim_record_rows(version)          # placed_record_rows() kept but unused: the record is the system's BETs only
     by_cat = []
     for mk in MARKETS:
