@@ -1428,7 +1428,16 @@ def main():
         return run_cno_paste(args)
     if args.picks_paste:
         from nbaprops.rules import outside as O
-        picks, skipped = O.parse(sys.stdin.read() if args.picks_paste == "-" else open(args.picks_paste).read())
+        text = sys.stdin.read() if args.picks_paste == "-" else open(args.picks_paste).read()
+        blocks = O.parse_blocks(text)
+        if blocks:                                     # a file with date headers: each block is its own date
+            for d, block in blocks.items():
+                picks, skipped = O.parse(block)
+                rows = O.log(picks, d, args.source) if not args.dry else []
+                graded, pend = O.grade(d) if not args.dry else (0, 0)
+                print(f"{d}: {len(picks)} picks read, {len(skipped)} skipped, {len(rows)} logged, {graded} graded, {pend} pending")
+            return
+        picks, skipped = O.parse(text)
         print(f"Outside picks ({args.source}, {args.date}): {len(picks)} player props read; {len(skipped)} skipped"
               + (": " + " || ".join(skipped[:6]) if skipped else ""))
         if args.dry:

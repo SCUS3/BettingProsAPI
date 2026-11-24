@@ -56,13 +56,54 @@ def parse(text: str) -> tuple[list[dict], list[str]]:
     return picks, skipped
 
 
+NICKNAMES = {"kat": "karl-anthony towns", "fvv": "fred vanvleet", "mpj": "michael porter jr", "luka": "luka doncic",
+             "giannis": "giannis antetokounmpo", "lebron": "lebron james", "lu dort": "luguentz dort", "sga": "shai gilgeous-alexander",
+             "ad": "anthony davis", "jjj": "jaren jackson jr", "cp3": "chris paul", "kd": "kevin durant", "dlo": "d'angelo russell"}
+
+
+def resolve(box: dict, name: str) -> tuple[str | None, str]:
+    """Full box-score name for a card name: exact, nickname, unique last name, or unique substring. -> (name or None, how)."""
+    from nbaprops.sources import espn as BX
+    players = box.get("players", {})
+    key = BX.norm(NICKNAMES.get(BX.norm(name), name))
+    if key in players:
+        return players[key]["name"], "exact" if key == BX.norm(name) else "nickname"
+    last = key.split()[-1] if key else ""
+    by_last = [p for k, p in players.items() if k.split() and k.split()[-1] == last]
+    if len(by_last) == 1:
+        return by_last[0]["name"], "last name"
+    sub = [p for k, p in players.items() if key and key in k]
+    if len(sub) == 1:
+        return sub[0]["name"], "partial"
+    return None, ("ambiguous: " + ", ".join(p["name"] for p in (by_last or sub)[:4])) if (by_last or sub) else "not in that date's box scores"
+
+
+def parse_blocks(text: str) -> dict[str, str]:
+    """Split a file with date header lines (YYYY-MM-DD) into {date: block text}."""
+    blocks, cur = {}, None
+    for ln in text.splitlines():
+        if re.fullmatch(r"\s*\d{4}-\d{2}-\d{2}\s*", ln):
+            cur = ln.strip()
+            blocks.setdefault(cur, "")
+        elif cur and ln.strip():
+            blocks[cur] += ln + "\n"
+    return blocks
+
+
 def log(picks: list[dict], date: str, source: str) -> list[dict]:
     """Log outside picks once per (source, player, market, side, line) and date. Flat 1u, no stake."""
     led = L._read(L.LEDGER)
     have = {(r.get("fair_src"), norm(r["player"]), r["market"], r["side"], str(L._num(r.get("line")))) for r in led
             if r["date"] == date and r["strategy"] == KEY}
     out = []
+    try:
+        from nbaprops.sources import espn as BX
+        box = BX.finals(date)
+    except Exception:
+        box = {}
     for p in picks:
+        full, how = resolve(box, p["player"]) if box else (None, "no box scores")
+        p = dict(p, player=full or p["player"], match=how)
         k = (source, norm(p["player"]), p["market"], p["side"], str(p["line"]))
         if k in have:
             continue
@@ -70,7 +111,8 @@ def log(picks: list[dict], date: str, source: str) -> list[dict]:
         out.append({"date": date, "pulled_at": f"{date}T12:00:00Z", "strategy": KEY, "player": p["player"],
                     "market": p["market"], "side": p["side"], "line": p["line"],
                     "odds": p["odds"] if p["odds"] is not None else NO_PRICE, "kelly_u": None, "fair_src": source,
-                    "cap_note": "" if p["odds"] is not None else "no price on the card: units at -110"})
+                    "cap_note": "; ".join(x for x in ("" if p["odds"] is not None else "no price on the card: units at -110",
+                                                       "" if p["match"] in ("exact",) else f"name: {p['match']}") if x)})
     if out:
         L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
     return out
