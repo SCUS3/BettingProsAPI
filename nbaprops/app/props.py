@@ -610,6 +610,7 @@ def main():
     ap.add_argument("--no-grade", action="store_true", help="skip grading finished slates this run")
     ap.add_argument("--only-events", metavar="IDS", help="pull only these BettingPros event ids (colon/comma list); "
                                                             "other games keep their rows and picks from their last pull")
+    ap.add_argument("--weekly", action="store_true", help="weekly review of the 7 days ending --date (no API requests)")
     ap.add_argument("--grade", metavar="DATE", help="only grade the saved slate for DATE, re-learn, and exit")
     ap.add_argument("--measure", action="store_true",
                     help="3 requests: slate prop counts (total_items) with the FanDuel filter, without it, and with the default ev_threshold")
@@ -617,6 +618,12 @@ def main():
                     help="re-score an existing bp_props_<date>.csv and rewrite the note (no API requests)")
     args = ap.parse_args()
     BP.RUN_CAP = args.max_requests
+    if args.weekly:
+        from nbaprops.output import weekly
+        path = weekly.build(args.date)
+        print(open(path).read())
+        print(f"Weekly review -> {path}")
+        return
 
     if args.from_csv:
         path = f"bp_props_{args.date}.csv"
