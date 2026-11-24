@@ -26,3 +26,13 @@ def test_md_table_aligns_columns():
                                          ("bp_value", "nbaprops.app.value"), ("bp_unabated", "nbaprops.sources.unabated")])
 def test_entry_point_shims_are_the_package_modules(shim, module):
     assert importlib.import_module(shim) is importlib.import_module(module)
+
+
+def test_note_sections_ordered_most_tailored_first():
+    from nbaprops.output.note import order_sections
+    src = ["# t", "## Record", "x", "## 1. Top 10 by projection gap", "g", "## 2. Top 10 by your score", "r",
+           "## 8. Triple green", "t", "## Points (PTS)", "p"]
+    out = order_sections(src)
+    assert [ln for ln in out if ln.startswith("## ")] == ["## Record", "## 1. Triple green", "## 2. Your rule: CNO +EV + BettingPros agrees",
+                                                         "## 3. Top 10 by projection gap", "## Points (PTS)"]
+    assert out[out.index("## 1. Triple green") + 1] == "t"

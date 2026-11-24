@@ -28,6 +28,44 @@ def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
     return out
 
 
+# Numbered note sections, most tailored (fewest, strictest) first down to the broadest research list.
+# Matched by the heading text after "## N. "; each is renumbered 1..n in this order.
+SECTION_ORDER = ["Triple green", "Top 10 by your score", "Unabated +EV & BettingPros agrees", "All +EV tonight",
+                 "Near misses to your rule", "Ladder candidates", "Proven posters today", "Top 10 by projection gap"]
+SECTION_TITLES = {"Top 10 by your score": "Your rule: CNO +EV + BettingPros agrees"}
+
+
+def order_sections(lines: list[str]) -> list[str]:
+    """Reorder the numbered '## N. Title' sections by SECTION_ORDER and renumber them; everything else stays in place
+    (the numbered block goes where the first numbered section was)."""
+    import re
+    head = re.compile(r"^## \d+\. (.+)$")
+    chunks, out, first, i = {}, [], None, 0
+    while i < len(lines):
+        m = head.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith("## "):
+            j += 1
+        title = m.group(1).strip()
+        key = next((t for t in SECTION_ORDER if title.startswith(t)), title)
+        chunks[key] = (title, lines[i + 1:j])
+        if first is None:
+            first = len(out)
+        i = j
+    if first is None:
+        return lines
+    keys = [k for k in SECTION_ORDER if k in chunks] + [k for k in chunks if k not in SECTION_ORDER]
+    block = []
+    for n, k in enumerate(keys, 1):
+        title, body = chunks[k]
+        block += [f"## {n}. {SECTION_TITLES.get(k, title)}"] + body
+    return out[:first] + block + out[first:]
+
+
 def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: str = "") -> str:
     """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     from nbaprops.app.props import _num, fmt, ranked, REAL_PROJ_MARKETS, DISABLED  # scoring helpers (imported here: props imports this module)
@@ -91,7 +129,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
              "(soft 1-10 for an over, hard 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Mkt EV = market EV at FanDuel's price. Mkt value = "
              "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
              "injury report (Y/N). ▼ = the column the list is ranked by.", "",
-             "**Rules v2 (from 2026-11-24):** your rule = CrazyNinja +EV and BettingPros agrees (section 2); BET = Unabated "
+             "**Rules v2 (from 2026-11-24):** Triple green = +EV and BettingPros agrees and DvP helps (section 1); your rule = CrazyNinja +EV and BettingPros agrees (section 2); BET = Unabated "
              "EV +2% and CrazyNinja worst case > 0. Tonight's bets = BETs + alt BETs + your rule, "
              "each prop once at its largest ¼K stake, capped 1.5u/player and 3.5u/game across the list; the other records' "
              "stakes are paper.", ""]
@@ -346,6 +384,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         lines += [f"### {tag}: by projection gap", ""]
         lines += table(ranked(group, lambda r: abs(r["pct_gap"])), "gap")
 
+    lines = order_sections(lines)
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out

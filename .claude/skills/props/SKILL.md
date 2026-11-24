@@ -135,3 +135,7 @@ When the user pastes the r/sportsbook NBA thread text, save it to `history/<date
 
 The note and the dashboard open with "Tonight's bets" (BETs + alt BETs + your rule, largest ¼K stake per prop, 1.5u/player and 3.5u/game across the list). Lead every report with that table (player, prop, FD, entry EV, stake, records, cap) and its total; everything else is a paper record.
 
+## Note order (v2)
+
+`bp_top10_<date>.md` opens with Tonight's bets, then the record, then the numbered sections from most tailored to broadest: 1 Triple green, 2 Your rule, 3 Unabated +EV & BP agrees, 4 All +EV tonight, 5 Near misses, 6 Ladder candidates, 7 Proven posters, 8 Top 10 by projection gap (research). Report in that order.
+
