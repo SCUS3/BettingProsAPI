@@ -5,6 +5,7 @@ the 1.5u-per-player and 3.5u-per-game caps are applied across the whole list. Ev
 """
 from __future__ import annotations
 
+from nbaprops import config as C
 from nbaprops.rules import ledger as L
 from nbaprops.sources.rotowire import norm
 
@@ -12,11 +13,11 @@ SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_pro
            "triple": "Triple green"}
 
 
-def build(date: str, led: list[dict] | None = None) -> list[dict]:
-    """-> [{player, team, market, side, line, price, ev, stake, stake_raw, records, cap, tip, event_id, flags, rows}],
-    biggest stake first. Reads the ledger only (no API calls)."""
+def candidates(date: str, led: list[dict] | None = None) -> list[dict]:
+    """One item per prop (player, market, side, line) from the betting records, at its largest qualifying ¼K stake."""
     from nbaprops.app import value as V
-    rows = [r for r in (L._read(L.LEDGER) if led is None else led) if r["date"] == date and r["strategy"] in SOURCES and (L._num(r.get("kelly_u")) or 0) > 0]
+    rows = [r for r in (L._read(L.LEDGER) if led is None else led) if r["date"] == date and r["strategy"] in SOURCES
+            and (L._num(r.get("kelly_u")) or 0) > 0]
     groups: dict = {}
     for r in rows:
         groups.setdefault((norm(r["player"]), r["market"], r["side"], L._num(r["line"])), []).append(r)
@@ -26,18 +27,104 @@ def build(date: str, led: list[dict] | None = None) -> list[dict]:
         best = max(g, key=lambda r: L._num(r["kelly_u"]))
         recs = sorted({SOURCES[r["strategy"]] for r in g}, key=["BET", "Alt BET", "Your rule", "Triple green"].index)
         ev = L._num(best.get("entry_ev") or best.get("oa_ev"))
+        last = max([t for t in (best.get("entry_at") or best.get("pulled_at"), best.get("latest_at")) if t] or [""])
         out.append({"player": best["player"], "team": best.get("team"), "market": best["market"], "side": best["side"],
                     "line": L._num(best["line"]), "price": L._num(best.get("entry_price") or best.get("odds")), "ev": ev,
+                    "sources": int(L._num(best.get("entry_sources") or best.get("sources")) or 0), "price_at": last,
+                    "entry_at": best.get("entry_at") or best.get("pulled_at"),
+                    "bp_agrees": (best.get("proj_tag") or "") in ("agrees", "lean agrees"), "dvp_tag": best.get("dvp_tag"),
                     "stake_raw": L._num(best["kelly_u"]), "stake": L._num(best["kelly_u"]), "records": recs,
                     "from": SOURCES[best["strategy"]], "tip": best.get("tip"), "event_id": best.get("event_id"),
                     "game": key(best), "flags": "no CNO check" if any(r.get("cno_flag") for r in g if r["strategy"] in ("bet_agree", "bet_only")) else "",
-                    "rows": g})
-    cands = [{"player": x["player"], "game": x["game"], "ev": x["ev"] or 0, "stake": x["stake"]} for x in out]
+                    "held": "", "case": "", "rows": g})
+    return out
+
+
+def _now_eff(x, now):
+    """Decision time for a prop: now, but never past its tip (so a past slate decides the same way it did pregame)."""
+    from nbaprops.rules import tipoff as T
+    return min(now, T._t(x["tip"])) if x.get("tip") else now
+
+
+def outlier(x, now) -> bool:
+    """Sanity gate: entry EV above OUTLIER_EV needs OUTLIER_MIN_SOURCES sources AND a price no older than
+    OUTLIER_MAX_AGE_MIN at decision time."""
+    from nbaprops.rules import tipoff as T
+    if (x.get("ev") or 0) <= C.OUTLIER_EV:
+        return False
+    if (x.get("sources") or 0) < C.OUTLIER_MIN_SOURCES or not x.get("price_at"):
+        return True
+    return (_now_eff(x, now) - T._t(x["price_at"])).total_seconds() > 60 * C.OUTLIER_MAX_AGE_MIN
+
+
+def _strength(x, other):
+    return ((x.get("ev") or 0) > (other.get("ev") or 0)) + bool(x.get("bp_agrees")) + (x.get("dvp_tag") == "helps")
+
+
+def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
+    """Every candidate prop, biggest stake first; held-out props keep stake 0 and a 'held' reason (outlier EV, both
+    sides +EV, re-checked other side). Order: sanity gate -> both-sides resolution -> per-player/per-game caps ->
+    nightly cap (NIGHT_CAP, proportional). Reads the ledger and the conflicts file only (no API calls)."""
+    import datetime as dt
+    from nbaprops.app import value as V
+    from nbaprops.rules import conflicts as CF
+    from nbaprops.rules import tipoff as T
+    now = now or dt.datetime.now(dt.UTC)
+    out = candidates(date, led)
+    for x in out:
+        if outlier(x, now):
+            x["held"] = f"check: outlier EV ({100 * x['ev']:.1f}%, {x['sources']} sources)"
+    both, contra = CF.find(out)
+    st = CF.load(date)
+    for o, u in both:
+        e = st.get(CF.key(o["player"], o["market"], o["line"])) or {}
+        case = e.get("case")
+        if case == "re-checked":
+            for x in (o, u):
+                if x["side"] == e.get("kept_side"):
+                    x["case"] = "re-checked"
+                elif not x["held"]:
+                    x["held"] = "both sides +EV: re-checked, this side not +EV"
+        elif case == "data error":
+            for x in (o, u):
+                x["held"], x["case"] = "both sides +EV: data error (" + e.get("cause", "") + ")", "data error"
+        else:
+            near = all(x.get("tip") and _now_eff(x, now) >= T._t(x["tip"]) - dt.timedelta(minutes=C.UNVERIFIED_BEFORE_TIP_MIN)
+                       for x in (o, u))
+            if near:                                    # never re-priced before tip: stronger side at half stake
+                keep, drop = (o, u) if (_strength(o, u), o.get("ev") or 0) >= (_strength(u, o), u.get("ev") or 0) else (u, o)
+                keep["case"], keep["stake"] = "unverified", round(keep["stake"] / 2, 2)
+                drop["held"] = drop["held"] or "both sides +EV: unverified, other side kept"
+            else:
+                for x in (o, u):
+                    x["held"] = x["held"] or "both sides +EV: re-checking at the next scan"
+    for o, u in contra:
+        o["flags"] = ", ".join(f for f in (o["flags"], f"contradicts {u['side'][0]}{u['line']:g}") if f)
+        u["flags"] = ", ".join(f for f in (u["flags"], f"contradicts {o['side'][0]}{o['line']:g}") if f)
+    act = [x for x in out if not x["held"]]
+    cands = [{"player": x["player"], "game": x["game"], "ev": x["ev"] or 0, "stake": x["stake"]} for x in act]
     V.apply_exposure(cands, [], lambda r: r["game"])
-    for x, c in zip(out, cands):
+    for x, c in zip(act, cands):
         x["stake"], x["cap"] = round(c["stake"], 2), c["cap"]
-    out = [x for x in out if x["stake"] > 0]
-    return sorted(out, key=lambda x: (-x["stake"], -(x["ev"] or 0)))
+    total = sum(x["stake"] for x in act)
+    if total > C.NIGHT_CAP:
+        f = C.NIGHT_CAP / total
+        for x in act:
+            x["stake_capped"] = x["stake"]
+            x["stake"] = int(x["stake"] * f * 100) / 100
+            x["cap"] = ", ".join(c for c in (x.get("cap"), "scaled: nightly cap") if c)
+    for x in out:
+        if x["held"]:
+            x["stake"] = 0.0
+    return sorted([x for x in out if x["stake"] > 0], key=lambda x: (-x["stake"], -(x["ev"] or 0))) + \
+        [x for x in out if x["stake"] <= 0]
+
+
+def totals(items):
+    """(total staked, total before the nightly scale, scaled?)."""
+    act = [x for x in items if x["stake"] > 0]
+    pre = sum(x.get("stake_capped", x["stake"]) for x in act)
+    return round(sum(x["stake"] for x in act), 2), round(pre, 2), any("stake_capped" in x for x in act)
 
 
 def record_rows(version: str | None = None) -> tuple[list[dict], list]:
@@ -55,7 +142,10 @@ def record_rows(version: str | None = None) -> tuple[list[dict], list]:
             if not c or best.get("result") not in ("W", "L", "P") or (version and L.rule_version(best) != version):
                 continue
             pu = L._num(best.get("profit_u")) or 0.0
-            out.append(dict(best, strategy="tonight", kelly_u=x["stake"], profit_kelly=round(pu * x["stake"], 4)))
+            held = "outlier" if x["held"].startswith("check: outlier") else "data error" if x["case"] == "data error" else \
+                "other side" if x["held"] else ""
+            out.append(dict(best, strategy="tonight", kelly_u=x["stake"], profit_kelly=round(pu * x["stake"], 4),
+                            tn_case=x["case"], tn_held=held))
             clvs.append(v)
     return out, clvs
 

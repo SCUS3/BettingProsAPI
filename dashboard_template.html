@@ -345,7 +345,8 @@ footer b { color: var(--ink); font-weight: 600; }
 
   // Tonight's bets: the only list to bet (union of BETs, alt BETs and Your rule; largest stake; global caps)
   function renderTonightBets() {
-    var tb = DATA.tonight_bets || [];
+    var all = DATA.tonight_bets || [];
+    var tb = all.filter(function (x) { return x.stake > 0; }), held = all.filter(function (x) { return x.stake <= 0; });
     var u = function (v) { return (Math.round(v * 100) / 100).toFixed(2) + "u"; };
     var body = tb.map(function (x, i) {
       var bp = /agrees$/.test(x.bp_tag || "") && !/disagrees$/.test(x.bp_tag) ? '<span style="color:#1a9a4a">●</span> ' : /disagrees$/.test(x.bp_tag || "") ? '<span style="color:#d03a2f">●</span> ' : "";
@@ -353,13 +354,16 @@ footer b { color: var(--ink); font-weight: 600; }
       return '<tr><td class="l">' + (i + 1) + '</td><td class="l"><b>' + esc(x.player) + "</b></td><td class=\"l\">" + esc(x.market) + " " + (x.side === "over" ? "o" : "u") + x.line +
         '</td><td title="' + esc(x.bp_note || "") + '">' + (x.bp_proj == null ? '<span class="dim">–</span>' : bp + x.bp_proj.toFixed(1) + ' <span class="dim">(' + (x.bp_gap > 0 ? "+" : "") + x.bp_gap.toFixed(1) + ")</span>") +
         "</td><td>" + odds(x.price) + "</td><td>" + (x.ev == null ? "–" : (x.ev > 0 ? "+" : "") + Math.round(x.ev * 1000) / 10 + "%") + "</td><td>" + dv +
-        "</td><td><b>" + u(x.stake) + "</b></td></tr>";
+        "</td><td><b>" + u(x.stake) + "</b>" + ([x.case, x.flags].filter(Boolean).length ? '<div class="dim">' + esc([x.case, x.flags].filter(Boolean).join(", ")) + "</div>" : "") + "</td></tr>";
     }).join("");
     var total = tb.reduce(function (s, x) { return s + x.stake; }, 0);
-    document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) : ""),
-      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game caps apply across the whole list. Everything else is a paper record.",
+    var pre = tb.reduce(function (s, x) { return s + (x.stake_capped != null ? x.stake_capped : x.stake); }, 0);
+    var scaled = tb.some(function (x) { return x.stake_capped != null; });
+    document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (scaled from " + u(pre) + ")" : "") : ""),
+      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (scaled proportionally). Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
       th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"]]),
-      body || '<tr><td class="l dim" colspan="8">No bets yet tonight.</td></tr>');
+      body || '<tr><td class="l dim" colspan="8">No bets yet tonight.</td></tr>') +
+      (held.length ? '<p class="dim" style="margin:6px 16px">Held out (not bet): ' + held.map(function (x) { return esc(x.player + " " + x.market + " " + x.side[0] + x.line + ": " + x.held); }).join("; ") + "</p>" : "");
   }
 
   // Strongest tonight

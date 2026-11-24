@@ -132,6 +132,9 @@ def rule_version(row: dict) -> str:
 
 
 def _write(path, rows, fields):
+    if os.environ.get("PYTEST_CURRENT_TEST") and os.path.abspath(path).startswith(os.path.abspath(HERE) + os.sep) \
+            and "/tests/" not in os.path.abspath(path):
+        raise RuntimeError(f"test tried to write real data: {path}")   # fixtures never reach the real ledger
     if "rule_version" in fields:                       # every ledger/record row carries its rule version
         for r in rows:
             if r.get("date") and not r.get("rule_version"):
@@ -1020,9 +1023,19 @@ def record(version: str = "v2") -> dict:
                          key=lambda x: -abs(x["coef"]))
     try:
         from nbaprops.rules import tonight as _tn
-        tr, tc = _tn.record_rows(version)
+        rr, rc = _tn.record_rows(version)
+        tr = [(r, v) for r, v in zip(rr, rc) if not r["tn_held"]]
         if tr:
-            strategies.insert(0, dict(_summ(tr, tc), key="tonight", group="tonight", label="Tonight's bets (what you bet)", n=len(tr), clv_unit=True))
+            strategies.insert(0, dict(_summ([r for r, _ in tr], [v for _, v in tr]), key="tonight", group="tonight",
+                                      label="Tonight's bets (what you bet)", n=len(tr), clv_unit=True))
+        for k, lab, sel in (("tonight_rechecked", "Tonight's bets: re-checked (both sides were +EV)", lambda r: r["tn_case"] == "re-checked" and not r["tn_held"]),
+                            ("tonight_unverified", "Tonight's bets: unverified (half stake)", lambda r: r["tn_case"] == "unverified" and not r["tn_held"]),
+                            ("held_data_error", "Held out: both sides +EV, data error (not bet, flat 1u)", lambda r: r["tn_held"] == "data error"),
+                            ("held_outlier", "Held out: outlier EV (not bet, flat 1u)", lambda r: r["tn_held"] == "outlier")):
+            sub = [(r, v) for r, v in zip(rr, rc) if sel(r)]
+            if sub:
+                strategies.append(dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=k, group="tonight", label=lab,
+                                       n=len(sub), clv_unit=True))
     except Exception:  # noqa: BLE001
         pass
     try:

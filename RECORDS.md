@@ -44,6 +44,24 @@ summed); then 1.5u per player and 3.5u per game are applied across the whole lis
 Every other record (Unabated +EV & BP agrees, CrazyNinja +EV, CNO screener, All +EV, Reddit, halftime, models) is a
 paper record. Each underlying record keeps its own stakes and results.
 
+**Safety checks on the list** (`nbaprops/rules/tonight.py`, `nbaprops/rules/conflicts.py`, thresholds in `config.py`):
+- **Outlier EV:** entry EV above 10% needs 5+ sources AND a price no older than 10 min at decision time; otherwise
+  "check: outlier EV" and held out. On the v1 archive the held-out outliers went 2-7 (−5.07u flat).
+- **Both sides +EV** (same player/market/line): both held until re-priced from ONE Unabated snapshot (the board run's
+  or a watch scan's board: same sources, same timestamp, FanDuel's current over and under). One side +EV → kept,
+  "re-checked"; neither → both dropped; both still +EV or the re-price fails → both dropped, "data error". Never
+  re-priced within 10 min of tip → the stronger side (higher EV, BP agrees, DvP helps) at half stake, "unverified".
+  Each case and its cause (with both logged prices and the snapshot) is written to `history/<date>/conflicts_<date>.json`;
+  the Record tab splits Tonight's bets into re-checked and unverified, plus held-out data errors and outliers (flat 1u,
+  not bet) to show whether the checks hold up.
+- **Contradictory rungs** (an over above an under for the same player/market, e.g. Champagnie REB u5.5 and o7.5):
+  flagged in the Check column, not dropped.
+- **Nightly cap:** after the player and game caps, the list totals at most 8u; above that every stake is scaled down
+  proportionally and the header shows "scaled from".
+- Cause of the 11/23 Jaylon Tyson PTS o9.5/u9.5 pair: the alt ladder logged o9.5 (FanDuel alt market, +142, 6 sources)
+  at 00:35 UTC and a BET logged u9.5 (main line after it moved to 9.5, −118, 3 sources) at 00:55 UTC: two FanDuel
+  markets, two scans, two source sets, and no check across records.
+
 Each row shows the BettingPros projection (🟢/🔴 dot, number, gap) and the side-aware DvP dot and number, like the other
 sections. **Tonight's bets record** (`key: tonight`, first on the Record tab and in Copy for Claude): every listed prop
 once, graded with its ledger result, ¼K units at the **capped** stake, flat 1u alongside, CLV from the prop's row; only

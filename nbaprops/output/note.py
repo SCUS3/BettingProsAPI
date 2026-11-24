@@ -119,29 +119,30 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                 cell(r["balanced"]), inj(r)]
 
     lines = [f"# NBA props: {date}", "",
-             "FanDuel-priced props only. Only Tonight's bets (the first list) are bets; every other list is a paper record (no money). DvP: 1 = softest matchup. Form: recent hit rate of the "
-             "recommended side vs. this line. Score: your rules (40% edge, 35% FanDuel EV, 25% matchup). "
-             "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
-             "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
-             "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
-             "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side (an under projected below the line is 🟢), "
-             "🔴 = the other side, – = no projection. Proj = BettingPros' raw projection. DvP 🟢 = the matchup helps the listed side "
-             "(soft 1-10 for an over, hard 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Mkt EV = market EV at FanDuel's price. Mkt value = "
-             "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
-             "injury report (Y/N). ▼ = the column the list is ranked by.", "",
-             "**Rules v2 (from 2026-11-24):** Triple green = +EV and BettingPros agrees and DvP helps (section 1); your rule = CrazyNinja +EV and BettingPros agrees (section 2); BET = Unabated "
-             "EV +2% and CrazyNinja worst case > 0. Tonight's bets = BETs + alt BETs + your rule, "
-             "each prop once at its largest ¼K stake, capped 1.5u/player and 3.5u/game across the list; the other records' "
-             "stakes are paper.", ""]
+             "FanDuel-priced NBA player props. **Only Tonight's bets (the first list) are bets**; every other list is a paper "
+             "record (no money). 1u = 1% of bankroll; ¼K = quarter-Kelly on the fair probability.", "",
+             "**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND BettingPros "
+             "agrees AND DvP helps the side (section 1). Your rule = CrazyNinja screener +EV AND BettingPros agrees (section 2). "
+             "BET = Unabated EV +2% at FanDuel's line (3+ sources) AND CrazyNinja worst case > 0. Alt BET = FanDuel alt rung, "
+             "market EV +4%, 3+ two-sided sources, CrazyNinja > 0. Tonight's bets = BETs + alt BETs + your rule + Triple green, "
+             "each prop once at its largest ¼K stake; held out: entry EV over 10% without 5+ sources and a price under 10 min "
+             "old, and props +EV on both sides until re-priced from one snapshot; caps 1.5u per player, 3.5u per game, "
+             "8u per night (scaled proportionally).", "",
+             "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side, 🔴 = the other side, – = no projection. "
+             "BP proj = BettingPros' raw projection; Gap = projection - line. DvP 🟢 = the matchup helps the listed side "
+             "(1-10 for an over, 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Entry EV = EV at the price when the play "
+             "was logged (frozen). ▼ = the column the list is ranked by.", ""]
     from nbaprops.rules import tonight as _tn
-    tb = _tn.payload(date)
+    tball = _tn.payload(date)
+    tb = [x for x in tball if x["stake"] > 0]
+    held = [x for x in tball if x["stake"] <= 0]
     rec = bp_learn.record()
     _tr = next((x for x in rec["strategies"] if x.get("key") == "tonight"), None)
     lines += ["## Tonight's bets", "",
               "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule "
-              "and Triple green props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
-              "game across this whole list. Everything else in this note is a "
-              "paper record.", ""]
+              "and Triple green props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per "
+              "player and 3.5u per game across this whole list and 8u per night (scaled). Check = re-checked / unverified "
+              "(both sides were +EV) or a contradicting rung. Everything else in this note is a paper record.", ""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
         lines += [f"Tonight's bets record (v2): {_tr['w']}-{_tr['l']}-{_tr['p']} | ¼K at the capped stakes {_tr['kelly_units']:+.2f}u"
                   + (f" ({_tr['kelly_roi']:+}% ROI)" if _tr.get("kelly_roi") is not None else "") + f" | flat 1u {_tr['units']:+.2f}u"
@@ -150,16 +151,23 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         def _bp(x):
             t = x.get("bp_tag") or "none"
             return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
+        chk = lambda x: ", ".join(c for c in (x.get("case"), x.get("flags")) if c)
+        show_chk = any(chk(x) for x in tb)
         body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), _bp(x),
                  "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
                  odds_s(x["price"]), "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%",
-                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u"]
+                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u"] + ([chk(x)] if show_chk else [])
                 for i, x in enumerate(tb, 1)]
+        tot, pre, scaled = _tn.totals(tball)
+        lines += [f"**Total {tot:.2f}u on {len(tb)} props" + (f" (scaled from {pre:.2f}u: nightly cap {_tn.C.NIGHT_CAP:g}u)" if scaled else "") + "**", ""]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r")], body)
-        lines += ["", f"Total {sum(x['stake'] for x in tb):.2f}u on {len(tb)} props.", ""]
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r")] + ([("Check", "l")] if show_chk else []), body)
+        lines += [""]
     else:
         lines += ["_No bets yet tonight._", ""]
+    if held:
+        lines += ["Held out (not bet): " + "; ".join(f"{x['player']} {x['market']} {x['side'][0]}{fmt(x['line'])} "
+                                                     f"{odds_s(x['price'])}: {x['held']}" for x in held), ""]
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
     if played:

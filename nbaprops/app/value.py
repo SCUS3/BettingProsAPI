@@ -701,6 +701,9 @@ def run_board(args):
                              f"{r['cap_note']}), CNO worst-case {100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; "
                              f"DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} ({r.get('dvp_tag')})  |  {r.get('proj_note') or '–'}")
         lines_out.append(f"  Alt ladder: {len(arows)} new rungs logged (EV >= +4%, 3+ two-sided sources, <= +300, CNO > 0, one per player).")
+        from nbaprops.rules import conflicts as _CF
+        for k, case in _CF.reprice(args.date, data, U.load(U.DISCOVERY, {}), bp_learn.utc_now()):
+            lines_out.append(f"  BOTH SIDES +EV {k}: re-priced from one snapshot -> {case} ({_CF.load(args.date)[k]['cause']})")
     except Exception as e:
         lines_out.append(f"  Alt ladder skipped ({e}).")
     ledger += cno_rows(args.date, cno_cands, led_now, gkey, cap)
@@ -1104,6 +1107,9 @@ def watch_scan(date, state, close_before=None):
                    f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources), CNO "
                    f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} "
                    f"({r.get('dvp_tag')})")
+        from nbaprops.rules import conflicts as _CF
+        for k, case in _CF.reprice(date, data, d, now):
+            notify(f"BOTH SIDES +EV {k}: re-priced from one snapshot -> {case} ({_CF.load(date)[k]['cause']})")
         led = bp_learn._read(bp_learn.LEDGER)
         bp_alts.close(date, data, d, now)               # alt rungs: latest pregame price (open games only)
     except Exception as e:

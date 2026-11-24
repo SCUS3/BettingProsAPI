@@ -49,6 +49,7 @@ def test_close_is_a_one_time_copy_of_the_last_pregame_observation(tmp_path, monk
 
 def test_store_never_touches_a_started_game(tmp_path, monkeypatch):
     monkeypatch.setattr(V, "HERE", str(tmp_path))
+    monkeypatch.setattr(V.bp_learn, "LEDGER", str(tmp_path / "ledger.csv"))      # never the real ledger (All +EV writes)
     started = {"player": "A", "market": "PTS", "line": 10.5, "tip": "2026-11-24T00:00:00Z", "team": "X"}
     upcoming = {"player": "B", "market": "REB", "line": 6.5, "tip": "2026-11-24T03:00:00Z", "team": "Y"}
     ua = {("A", "PTS", "over"): {"ev_mult": 0.03, "fair_mult": 0.5, "price_used": 110, "books": 4},
