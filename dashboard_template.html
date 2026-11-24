@@ -353,14 +353,13 @@ footer b { color: var(--ink); font-weight: 600; }
       return '<tr><td class="l">' + (i + 1) + '</td><td class="l"><b>' + esc(x.player) + "</b></td><td class=\"l\">" + esc(x.market) + " " + (x.side === "over" ? "o" : "u") + x.line +
         '</td><td title="' + esc(x.bp_note || "") + '">' + (x.bp_proj == null ? '<span class="dim">–</span>' : bp + x.bp_proj.toFixed(1) + ' <span class="dim">(' + (x.bp_gap > 0 ? "+" : "") + x.bp_gap.toFixed(1) + ")</span>") +
         "</td><td>" + odds(x.price) + "</td><td>" + (x.ev == null ? "–" : (x.ev > 0 ? "+" : "") + Math.round(x.ev * 1000) / 10 + "%") + "</td><td>" + dv +
-        "</td><td><b>" + u(x.stake) + '</b></td><td class="l">' + x.records.map(function (r) { return '<span class="chip">' + esc(r) + "</span>"; }).join(" ") +
-        (x.flags ? ' <span class="dim">' + esc(x.flags) + "</span>" : "") + "</td></tr>";
+        "</td><td><b>" + u(x.stake) + "</b></td></tr>";
     }).join("");
     var total = tb.reduce(function (s, x) { return s + x.stake; }, 0);
     document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) : ""),
       "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game caps apply across the whole list. Everything else is a paper record.",
-      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Records", "l"]]),
-      body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>');
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"]]),
+      body || '<tr><td class="l dim" colspan="8">No bets yet tonight.</td></tr>');
   }
 
   // Strongest tonight

@@ -9,3 +9,58 @@
 8 of 10 final
 9 of 10 final
 9 of 10 final
+10 of 10 final
+Markets: 3PM (162), AST (151), P+A (335), P+R (336), PRA (338), PTS (156), R+A (337), REB (157)
+Box scores 2026-11-23: 10 final games (ESPN), 158 props with finals, 0 did not play; no box-score match: De'Aaron Fox, Victor Wembanyama, A, B
+Graded 2026-11-23: 116 props, 84 picks, 2 still pending
+Model: 215 graded props
+Record v2 (rules from 2026-11-24):
+Record: no graded picks yet.
+v1 archive (before the v2 fresh start; kept, not counted in v2):
+Not counted: 10 picks logged after their game started.
+Record (7 graded slates, pre-tip picks only):
+ Your rule: CNO +EV + BP agrees:
+  Your rule: CNO +EV + BP agrees           1-2-0  hit  33.3%  flat -0.84u  ¼K -1.13u  Brier 0.2872 vs mkt 0.2872
+  Near misses to your rule (not taken, flat 1u) 7-2-0  hit  77.8%  flat +7.70u  ¼K +0.00u  Brier 0.2983 vs mkt 0.2983
+ BETs: Unabated market +EV:
+  BET: +EV + proj agrees                   3-8-0  hit  27.3%  flat -5.64u  ¼K -5.59u  Brier 0.2798 vs mkt 0.2726  CLV -0.17% EV
+  BET: +EV only                            18-17-0  hit  51.4%  flat +1.95u  ¼K +1.73u  Brier 0.2224 vs mkt 0.2132  CLV +1.05% EV
+  All Unabated BETs                        21-25-0  hit  45.7%  flat -3.69u  ¼K -3.86u  Brier 0.2415 vs mkt 0.233  CLV +0.68% EV
+ CrazyNinja +EV:
+  CrazyNinja +EV                           8-7-0  hit  53.3%  flat +0.88u  ¼K -0.50u  Brier 0.2521 vs mkt 0.2517  CLV +0.08% EV
+  Unabated BETs + CrazyNinja, each play once 21-25-0  hit  45.7%  flat -3.69u  ¼K -3.86u  Brier 0.2415 vs mkt 0.233  CLV +0.68% EV
+ CNO screener:
+  CNO screener                             3-1-0  hit  75.0%  flat +3.36u  ¼K +1.74u  Brier 0.3332 vs mkt 0.3332  CLV +1.4% EV
+  CNO screener (under +2%, tracking only)  3-1-0  hit  75.0%  flat +3.14u  ¼K +0.67u  Brier 0.2872 vs mkt 0.2872  CLV -3.24% EV
+  CNO screener: BP lean agrees             0-1-0  hit   0.0%  flat -1.00u  ¼K -1.03u  Brier 0.3443 vs mkt 0.3443
+  CNO screener: BP lean disagrees          2-0-0  hit 100.0%  flat +3.20u  ¼K +1.56u  Brier 0.3618 vs mkt 0.3618  CLV +0.1% EV
+  CNO screener: no BP projection           1-0-0  hit 100.0%  flat +1.16u  ¼K +1.21u  Brier 0.2648 vs mkt 0.2648  CLV +2.69% EV
+ Tonight's bets (what you bet):
+  Tonight's bets (what you bet)            23-32-0  hit  41.8%  flat -7.85u  ¼K -5.76u  Brier 0.2289 vs mkt 0.2267  CLV +0.98 pts
+ All +EV (any source):
+  All +EV (any source, deduped)            0-0-0  hit      -  flat +0.00u  ¼K +0.00u
+ Outside picks (cards):
+  Outside picks (cards)                    28-29-0  hit  49.1%  flat -3.24u
+  Outside: Reddit/X card (v1, pre-system)  28-29-0  hit  49.1%  flat -3.24u
+ Alt ladder:
+  Alt, market only                         1-5-0  hit  16.7%  flat -3.32u  ¼K -1.66u  Brier 0.1933 vs mkt 0.1933  CLV +2.31% EV
+  Alt: DvP helps the side                  0-2-0  hit   0.0%  flat -2.00u  ¼K -1.00u  Brier 0.2267 vs mkt 0.2267  CLV +0.12% EV
+  Alt: DvP neutral (11-20)                 1-1-0  hit  50.0%  flat +0.68u  ¼K +0.34u  Brier 0.2274 vs mkt 0.2274  CLV -2.5% EV
+  Alt: DvP hurts the side                  0-1-0  hit   0.0%  flat -1.00u  ¼K -0.50u  Brier 0.104 vs mkt 0.104  CLV +3.27% EV
+  Alt: DvP unknown                         0-1-0  hit   0.0%  flat -1.00u  ¼K -0.50u  Brier 0.1478 vs mkt 0.1478  CLV +15.33% EV
+ BettingPros Projection Model (research):
+  Top 5 balanced                           13-11-0  hit  54.2%  flat -0.09u    Brier 0.2447 vs mkt 0.2522  CLV +0.0 pts
+  Top 5 your score                         7-11-0  hit  38.9%  flat -4.83u    Brier 0.3101 vs mkt 0.2603  CLV +0.0 pts
+  Top 5 projection gap                     11-10-0  hit  52.4%  flat -2.14u    Brier 0.2659 vs mkt 0.2634  CLV +0.0 pts
+  Top 5 learned                            13-12-0  hit  52.0%  flat -0.54u    Brier 0.2946 vs mkt 0.2544  CLV +0.0 pts
+  Watch list (shortlist, not bet)          20-10-0  hit  66.7%  flat +6.27u    Brier 0.2195 vs mkt 0.2471
+  Projection model: 3PM overs              14-17-0  hit  45.2%  flat -6.12u    Brier 0.2893 vs mkt 0.2648  CLV +0.0 pts
+  Projection model, each prop once         18-20-0  hit  47.4%  flat -5.40u    Brier 0.2769 vs mkt 0.2575  CLV +0.0 pts
+ Sims (research, separate):
+  Sim: Top 5 balanced                      2-3-0  hit  40.0%  flat -1.48u    Brier 0.2766 vs mkt 0.2514
+  Sim: Top 5 your score                    3-2-0  hit  60.0%  flat +0.39u    Brier 0.2326 vs mkt 0.2481
+  Sim: Top 5 projection gap                2-3-0  hit  40.0%  flat -1.75u    Brier 0.2753 vs mkt 0.2646
+  Sim: Top 5 learned                       3-2-0  hit  60.0%  flat +0.70u    Brier 0.2314 vs mkt 0.2661
+  Sim: each prop once (1 slates)           5-4-0  hit  55.6%  flat +0.12u    Brier 0.2493 vs mkt 0.264
+Situations v2: no candidate rules yet (needs 100+ plays in a split)
+Situations v1: no candidate rules yet (needs 100+ plays in a split)

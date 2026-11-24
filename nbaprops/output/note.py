@@ -102,7 +102,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines += ["## Tonight's bets", "",
               "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs and Your-rule "
               "props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per player and 3.5u per "
-              "game across this whole list. Records = every record the prop qualifies for. Everything else in this note is a "
+              "game across this whole list. Everything else in this note is a "
               "paper record.", ""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
         lines += [f"Tonight's bets record (v2): {_tr['w']}-{_tr['l']}-{_tr['p']} | ¼K at the capped stakes {_tr['kelly_units']:+.2f}u"
@@ -115,11 +115,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), _bp(x),
                  "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
                  odds_s(x["price"]), "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%",
-                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u",
-                 " + ".join(x["records"]) + (f" ({x['flags']})" if x["flags"] else "")]
+                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u"]
                 for i, x in enumerate(tb, 1)]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r"), ("Records", "l")], body)
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r")], body)
         lines += ["", f"Total {sum(x['stake'] for x in tb):.2f}u on {len(tb)} props.", ""]
     else:
         lines += ["_No bets yet tonight._", ""]
@@ -130,7 +129,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                   "| Strategy | W-L-P | Hit | Units | Kelly units | Brier ours / mkt | CLV |", "|---|---|---|---|---|---|---|"]
         for x in played:
             br = f"{x['brier']} / {x['brier_mkt']}" if x["brier"] is not None else ""
-            clv = f"{x['clv']:+} pts" if x["clv"] is not None else ""
+            clv = (f"{x['clv']:+}" + ("% EV" if x.get("clv_unit") else " pts")) if x["clv"] is not None else ""
             lines.append(f"| {x['label']} | {x['w']}-{x['l']}-{x['p']} | {x['hit'] if x['hit'] is not None else ''}% | "
                          f"{x['units']:+.2f} | {x['kelly_units']:+.2f} | {br} | {clv} |")
         lines.append("")

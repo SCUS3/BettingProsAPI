@@ -980,7 +980,7 @@ def record(version: str = "v2") -> dict:
         from nbaprops.rules import tonight as _tn
         tr, tc = _tn.record_rows(version)
         if tr:
-            strategies.insert(0, dict(_summ(tr, tc), key="tonight", group="tonight", label="Tonight's bets (what you bet)", n=len(tr)))
+            strategies.insert(0, dict(_summ(tr, tc), key="tonight", group="tonight", label="Tonight's bets (what you bet)", n=len(tr), clv_unit=True))
     except Exception:  # noqa: BLE001
         pass
     try:
