@@ -74,7 +74,13 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
                  "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag", "proj_tag", "proj_note", "scr_settings",
-                 "bp_proj_raw", "bp_proj_cal", "dvp_tag", "dvp", "rule_version"]
+                 "bp_proj_raw", "bp_proj_cal", "dvp_tag", "dvp", "rule_version",
+                 # entry snapshot: set once when the row is first written, never changed afterwards
+                 "entry_at", "entry_fd_line", "entry_price", "entry_fair", "entry_ev", "entry_sources",
+                 # latest pregame observation (watch scans, open games only); copied to close_* when the game is final
+                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev"]
+ENTRY_FROM = {"entry_at": "pulled_at", "entry_fd_line": "line", "entry_price": "odds", "entry_fair": "oa_fair",
+              "entry_ev": "oa_ev", "entry_sources": "sources"}
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -121,6 +127,9 @@ def _write(path, rows, fields):
         for r in rows:
             if r.get("date") and not r.get("rule_version"):
                 r["rule_version"] = rule_version(r)
+            if r.get("date") and not r.get("entry_at"):     # freeze the entry snapshot the first time a row is written
+                for k, src in ENTRY_FROM.items():
+                    r[k] = r.get(src) if src != "oa_fair" else (r.get("oa_fair") or r.get("our_prob"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")

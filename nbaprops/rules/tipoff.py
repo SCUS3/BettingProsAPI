@@ -22,7 +22,7 @@ from nbaprops.sources import espn as BX
 from nbaprops.config import ROOT as HERE  # noqa: E402
 GRACE = dt.timedelta(minutes=C.GRACE_MIN)  # nbaprops/config.py
 CLOSE_AFTER = dt.timedelta(minutes=C.CLOSE_AFTER_MIN)  # closing-CLV scan: scheduled start + 5 min  # nbaprops/config.py
-CACHE_S = 60
+CACHE_S = 15                 # ESPN status is re-read at most every 15 s inside a tip window
 _sb = {}
 ALIAS = {"GSW": "GS", "NYK": "NY", "SAS": "SA", "NOR": "NO", "NOP": "NO", "UTA": "UTAH", "UTH": "UTAH", "WAS": "WSH",
          "PHO": "PHX", "BRK": "BKN", "CHO": "CHA"}

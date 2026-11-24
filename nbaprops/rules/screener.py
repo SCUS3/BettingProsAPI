@@ -477,7 +477,8 @@ def update_store(date, plays):
     st, now = store(date), L.utc_now()
     for p in plays:
         k = f"{p['player']}|{p['market']}|{p['side']}|{float(p['line']):g}"
-        e = st.get(k) or {"first_seen": now, "seen": 0, "ev_max": p["ev"]}
+        e = st.get(k) or {"first_seen": now, "seen": 0, "ev_max": p["ev"], "entry_at": now, "entry_price": p["odds"],
+                          "entry_ev": p["ev"], "entry_fair": p["fair"], "entry_books": p["books"]}   # entry_*: frozen
         e.update(player=p["player"], market=p["market"], side=p["side"], line=p["line"], odds=p["odds"], ev=p["ev"],
                  fair=p["fair"], books=p["books"], tip=p.get("tip"), event=p.get("event"), last_seen=now,
                  seen=e["seen"] + 1, ev_max=max(e["ev_max"], p["ev"]), proj_tag=p.get("proj_tag"), proj_note=p.get("proj_note"),
@@ -536,12 +537,13 @@ def log_near_misses(plays, date):
     return out
 
 
-def near_miss_rows(date):
-    """Display list: today's store rows that just missed your rule, with the reason; biggest EV first."""
+def near_miss_rows(date, include_started=True):
+    """Display list: today's store rows that just missed your rule, with the reason; biggest EV first. Started games
+    stay (the note is a record of the day) unless include_started=False."""
     from nbaprops.rules import tipoff as bp_tipoff
     out = []
     for e in store(date).values():
         why = miss_reason(e)
-        if why and (not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event"))):
+        if why and (include_started or not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event"))):
             out.append(dict(e, why=why))
     return sorted(out, key=lambda e: -e["ev"])

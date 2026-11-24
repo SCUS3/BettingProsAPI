@@ -152,8 +152,8 @@ def log(date, cands, now):
 
 
 def close(date, data, d, now, close_before=None):
-    """Closing fair price and CLV for logged alt rungs whose game is still open: every scan overwrites, so the last
-    pregame price before the start is the close."""
+    """Latest pregame fair price at the rung for logged alt rungs whose game is still open (latest_* only; the watch copies
+    the last one to close_* when the game is final)."""
     from nbaprops.app import value as V
     from nbaprops.rules import tipoff as T
     led = L._read(L.LEDGER)
@@ -178,7 +178,7 @@ def close(date, data, d, now, close_before=None):
         if len(fairs) < MIN_SOURCES:
             continue
         f = statistics.median(fairs)
-        r.update(close_fair=round(f, 4), clv_ev=round(f * V.decimal(float(r["odds"])) - 1, 4), close_at=now)
+        r.update(latest_fair=round(f, 4), latest_ev=round(f * V.decimal(float(r["odds"])) - 1, 4), latest_at=now)
         n += 1
     L._write(L.LEDGER, led, L.LEDGER_FIELDS)
     return n

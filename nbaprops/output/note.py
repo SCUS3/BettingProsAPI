@@ -130,7 +130,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
     lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
     from nbaprops.rules import screener as bp_cno_screener
-    mine = bp_cno_screener.rule_rows(date)
+    mine = bp_cno_screener.rule_rows(date, include_started=True)
+    from nbaprops.rules import tipoff as _T
+    status = lambda tip, names=None: "open" if not tip or _T.is_open(tip, names) else "started"
     _led = bp_learn._read(bp_learn.LEDGER)
     stake_of = {(x["player"], x["market"], x["side"], float(x["line"])): f"{float(x['kelly_u']):g}u" for x in _led
                 if x["date"] == date and x["strategy"] == "my_rule" and x.get("kelly_u") not in (None, "")}
@@ -154,20 +156,19 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
                          str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", str(e.get("seen", 1)), seen_et,
-                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), "")])
+                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), ""), status(e.get("tip"), e.get("event"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
                            ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
-                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r")], body) + [""]
+                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
     from nbaprops.sources.rotowire import norm as _norm
     by_pm = {(_norm(r["player"]), r["market"]): r for r in rows}
     ua3 = []
     try:
-        from nbaprops.rules import tipoff as bp_tipoff
         from nbaprops.app import value as _V
         for e in json.load(open(_V.ua_store_path(date))).values():
-            if (e.get("ev") or 0) <= 0 or (e.get("books") or 0) < 3 or (e.get("tip") and not bp_tipoff.is_open(e["tip"], e.get("team"))):
+            if (e.get("ev") or 0) <= 0 or (e.get("books") or 0) < 3:
                 continue
             c = bp_projctx.context(date, e["player"], e["market"], e["side"], e["line"])
             if c["tag"] in ("agrees", "lean agrees"):
@@ -188,11 +189,11 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
                          odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "",
-                         inj(r) if r else ""])
+                         inj(r) if r else "", status(e.get("tip"), e.get("team"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c")], body) + [""]
+                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c"), ("Game", "l")], body) + [""]
     else:
-        lines += ["_None yet (needs a board run or watch scan with Unabated prices)._", ""]
+        lines += ["_None saved for this date (this record starts with the 11/24 slate; on 11/23 a scan after the last tip wiped the file, since fixed)._", ""]
     miss = bp_cno_screener.near_miss_rows(date)
     lines += ["## 4. Near misses to your rule", "",
               "From today's CrazyNinja pastes: CNO EV between -1% and 0% with BettingPros agreeing (EV just short), or CNO EV "
@@ -206,9 +207,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             dot = "🟢" if e.get("proj_tag") in ("agrees", "lean agrees") else "🔴" if e.get("proj_tag") in ("disagrees", "lean disagrees") else "–"
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", dot,
                          "" if pr is None else f"{pr:.1f}", odds_s(e.get("odds")), f"{100 * e['ev']:+.2f}%", e["why"],
-                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else ""])
+                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", status(e.get("tip"), e.get("event"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("FD", "r"), ("CNO EV", "r"), ("Why it missed", "l"), ("Books", "r"), ("DvP", "r")], body) + [""]
+                           ("FD", "r"), ("CNO EV", "r"), ("Why it missed", "l"), ("Books", "r"), ("DvP", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_None right now._", ""]
     diffs = [r for r in fd if r.get("line_note")]

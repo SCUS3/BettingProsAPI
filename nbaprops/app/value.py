@@ -436,18 +436,31 @@ def ua_store_path(date):
 
 
 def save_ua_store(date, rows, ua):
-    """Latest Unabated market EV for every priced FanDuel side (overwritten each board run / watch scan)."""
+    """Unabated market EV for every priced FanDuel side, merged into the day's file. `rows` are open games only: their
+    entries get the latest price (the first sighting also sets a frozen entry_* snapshot); games already started are
+    never touched, so nothing written after a tip can change or drop them."""
     now = bp_learn.utc_now()
-    out = {}
+    try:
+        out = json.load(open(ua_store_path(date)))
+    except (OSError, ValueError):
+        out = {}
     for r in rows:
+        if r.get("tip") and not _open(r, now):
+            continue
         for sd in ("over", "under"):
             v = ua.get((r["player"], r["market"], sd)) or {}
             if v.get("ev_mult") is None:
                 continue
-            out[f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"] = {
-                "player": r["player"], "market": r["market"], "side": sd, "line": float(r["line"]), "price": v.get("price_used"),
-                "ev": v["ev_mult"], "fair": v.get("fair_mult"), "books": v.get("books"), "exchange": bool(v.get("exchange")),
-                "tip": r.get("tip"), "team": r.get("team"), "at": now}
+            k = f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"
+            e = out.get(k) or {"player": r["player"], "market": r["market"], "side": sd, "line": float(r["line"]),
+                               "tip": r.get("tip"), "team": r.get("team"), "entry_at": now, "entry_price": v.get("price_used"),
+                               "entry_ev": v["ev_mult"], "entry_fair": v.get("fair_mult"), "entry_books": v.get("books")}
+            if e.get("entry_ev") is not None and e["entry_ev"] <= 0 < v["ev_mult"] and not e.get("first_pos_at"):
+                e.update(first_pos_at=now, first_pos_price=v.get("price_used"), first_pos_ev=v["ev_mult"],
+                         first_pos_fair=v.get("fair_mult"), first_pos_books=v.get("books"))
+            e.update(price=v.get("price_used"), ev=v["ev_mult"], fair=v.get("fair_mult"), books=v.get("books"),
+                     exchange=bool(v.get("exchange")), at=now)
+            out[k] = e
     try:
         os.makedirs(os.path.dirname(ua_store_path(date)), exist_ok=True)
         json.dump(out, open(ua_store_path(date), "w"))
@@ -1042,7 +1055,7 @@ def watch_scan(date, state, close_before=None):
                    f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} "
                    f"({r.get('dvp_tag')})")
         led = bp_learn._read(bp_learn.LEDGER)
-        bp_alts.close(date, data, d, now)               # latest pregame price for open games (last before start wins)
+        bp_alts.close(date, data, d, now)               # alt rungs: latest pregame price (open games only)
     except Exception as e:
         print(f"[{_et_now():%H:%M}] alt ladder skipped ({e})", flush=True)
     if new_rows:
@@ -1064,39 +1077,84 @@ def watch_scan(date, state, close_before=None):
             state["dropped"].append(k)
             notify(f"BET EV BELOW 0: {r['player']} {r['market']} {r['side']} {float(r['line']):g}: mkt EV now "
                    f"{100 * v['ev_mult']:+.1f}% at {v['price_used']:+g} (bet {float(r['odds']):+g})")
-    # Closing line: every scan records the latest pregame price for BETs whose game is still open, so the last price
-    # before the start is the close. The CLOSE alert fires once, at the scan from scheduled start + 5 min (or the first
-    # scan after ESPN shows the game under way), from the stored close.
+    # Latest pregame price, every scan, for every priced record whose game is still open (open = before scheduled
+    # start + 10 min and ESPN not showing it under way). Nothing is written for a game after its tip; the close is a
+    # one-time copy of the last pregame observation, made when the game is final (start + 5 min, or ESPN shows it).
     from nbaprops.rules import tipoff as T
     state.setdefault("closed", [])
     led = bp_learn._read(bp_learn.LEDGER)
-    keys = bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS
+    keys = (bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS | bp_learn.UA_KEYS)
     live_rows = [r for r in led if r["date"] == date and r["strategy"] in keys and r.get("tip") and _open(r, now)]
     if live_rows:
         cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
                "odds": float(r["odds"])} for r in live_rows]
         res = U.price_board(cp, data, d)
-        priced = [r for r in live_rows if (res.get((r["player"], r["market"], r["side"])) or {}).get("fair_mult") is not None]
-        if priced:
-            apply_close(date, led, priced, res, now)
+        record_latest(led, live_rows, res, now)
     t_now = T._t(now)
+    final = []
     for r in led:
-        k = f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}"
-        if r["date"] != date or r["strategy"] not in bp_learn.BET_KEYS or not r.get("tip") or k in state["closed"]:
-            continue
-        if t_now < T._t(r["tip"]) + T.CLOSE_AFTER and _open(r, now):
-            continue                                     # not final yet: closes at start + 5 min or at the start
+        k = f"{r['strategy']}|{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}"
+        if (r["date"] != date or r["strategy"] not in keys | bp_learn.ALT_KEYS or not r.get("tip") or k in state["closed"]
+                or (t_now < T._t(r["tip"]) + T.CLOSE_AFTER and _open(r, now))):
+            continue                                     # not final yet
         state["closed"].append(k)
-        c = r.get("clv_ev")
-        mev = r.get("close_mkt_ev")
+        final.append(r)
+    finalize_close(date, led, final)
+    for r in final:
+        if r["strategy"] not in bp_learn.BET_KEYS:
+            continue
+        c, mev = r.get("clv_ev"), r.get("close_mkt_ev")
         notify(f"CLOSE {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: "
                + ("no pregame closing price" if c in (None, "") else
                   f"CLV {100 * float(c):+.1f}% (last pregame price {str(r.get('close_at'))[11:16]}Z)"
                   + (f", mkt EV then {100 * float(mev):+.1f}%" if mev not in (None, "") else ""))
                + ("  EV FELL BELOW 0" if mev not in (None, "") and float(mev) < 0 else "") + f"; tip {str(r.get('tip'))[11:16]}Z")
+    return tips_to_close(date, data, d, t_now)
+
+
+def tips_to_close(date, data, d, t_now):
+    """Tip times whose close isn't final yet (before start + 5 min). Empty -> the watch stops: no scan after the last close."""
+    from nbaprops.rules import tipoff as T
     tips = {x["tip"] for x in slate_lines(data, date, d)}
-    tips |= {r["tip"] for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] in keys and r.get("tip")}
-    return sorted(t for t in tips if t_now < T._t(t) + T.CLOSE_AFTER + dt.timedelta(seconds=30))   # tips still to close
+    tips |= {r["tip"] for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r.get("tip")
+             and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS
+             | bp_learn.UA_KEYS | bp_learn.ALT_KEYS}
+    return sorted(t for t in tips if t_now < T._t(t) + T.CLOSE_AFTER)
+
+
+def record_latest(led, rows, res, at):
+    """Latest pregame observation for open rows (never touches entry_* or close_*). Writes the ledger."""
+    for r in rows:
+        v = res.get((r["player"], r["market"], r["side"])) or {}
+        f = v.get("fair_mult")
+        if f is None:
+            continue
+        r.update(latest_at=at, latest_fd_line=v.get("oa_fd_line"), latest_price=v.get("oa_fd_price"), latest_fair=f,
+                 latest_ev=round(f * decimal(float(r["odds"])) - 1, 4), latest_mkt_ev=v.get("ev_mult"))
+    bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
+
+
+def finalize_close(date, led, rows):
+    """Copy each final row's last pregame observation into close_* / clv_ev (once). Rows with no pregame observation get
+    no close. Also mirrors the close into the day's value file."""
+    if not rows:
+        return
+    for r in rows:
+        if r.get("latest_fair") in (None, "") or r.get("close_at"):
+            continue
+        r.update(close_fair=r["latest_fair"], clv_ev=r["latest_ev"], close_mkt_ev=r.get("latest_mkt_ev"),
+                 close_fd_line=r.get("latest_fd_line"), close_at=r["latest_at"])
+    bp_learn._write(bp_learn.LEDGER, led, bp_learn.LEDGER_FIELDS)
+    path = os.path.join(HERE, f"value_{date}.json")
+    try:
+        val = json.load(open(path))
+    except (OSError, ValueError):
+        return
+    for r in rows:
+        e = val.get(line_key(r["player"], r["market"], r["line"]))
+        if isinstance(e, dict) and r.get("close_at") and r["strategy"] in bp_learn.BET_KEYS:
+            e["close"] = {"fair": _f(r["close_fair"]), "clv_ev": _f(r["clv_ev"]), "mkt_ev": _f(r.get("close_mkt_ev")), "at": r["close_at"]}
+    json.dump(val, open(path, "w"), indent=1)
 
 
 def run_watch(args):
