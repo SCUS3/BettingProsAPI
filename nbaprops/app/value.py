@@ -1350,6 +1350,10 @@ def run_reddit(args):
     """--reddit: today's r/sportsbook NBA picks thread -> per-poster research picks and the proven + market +EV record."""
     from nbaprops.rules import reddit_picks as RP
     from nbaprops.sources import reddit as RD
+    if args.reddit_paste:
+        text = sys.stdin.read() if args.reddit_paste == "-" else open(args.reddit_paste).read()
+        post, comments = {"title": f"pasted thread ({args.reddit_paste})"}, RP.parse_paste(text)
+        return reddit_log(args, post, comments)
     try:
         if args.thread:
             m = re.search(r"comments/([a-z0-9]+)", args.thread)
@@ -1361,7 +1365,13 @@ def run_reddit(args):
             sys.exit("No NBA picks thread found on r/sportsbook in the last day (pass --thread URL).")
         comments = RD.comments(post["id"])
     except RD.NotConfigured as e:
-        sys.exit(f"Reddit not set up: {e}. See README 'Reddit picks' for the app steps.")
+        sys.exit(f"Reddit not set up: {e}. Use --reddit-paste with the thread text, or see README 'Reddit picks'.")
+    return reddit_log(args, post, comments)
+
+
+def reddit_log(args, post, comments):
+    """Shared by --reddit and --reddit-paste: parse picks per poster, log research rows and the proven + market +EV record."""
+    from nbaprops.rules import reddit_picks as RP
     picks, counts = RP.parse_comments(comments, args.date)
     print(f"Thread: {post.get('title')} | {counts['comments']} comments, {counts['with_props']} with player props, "
           f"{counts['image_only']} image-only (skipped), {counts['unresolved']} props not matched to tonight's players; "
@@ -1431,6 +1441,8 @@ def main():
                                                           "--source as their own record and graded from ESPN box scores")
     g.add_argument("--reddit", action="store_true", help="read the r/sportsbook NBA picks thread (Reddit API, free) and log "
                                                           "every player-prop pick per poster; proven poster + market +EV is staked")
+    g.add_argument("--reddit-paste", metavar="FILE", help="pasted r/sportsbook NBA thread text (or - for stdin): same per-poster "
+                                                           "logging as --reddit, entry price = market at paste time")
     g.add_argument("--placed", metavar="BET", help="log a bet you placed, e.g. \"Toppin 3PM o1.5 +172 0.75u\" (no API calls)")
     g.add_argument("--watch", action="store_true", help="free Unabated scan every 20 min from the first pull to the last tip; "
                                                         "alerts on new BETs, EV below 0; logs closing CLV per game")
@@ -1462,7 +1474,7 @@ def main():
         return run_placed(args)
     if args.cno_paste:
         return run_cno_paste(args)
-    if args.reddit:
+    if args.reddit or args.reddit_paste:
         return run_reddit(args)
     if args.picks_paste:
         from nbaprops.rules import outside as O

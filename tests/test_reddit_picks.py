@@ -27,3 +27,63 @@ def test_proven_needs_volume_clv_and_units(monkeypatch):
     assert (s["n"], s["proven"]) == (32, True)
     monkeypatch.setattr(L, "counted_flags", lambda led: ([True] * len(led), [-0.5] * len(led)))
     assert RP.poster_stats()[0]["proven"] is False                      # negative CLV: not proven
+
+
+NEW_REDDIT = """NBA Betting Picks - Monday 11/24/26
+Sort by: Best
+
+AutoModerator
+·
+5 hr. ago
+Rules: one pick per comment...
+Reply
+
+sharp_guy99
+·
+3 hr. ago
+POTD: Brunson Over 27.5 Points -115
+KAT REB o10.5
+Upvote
+12
+Downvote
+Reply
+Share
+
+pics_only
+·
+2 hr. ago
+
+Reply
+
+chatty
+·
+1 hr. ago
+Edited
+tailing, good luck everyone
+Reply
+"""
+
+OLD_REDDIT = """[–]oldschool 4 points 3 hours ago
+Brunson PTS o27.5 (-120)
+permalinksavereportreply
+[–]other 1 point 2 hours ago
+lol
+permalinksavereportreply
+u/handmade: KAT REB o10.5"""
+
+
+def test_parse_paste_new_and_old_reddit(monkeypatch):
+    monkeypatch.setattr(RP, "tonight_players", lambda date: {
+        "jalen brunson": {"name": "Jalen Brunson", "tip": "2099-01-01T00:00:00Z"},
+        "karlanthony towns": {"name": "Karl-Anthony Towns", "tip": "2099-01-01T00:00:00Z"}})
+    c = RP.parse_paste(NEW_REDDIT)
+    assert [x["author"] for x in c] == ["sharp_guy99", "pics_only", "chatty"]          # AutoModerator dropped
+    picks, counts = RP.parse_comments(c, "2026-11-24")
+    assert [(p["author"], p["player"], p["market"], p["line"], p["odds"]) for p in picks] == [
+        ("sharp_guy99", "Jalen Brunson", "PTS", 27.5, -115.0), ("sharp_guy99", "Karl-Anthony Towns", "REB", 10.5, None)]
+    assert counts["image_only"] == 1
+    c = RP.parse_paste(OLD_REDDIT)
+    assert [x["author"] for x in c] == ["oldschool", "other", "handmade"]
+    picks, _ = RP.parse_comments(c, "2026-11-24")
+    assert [(p["author"], p["player"], p["odds"]) for p in picks] == [
+        ("oldschool", "Jalen Brunson", -120.0), ("handmade", "Karl-Anthony Towns", None)]

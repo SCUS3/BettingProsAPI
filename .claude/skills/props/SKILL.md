@@ -129,5 +129,5 @@ Report the v2 record (current rules, from 2026-11-24) by default; mention the v1
 
 ## Reddit picks
 
-Before the first tip each day, run `python3 bp_value.py --reddit` (free Reddit API; needs REDDIT_* in .env, otherwise tell the user the README steps). Report: comments read, picks parsed, image-only skipped, proven posters, any staked "Proven poster + market +EV" plays, and note §7.
+When the user pastes the r/sportsbook NBA thread text, save it to `history/<date>/reddit_thread_<date>.txt` and run `python3 bp_value.py --reddit-paste <file> --dry`, then without `--dry` (no API calls; there is no Reddit app, so `--reddit` is not used for now). Report: comments read, picks parsed, image-only skipped, proven posters, any staked "Proven poster + market +EV" plays, and note §7.
 

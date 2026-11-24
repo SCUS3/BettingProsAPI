@@ -279,7 +279,13 @@ every output identical.
 
 ## Reddit picks (r/sportsbook)
 
-`python3 bp_value.py --reddit [--date D] [--thread URL] [--dry]` reads the day's NBA picks thread through Reddit's official
+**No Reddit app (current setup):** copy the whole r/sportsbook NBA thread page (new or old Reddit; select all, copy),
+save it to a file and run `python3 bp_value.py --reddit-paste thread.txt [--date D] [--dry]` (or `--reddit-paste -` and
+paste into stdin). It splits the text into comments per poster (AutoModerator dropped), and logs exactly like `--reddit`;
+the entry price and market EV are the market at paste time, and picks for games already started are not logged.
+Re-pasting the same thread is safe (one row per poster/prop/day).
+
+`python3 bp_value.py --reddit [--date D] [--thread URL] [--dry]` (needs a Reddit app) reads the day's NBA picks thread through Reddit's official
 API (free; at most one call per 1.1 s, rate-limit headers honoured), logs every player-prop pick per poster as research
 with the FanDuel price and market EV at posting time, skips and counts image-only picks, and stakes only proven posters'
 picks that the market also shows as +EV ("Proven poster + market +EV"). Note §7 lists tonight's proven-poster picks;

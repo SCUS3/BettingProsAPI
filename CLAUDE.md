@@ -48,5 +48,6 @@ is flagged "no CNO check". No permission needed for CNO calls; `bp_boost.py --go
 
 Reddit's official API, app-only OAuth, read-only. Free; the client keeps to at most one call per 1.1 s and honours the
 rate-limit headers. Keys `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` (and `REDDIT_USERNAME` for the User-Agent) in `.env`,
-never printed. No permission needed for these calls; run `bp_value.py --reddit` once a day before the first tip.
+never printed. No permission needed for these calls. No Reddit app exists for now (Reddit blocked app creation), so the
+user pastes the thread text and you run `bp_value.py --reddit-paste FILE` (no network calls); keep `--reddit` for later.
 

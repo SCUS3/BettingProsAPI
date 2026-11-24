@@ -60,6 +60,54 @@ def resolve(players: dict, name: str) -> tuple[dict | None, str]:
     return None, "ambiguous" if (by_last or sub) else "not on tonight's board"
 
 
+# --- pasted thread text (no Reddit app): split into comments per poster ---------------------------------------------
+OLD_HEAD = re.compile(r"^\[[–-]\]\s*(?:\[S\]\s*)?([A-Za-z0-9_-]{3,20})\b")           # old.reddit: "[–]user 3 points 2 hours ago"
+PREFIX = re.compile(r"^/?u/([A-Za-z0-9_-]{3,20})\s*[:\-–]\s*(.*)$")                    # "u/user: pick" (hand-made)
+USER = re.compile(r"^(?:/?u/)?([A-Za-z0-9_-]{3,20})$")
+WHEN = re.compile(r"^(?:·\s*)?(?:\d+\s*(?:s|m|h|d|sec|min|hr|hrs|hour|hours|day|days|minute|minutes)\.?\s*ago|just now|·|op|•)"
+                  r"(?:\s*·.*)?$", re.I)
+NOISE = re.compile(r"^(reply|share|award|report|save|follow|edit(?:ed)?|vote|upvote|downvote|more replies|\d+ more repl(?:y|ies)|"
+                   r"level \d+|permalink|embed|source|parent|give award|collapse|single comment thread|see full discussion|"
+                   r"\d+(?:\.\d+)?k?|-?\d+ points?|deleted|removed|continue this thread|load more comments.*|"
+                   r"permalinksavereportreply.*|permalinkembedsave.*|sort by:.*|.*comments? section.*)$", re.I)
+SKIP_AUTHORS = {"automoderator", "sbpotd", "[deleted]"}
+
+
+def parse_paste(text: str) -> list[dict]:
+    """Pasted r/sportsbook thread (new reddit, old reddit or "u/name: pick" lines) -> [{id, author, body, created_utc}].
+    created_utc = paste time: the entry price is the market at paste time."""
+    import hashlib
+    import time
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    out, cur = [], None
+
+    def start(author, first=""):
+        nonlocal cur
+        if cur and cur["author"].lower() not in SKIP_AUTHORS:
+            out.append(cur)
+        cur = {"author": author, "lines": [first] if first else []}
+
+    i = 0
+    while i < len(lines):
+        ln = lines[i].strip()
+        nxt = [x.strip() for x in lines[i + 1:i + 4] if x.strip()]
+        if m := OLD_HEAD.match(ln):
+            start(m.group(1))
+        elif m := PREFIX.match(ln):
+            start(m.group(1), m.group(2))
+        elif (m := USER.match(ln)) and nxt and WHEN.match(nxt[0]) and not O.parse(ln)[0]:
+            start(m.group(1))
+            while i + 1 < len(lines) and (not lines[i + 1].strip() or WHEN.match(lines[i + 1].strip())):
+                i += 1                                       # skip the "·", "3 hr. ago" lines
+        elif cur is not None and ln and not NOISE.match(ln):
+            cur["lines"].append(ln)
+        i += 1
+    start("[deleted]")                                       # flush the last comment
+    now = time.time()
+    return [{"id": "p" + hashlib.sha1((c["author"] + "\n".join(c["lines"])).encode()).hexdigest()[:10], "author": c["author"],
+             "body": "\n".join(c["lines"]), "created_utc": now} for c in out]
+
+
 def parse_comments(comments: list[dict], date: str) -> tuple[list[dict], dict]:
     """-> (picks, counts). Each pick: author, comment id, created, player (resolved), market, side, line, odds (card)."""
     players = tonight_players(date)
@@ -68,7 +116,9 @@ def parse_comments(comments: list[dict], date: str) -> tuple[list[dict], dict]:
         body = c.get("body") or ""
         found, _ = O.parse(body)
         if not found:
-            if IMAGE.search(body) and len(re.sub(r"\S*(i\.redd\.it|imgur|preview\.redd\.it)\S*", "", body).strip()) < 15:
+            if not body.strip() or re.fullmatch(r"\W*(image|gif|img|photo|picture|screenshot)\W*", body.strip(), re.I):
+                counts["image_only"] += 1                    # pasted thread: an image comment pastes as nothing (or "image")
+            elif IMAGE.search(body) and len(re.sub(r"\S*(i\.redd\.it|imgur|preview\.redd\.it)\S*", "", body).strip()) < 15:
                 counts["image_only"] += 1
             continue
         counts["with_props"] += 1
