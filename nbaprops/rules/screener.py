@@ -368,8 +368,7 @@ def _parse_loose(text, date, min_ev=MIN_EV):
         tail = re.search(r"(?:fanduel|\bfd\b).*?[+-]\d{3,4}\s+(\d{1,2})\s*$", low)   # "... FanDuel  +413  6": books last
         books = int(bm.group(1) or bm.group(2)) if bm else int(tail.group(1)) if tail else None
         tip = _when(rec, date)
-        ev_m = re.search(r"([A-Z][\w .'-]+? @ [A-Z][\w .'-]+?)\s{2,}", rec)
-        event = ev_m.group(1).strip() if ev_m else None
+        event = next((c.strip() for c in re.split(r"\t|\s{2,}", rec) if " @ " in c), None)
         if tip and not bp_tipoff.is_open(tip, event, now):
             drop("game already started")
             continue
