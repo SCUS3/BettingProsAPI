@@ -1497,7 +1497,7 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "record": bp_learn.record()}
+               "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
         f.write(tpl.replace("__BP_DATA__", blob))
@@ -1510,7 +1510,15 @@ def fmt(v):
 
 
 def print_record():
-    rec = bp_learn.record()
+    """Record v2 (current rules), then the v1 archive."""
+    print(f"Record v2 (rules from {bp_learn.V2_START}):")
+    _print_record("v2")
+    print("v1 archive (before the v2 fresh start; kept, not counted in v2):")
+    _print_record("v1")
+
+
+def _print_record(version):
+    rec = bp_learn.record(version)
     if rec["dropped_after_tip"]:
         print(f"Not counted: {rec['dropped_after_tip']} picks logged after their game started.")
     lines = rec["strategies"] + [rec["combined"]]
@@ -1518,7 +1526,7 @@ def print_record():
         print("Record: no graded picks yet.")
         return
     print(f"Record ({rec['slates']} graded slates, pre-tip picks only):")
-    heads = [("rule", "Your rule: CNO +EV + BP agrees"), ("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
+    heads = [("rule", "Your rule: CNO +EV + BP agrees"), ("ua", "Unabated +EV & BP agrees"), ("bet", "BETs: Unabated market +EV"), ("cno", "CrazyNinja +EV"), ("screener", "CNO screener"), ("alt", "Alt ladder"), ("half", "Halftime live (experimental)"),
              ("model", "BettingPros Projection Model (research)"), ("sim", "Sims (research, separate)")]
     for g, head in heads:
         rs = [x for x in lines if x.get("group") == g]
@@ -1530,7 +1538,7 @@ def print_record():
             br = f"Brier {x['brier']} vs mkt {x['brier_mkt']}" if x["brier"] is not None else ""
             unit = "% EV" if x.get("clv_unit") else " pts"
             clv = f"CLV {x['clv']:+}{unit}" if x["clv"] is not None else ""
-            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half", "alt", "rule") else ""
+            k = f"¼K {x['kelly_units']:+.2f}u" if g in ("bet", "cno", "screener", "half", "alt", "rule", "ua") else ""
             print(f"  {x['label']:40} {x['w']}-{x['l']}-{x['p']}  hit {hit:>6}  flat {x['units']:+.2f}u  {k}  {br}  {clv}".rstrip())
 
 

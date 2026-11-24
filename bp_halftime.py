@@ -251,11 +251,12 @@ def grade_flags(date, box=None):
     return sum(1 for r in new if r["hit"])
 
 
-def flag_summary():
+def flag_summary(version="v2"):
     """Halftime record: snapshots per night, and how accurate the expected final is (average miss and bias, by market
     and pace bucket), scored out of sample: each night's rows use 2nd-half shares from the other nights only."""
     try:
-        rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy")]
+        import bp_learn
+        rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy") and bp_learn.rule_version(r) == version]
     except OSError:
         rows = []
     live_rows = [r for r in rows if r.get("backfill") != "yes"]

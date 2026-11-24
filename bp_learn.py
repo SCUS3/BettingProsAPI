@@ -34,12 +34,13 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
                     ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
-                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
+                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("alt_mkt", "Alt, market only"),
                     ("alt_proj", "Alt, market + projection")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
-RULE_KEYS = {"my_rule", "near_miss"}       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+RULE_KEYS = {"my_rule", "near_miss"}
+UA_KEYS = {"ua_agree"}        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}
@@ -61,7 +62,7 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
                  "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag", "proj_tag", "proj_note", "scr_settings",
-                 "bp_proj_raw", "bp_proj_cal", "dvp_tag", "dvp"]
+                 "bp_proj_raw", "bp_proj_cal", "dvp_tag", "dvp", "rule_version"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -91,7 +92,26 @@ def _read(path):
         return []
 
 
+# Rule versions by first slate date (see RECORDS.md). A rule change adds a line here and bumps the version; older
+# versions stay in the ledger as archives and are never deleted.
+RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24")]
+V2_START = dict(RULE_VERSIONS)["v2"]
+CURRENT_VERSION = RULE_VERSIONS[-1][0]
+
+
+def rule_version(row):
+    """Rule version of a ledger-style row: its stamped rule_version, else the latest version started by its slate date."""
+    if row.get("rule_version"):
+        return row["rule_version"]
+    d = str(row.get("date", ""))
+    return [v for v, start in RULE_VERSIONS if d >= start][-1]
+
+
 def _write(path, rows, fields):
+    if "rule_version" in fields:                       # every ledger/record row carries its rule version
+        for r in rows:
+            if r.get("date") and not r.get("rule_version"):
+                r["rule_version"] = rule_version(r)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -560,7 +580,7 @@ def log_value_decisions(date, rows):
     old = _read(LEDGER)
     cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS
     have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
     new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
@@ -848,16 +868,16 @@ def _uniq(pairs):
     return out
 
 
-def half_summary():
+def half_summary(version="v2"):
     """Halftime live (experimental): flags, paste decisions and the Odds API live test. Never mixed with pregame."""
     out = {}
     try:
         import bp_halftime
-        out["flags"] = bp_halftime.flag_summary()
+        out["flags"] = bp_halftime.flag_summary(version)
     except Exception:
         out["flags"] = {"nights": [], "by_type": [], "n": 0}
     try:
-        rows = list(csv.DictReader(open(os.path.join(HERE, "half_pastes.csv"))))
+        rows = [r for r in csv.DictReader(open(os.path.join(HERE, "half_pastes.csv"))) if rule_version(r) == version]
     except OSError:
         rows = []
     reasons = {}
@@ -868,14 +888,15 @@ def half_summary():
                     reasons[x] = reasons.get(x, 0) + 1
     out["pastes"] = {"rows": len(rows), "priced": sum(r["decision"] in ("HALF BET", "pass") for r in rows),
                      "bets": sum(r["decision"] == "HALF BET" for r in rows), "why_not": reasons}
-    tests = sorted(glob.glob(os.path.join(HISTORY, "*", "oddsapi_live_test.json")))
+    tests = sorted(p for p in glob.glob(os.path.join(HISTORY, "*", "oddsapi_live_test.json"))
+                   if rule_version({"date": os.path.basename(os.path.dirname(p))}) == version)
     out["oddsapi"] = json.load(open(tests[-1])) if tests else None
     return out
 
 
-def sim_record_rows():
+def sim_record_rows(version="v2"):
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
-    rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P")]
+    rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P") and rule_version(r) == version]
     if not rows:
         return []
     out = []
@@ -950,9 +971,10 @@ def _dec(american):
     return 1 + (a / 100 if a > 0 else 100 / -a)
 
 
-def record():
-    """Summary of counted (pre-tip) picks for the dashboard and terminal."""
-    ledger = _read(LEDGER)
+def record(version="v2"):
+    """Summary of counted (pre-tip) picks for the dashboard and terminal, for one rule version (v2 default; v1 = the
+    archive before 2026-11-24). Versions follow slate dates, so per-day run detection is unaffected by the filter."""
+    ledger = [r for r in _read(LEDGER) if rule_version(r) == version]
     counted, clv = counted_flags(ledger)
     live = [(r, v) for r, ok, v in zip(ledger, counted, clv) if ok]
     graded = [(r, v) for r, v in live if r.get("result") in ("W", "L", "P")]   # voids ('V') don't count
@@ -962,11 +984,12 @@ def record():
         if strat in VALUE_KEYS and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
-        x["group"] = ("rule" if strat in RULE_KEYS else "bet" if strat in BET_KEYS else "cno" if strat in CNO_KEYS else
+        x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
+                      "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
                       "alt" if strat in ALT_KEYS else "model")
         strategies.append(x)
@@ -1016,7 +1039,7 @@ def record():
             x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="alt_dvp_" + tag, group="alt", label="Alt: " + lab)
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
-    strategies += sim_record_rows()          # placed_record_rows() kept but unused: the record is the system's BETs only
+    strategies += sim_record_rows(version)          # placed_record_rows() kept but unused: the record is the system's BETs only
     by_cat = []
     for mk in MARKETS:
         sub = [r for r, _ in uniq_all if r["market"] == mk and r["result"] in ("W", "L", "P")]
@@ -1052,7 +1075,7 @@ def record():
     if model.get("weights"):
         weights = sorted(({"name": FEATURE_LABELS[f], "coef": round(c, 3)} for f, c in zip(FEATURES, model["weights"])),
                          key=lambda x: -abs(x["coef"]))
-    return {"half": half_summary(), "strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
+    return {"version": version, "half": half_summary(version), "strategies": strategies, "combined": combined, "by_cat": by_cat, "slates": len(graded_dates),
             "recent": recent, "pending": pending, "dropped_after_tip": dropped,
             "model_n": model.get("n", 0), "trust": round(100 * trust(model)), "proven": model.get("proven", False),
             "cap_unproven": round(100 * CAP_UNPROVEN), "validation": model.get("validation"),

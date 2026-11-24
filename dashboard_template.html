@@ -470,10 +470,10 @@ footer b { color: var(--ink); font-weight: 600; }
   function signed(v, suffix) { return v == null ? "–" : (v > 0 ? "+" : "") + v + suffix; }
   function recordText() {
     var R = DATA.record; if (!R) return [];
-    var out = ["RECORD (" + R.slates + " graded slate" + (R.slates === 1 ? "" : "s") + ", pre-tip picks only, flat 1u" +
+    var out = ["RECORD v2 (rules from Nov 24, 2026; v1 archive summarized at the end) (" + R.slates + " graded slate" + (R.slates === 1 ? "" : "s") + ", pre-tip picks only, flat 1u" +
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
-    [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
+    [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
      ["screener", "CNO screener (flat 1u | ¼K units):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
@@ -489,10 +489,16 @@ footer b { color: var(--ink); font-weight: 600; }
       }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
-          (G[0] === "bet" || G[0] === "cno" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
+          (G[0] === "bet" || G[0] === "cno" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" || G[0] === "ua" ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
+    var R1 = DATA.record_v1;
+    if (R1 && R1.strategies) {
+      out.push("v1 archive (before Nov 24, 2026; kept, not counted in v2):");
+      R1.strategies.filter(function (x) { return x.w + x.l + x.p > 0 && (/_all$/.test(x.key) || x.key === "mine" || x.group === "bet"); })
+        .forEach(function (x) { out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "")); });
+    }
     var C = R.calibration || {};
     out.push("Model: " + R.model_n + " of " + R.min_train + " graded player-games needed to train" +
       (C.model ? " | Brier, all graded props (" + C.n + "): model " + C.model.brier + " vs market " + C.market.brier +
@@ -503,7 +509,7 @@ footer b { color: var(--ink); font-weight: 600; }
     var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
     if (last) {
       out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
-      ["my_rule", "near_miss", "bet_agree", "bet_only", "cno", "cno_scr", "cno_scr_sub", "alt_mkt", "alt_proj", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
+      ["my_rule", "near_miss", "ua_agree", "bet_agree", "bet_only", "cno", "cno_scr", "cno_scr_sub", "alt_mkt", "alt_proj", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
         var g = R.recent.concat(R.pending).filter(function (r) { return r.date === last && r.strategy === st; })
           .sort(function (a, b) { return a.rank - b.rank; });
         if (!g.length) return;
@@ -576,7 +582,10 @@ footer b { color: var(--ink); font-weight: 600; }
   });
 
   // Record
-  var REC = DATA.record || { strategies: [], by_cat: [], recent: [], pending: [], insights: [], weights: [] };
+  var EMPTY_REC = { strategies: [], by_cat: [], recent: [], pending: [], insights: [], weights: [] };
+  var REC_VERSION = "v2";                                  // v2 = rules from 2026-11-24; v1 = archive (never deleted)
+  var REC = DATA.record || EMPTY_REC;
+  function setRecVersion(v) { REC_VERSION = v; REC = (v === "v1" ? DATA.record_v1 : DATA.record) || EMPTY_REC; renderRecord(); }
   function units(v) { return v == null ? "" : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + v.toFixed(2) + "u</span>"; }
   function pct(v) { return v == null ? '<span class="dim">–</span>' : v + "%"; }
   function board(title, note, head, body) {
@@ -601,11 +610,14 @@ footer b { color: var(--ink); font-weight: 600; }
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
-  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", cno_scr_sub: "CNO screener (under +2%)", my_rule: "Your rule", near_miss: "Near miss (BP disagrees)", half: "HALF BET", alt_mkt: "Alt, market only", alt_proj: "Alt, market + projection", watch: "Watch list" };
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", cno_scr_sub: "CNO screener (under +2%)", my_rule: "Your rule", ua_agree: "Unabated +EV & BP agrees", near_miss: "Near miss (BP disagrees)", half: "HALF BET", alt_mkt: "Alt, market only", alt_proj: "Alt, market + projection", watch: "Watch list" };
   function renderRecord() {
     var el = document.getElementById("view-record");
     var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });
-    var html = "";
+    var html = '<div class="seg" role="group" aria-label="Rule version" style="margin:0 0 12px">' +
+      ["v2", "v1"].map(function (v) { return '<button type="button" data-recv="' + v + '" aria-pressed="' + (REC_VERSION === v) + '">' +
+        (v === "v2" ? "v2 (from Nov 24)" : "v1 archive") + "</button>"; }).join("") + "</div>";
+    if (REC_VERSION === "v2" && !any) html += '<p class="dim">v2 started Nov 24, 2026: nothing graded yet. The v1 archive keeps every earlier record.</p>';
     function vs(a, b) {
       if (a == null || b == null) return '<span class="dim">–</span>';
       return '<span class="' + (a < b ? "pos" : a > b ? "neg" : "") + '">' + a.toFixed(3) + '</span> <span class="dim">/ ' + b.toFixed(3) + "</span>";
@@ -633,7 +645,8 @@ footer b { color: var(--ink); font-weight: 600; }
       "No graded picks yet. Picks from the last run before each game's tip get graded on the next /props run after the games finish.";
     if (REC.dropped_after_tip) sNote += " " + REC.dropped_after_tip + " picks were logged after their game started and don't count.";
     var GROUPS = [
-      ["rule", "Your rule: CNO +EV + BettingPros agrees", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price.", true],
+      ["rule", "Your rule: CNO +EV + BettingPros agrees", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
+      ["ua", "Unabated +EV & BettingPros agrees", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where BettingPros agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
       ["bet", "BETs: Unabated market +EV", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
       ["cno", "CrazyNinja +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
@@ -667,7 +680,7 @@ footer b { color: var(--ink); font-weight: 600; }
         html += board(G[1], G[2], bHead, rs.map(bRow).join("") || '<tr><td class="l dim" colspan="7">No HALF BETs yet.</td></tr>') + hh;
         return;
       }
-      if (!rs.length && (G[0] === "sim" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule")) return;
+      if (!rs.length && (G[0] === "sim" || G[0] === "screener" || G[0] === "half" || G[0] === "alt" || G[0] === "rule" || G[0] === "ua")) return;
       var body = G[3] ? rs.map(bRow).join("") : rs.map(function (x) { return sRow(x, x.key === "model_3pm_over" || /all$/.test(x.key)); }).join("");
       var note = G[2];
       html += board(G[1], note, G[3] ? bHead : sHead, body || '<tr><td class="l dim" colspan="9">Nothing graded yet.</td></tr>');
@@ -739,6 +752,9 @@ footer b { color: var(--ink); font-weight: 600; }
   }
   tabT.addEventListener("click", function () { showTab("tonight"); });
   tabR.addEventListener("click", function () { showTab("record"); });
+  document.getElementById("view-record").addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-recv]"); if (b) setRecVersion(b.getAttribute("data-recv"));
+  });
   renderRecord();
   try { if (localStorage.getItem("bp-tab") === "record") showTab("record"); } catch (e) {}
 

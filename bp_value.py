@@ -495,6 +495,48 @@ def save_ua_store(date, rows, ua):
         pass
 
 
+def log_ua_agree(date, rows, ua):
+    """v2 record 'Unabated +EV & BP agrees': each FanDuel side with Unabated market EV > 0 (3+ sources) whose game is
+    open and where BettingPros' projection/lean agrees, logged once per day; ¼K on the Unabated fair, BET caps."""
+    if date < bp_learn.V2_START:
+        return []
+    import bp_projctx
+    now = bp_learn.utc_now()
+    led = bp_learn._read(bp_learn.LEDGER)
+    have = {(r["player"], r["market"], r["side"], str(_f(r.get("line")))) for r in led
+            if r["date"] == date and r["strategy"] in bp_learn.UA_KEYS}
+    cands = []
+    for r in rows:
+        if r.get("tip") and not _open(r, now):
+            continue
+        for sd in ("over", "under"):
+            v = ua.get((r["player"], r["market"], sd)) or {}
+            if (v.get("ev_mult") or 0) <= 0 or (v.get("books") or 0) < 3 or v.get("fair_src") != "Unabated":
+                continue
+            if (r["player"], r["market"], sd, str(_f(r.get("line")))) in have:
+                continue
+            c = bp_projctx.context(date, r["player"], r["market"], sd, r["line"])
+            if c["tag"] in ("agrees", "lean agrees"):
+                cands.append((r, sd, v, c))
+    if not cands:
+        return []
+    logged = [x for x in led if x["date"] == date and x["strategy"] in bp_learn.UA_KEYS]
+    gkey = game_resolver(rows + logged)
+    cap = bet_cap()[0]
+    cc = apply_exposure([{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
+                          "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, c in cands], logged, gkey)
+    out = []
+    for (r, sd, v, c), x in zip(cands, cc):
+        if x["stake"] <= 0:
+            continue
+        row = value_row(date, dict(r, pulled_at=now), "ua_agree", sd, v, x["stake"], v.get("fair_mult"))
+        row.update(line=r["line"], cap_note=x["cap"], proj_tag=c["tag"], proj_note=c["text"])
+        out.append(row)
+    if out:
+        bp_learn._write(bp_learn.LEDGER, led + out, bp_learn.LEDGER_FIELDS)
+    return out
+
+
 def daily_counts(date):
     """(Unabated BETs, CNO +EV, both, CNO-only) logged for `date`, by player|market|side|line."""
     led = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date]
@@ -533,7 +575,7 @@ def run_board(args):
     if not args.go:
         print("Plan only: no call made. Re-run with --go (and --max-credits N for the fallback) once approved.")
         return
-    ua = {}
+    ua, ua_logged = {}, []
     if ua_ok:
         try:
             if args.board_file:                    # a saved board (no call): price it as it was when fetched
@@ -548,6 +590,7 @@ def run_board(args):
             cands = [sp for r in rows for sp in side_picks(r)]
             ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}))
             save_ua_store(args.date, rows, ua)
+            ua_logged = log_ua_agree(args.date, rows, ua)
             n_lines = sum(1 for r in rows if any((ua.get((r["player"], r["market"], sd)) or {}).get("fair_mult") is not None
                                                   for sd in ("over", "under")))
             print(f"  Unabated priced {n_lines} of {len(rows)} FanDuel lines ({U.MIN_SOURCES}+ sources at FanDuel's line).")
@@ -628,6 +671,8 @@ def run_board(args):
                          f"form {'-' if form is None else str(round(100 * form)) + '%'}; DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}"
                          + cno_note(ledger[-1]))
     lines_out += rejects
+    if args.date >= bp_learn.V2_START:
+        lines_out.append(f"  Unabated +EV & BP agrees (v2 record): {len(ua_logged)} new.")
     try:                                              # alt ladder (FanDuel alt rungs vs. other sources at that rung)
         import bp_alts
         arows = bp_alts.log(args.date, bp_alts.scan(data, U.load(U.DISCOVERY, {}), args.date, bp_learn.utc_now()), bp_learn.utc_now())
@@ -957,6 +1002,9 @@ def watch_scan(date, state, close_before=None):
          "noproj": "True", "bp_proj": "", "event_id": "", "tip": x["tip"], "pulled_at": bp_learn.utc_now()} for x in slate_lines(data, date, d)]
     ua = U.price_board([sp for r in rows for sp in side_picks(r)], data, d)
     save_ua_store(date, rows, ua)
+    for x in log_ua_agree(date, rows, ua):
+        print(f"[{_et_now():%H:%M}] UA+BP {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
+              f"mkt EV {100 * float(x['oa_ev']):+.1f}% ({x['sources']} sources), {x['kelly_u']}u ¼K | {x.get('proj_note')}", flush=True)
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led

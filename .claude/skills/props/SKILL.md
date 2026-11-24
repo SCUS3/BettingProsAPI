@@ -119,3 +119,7 @@ On game nights, after the watch, run `python3 bp_halftime.py --watch` in the bac
 
 R+A (market 337) is in every pull again: after the first 11/24 pull, report the actual extra request cost (R+A share of /offers and /props pages in the pull log vs. the ≈5.7/game estimate). The board and watch also run the alt ladder (bp_alts.py): report new "ALT [alt, market only]" / "ALT [alt, market + projection]" rungs with EV, sources, CNO worst case, stake and the BettingPros context.
 
+## Records and rule versions
+
+Report the v2 record (current rules, from 2026-11-24) by default; mention the v1 archive only when asked. When the user changes a rule, update RECORDS.md and add a version to `RULE_VERSIONS` in bp_learn.py.
+
