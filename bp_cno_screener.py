@@ -490,3 +490,57 @@ def rule_rows(date, include_started=False):
     out = [e for e in store(date).values() if e.get("ev", 0) > 0 and e.get("proj_tag") in ("agrees", "lean agrees")
            and (include_started or not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event")))]
     return sorted(out, key=lambda e: -e["ev"])
+
+
+NEAR_KEY = "near_miss"        # CNO +EV but BettingPros disagrees: research (flat 1u, no stake), next to your rule
+
+
+def log_near_misses(plays, date):
+    """Log each near miss once per day as research (no stake) so the record shows whether skipping them was right."""
+    import bp_value as V
+    led = L._read(L.LEDGER)
+    have = {(r["player"], r["market"], r["side"], str(V._f(r.get("line")))) for r in led
+            if r["date"] == date and r["strategy"] == NEAR_KEY}
+    now, out = L.utc_now(), []
+    for p in plays:
+        if (p["player"], p["market"], p["side"], str(float(p["line"]))) in have:
+            continue
+        out.append({"date": date, "pulled_at": now, "tip": p.get("tip") or "", "strategy": NEAR_KEY, "player": p["player"],
+                    "market": p["market"], "side": p["side"], "line": p["line"], "odds": p["odds"], "our_prob": p["fair"],
+                    "nv_prob": p["fair"], "kelly_u": None, "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",
+                    "sources": p["books"], "proj_tag": p.get("proj_tag"), "proj_note": p.get("proj_note"),
+                    "bp_proj_raw": p.get("proj_raw")})
+    if out:
+        L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
+    return out
+
+
+def near_miss_rows(date):
+    """Display list: CNO +EV (latest paste) where BettingPros disagrees, plus Unabated +2% sides where it disagrees."""
+    import json
+    import bp_projctx as P
+    import bp_tipoff
+    import bp_value as V
+    out = {}
+    for e in store(date).values():
+        if e.get("ev", 0) > 0 and e.get("proj_tag") in ("disagrees", "lean disagrees") and \
+                (not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event"))):
+            out[(e["player"], e["market"], e["side"], float(e["line"]))] = dict(e, src="CNO")
+    try:
+        ua = json.load(open(V.ua_store_path(date)))
+    except (OSError, ValueError):
+        ua = {}
+    for e in ua.values():
+        if (e.get("ev") or 0) < 0.02 or (e.get("books") or 0) < 3 or (e.get("tip") and not bp_tipoff.is_open(e["tip"], e.get("team"))):
+            continue
+        c = P.context(date, e["player"], e["market"], e["side"], e["line"])
+        if c["tag"] not in ("disagrees", "lean disagrees"):
+            continue
+        k = (e["player"], e["market"], e["side"], float(e["line"]))
+        if k in out:
+            out[k]["src"] = "CNO + Unabated"
+            out[k]["ua_ev"] = e["ev"]
+        else:
+            out[k] = {"player": e["player"], "market": e["market"], "side": e["side"], "line": e["line"], "odds": e["price"],
+                      "ev": None, "ua_ev": e["ev"], "books": e["books"], "proj_raw": c.get("proj"), "src": "Unabated"}
+    return sorted(out.values(), key=lambda e: -max(e.get("ev") or 0, e.get("ua_ev") or 0))

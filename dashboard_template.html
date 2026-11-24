@@ -499,7 +499,7 @@ footer b { color: var(--ink); font-weight: 600; }
     var last = R.recent.reduce(function (m, r) { return r.date > m ? r.date : m; }, "");
     if (last) {
       out.push("", "Last slate " + last + " picks (result, final stat, units" + (R.dropped_after_tip ? "; missing ranks were logged after tip" : "") + "):");
-      ["my_rule", "bet_agree", "bet_only", "cno", "cno_scr", "cno_scr_sub", "alt_mkt", "alt_proj", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
+      ["my_rule", "near_miss", "bet_agree", "bet_only", "cno", "cno_scr", "cno_scr_sub", "alt_mkt", "alt_proj", "watch", "bal", "score", "gap", "learned"].forEach(function (st) {
         var g = R.recent.concat(R.pending).filter(function (r) { return r.date === last && r.strategy === st; })
           .sort(function (a, b) { return a.rank - b.rank; });
         if (!g.length) return;
@@ -597,7 +597,7 @@ footer b { color: var(--ink); font-weight: 600; }
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
-  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", cno_scr_sub: "CNO screener (under +2%)", my_rule: "Your rule", half: "HALF BET", alt_mkt: "Alt, market only", alt_proj: "Alt, market + projection", watch: "Watch list" };
+  var STRAT_LABEL = { bal: "Balanced", score: "Your score", gap: "Projection gap", learned: "Learned", bet_agree: "BET: +EV + proj agrees", bet_only: "BET: +EV only", cno: "CrazyNinja +EV", cno_scr: "CNO screener", cno_scr_sub: "CNO screener (under +2%)", my_rule: "Your rule", near_miss: "Near miss (BP disagrees)", half: "HALF BET", alt_mkt: "Alt, market only", alt_proj: "Alt, market + projection", watch: "Watch list" };
   function renderRecord() {
     var el = document.getElementById("view-record");
     var any = REC.strategies.some(function (x) { return x.w + x.l + x.p > 0; });

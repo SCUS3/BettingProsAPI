@@ -34,12 +34,12 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
                     ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
-                    ("my_rule", "Your rule: CNO +EV + BP agrees"),
+                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("near_miss", "Near misses: CNO +EV, BP disagrees (not taken)"),
                     ("half", "HALF BET (halftime live)"), ("alt_mkt", "Alt, market only"),
                     ("alt_proj", "Alt, market + projection")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
-RULE_KEYS = {"my_rule"}       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+RULE_KEYS = {"my_rule", "near_miss"}       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}

@@ -471,6 +471,30 @@ def cno_rows(date, cands, led, gkey, cap):
     return out
 
 
+def ua_store_path(date):
+    return os.path.join(HERE, "history", date, f"unabated_ev_{date}.json")
+
+
+def save_ua_store(date, rows, ua):
+    """Latest Unabated market EV for every priced FanDuel side (overwritten each board run / watch scan)."""
+    now = bp_learn.utc_now()
+    out = {}
+    for r in rows:
+        for sd in ("over", "under"):
+            v = ua.get((r["player"], r["market"], sd)) or {}
+            if v.get("ev_mult") is None:
+                continue
+            out[f"{r['player']}|{r['market']}|{sd}|{float(r['line']):g}"] = {
+                "player": r["player"], "market": r["market"], "side": sd, "line": float(r["line"]), "price": v.get("price_used"),
+                "ev": v["ev_mult"], "fair": v.get("fair_mult"), "books": v.get("books"), "exchange": bool(v.get("exchange")),
+                "tip": r.get("tip"), "team": r.get("team"), "at": now}
+    try:
+        os.makedirs(os.path.dirname(ua_store_path(date)), exist_ok=True)
+        json.dump(out, open(ua_store_path(date), "w"))
+    except OSError:
+        pass
+
+
 def daily_counts(date):
     """(Unabated BETs, CNO +EV, both, CNO-only) logged for `date`, by player|market|side|line."""
     led = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date]
@@ -523,6 +547,7 @@ def run_board(args):
                 rows += extra
             cands = [sp for r in rows for sp in side_picks(r)]
             ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}))
+            save_ua_store(args.date, rows, ua)
             n_lines = sum(1 for r in rows if any((ua.get((r["player"], r["market"], sd)) or {}).get("fair_mult") is not None
                                                   for sd in ("over", "under")))
             print(f"  Unabated priced {n_lines} of {len(rows)} FanDuel lines ({U.MIN_SOURCES}+ sources at FanDuel's line).")
@@ -929,6 +954,7 @@ def watch_scan(date, state, close_before=None):
          "fd_odds_rec": x["over_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"], "price_is_fanduel": "True",
          "noproj": "True", "bp_proj": "", "event_id": "", "tip": x["tip"], "pulled_at": bp_learn.utc_now()} for x in slate_lines(data, date, d)]
     ua = U.price_board([sp for r in rows for sp in side_picks(r)], data, d)
+    save_ua_store(date, rows, ua)
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
@@ -1146,8 +1172,9 @@ def run_cno_paste(args):
         S.update_store(args.date, every)
         mine = [p for p in every if p.get("proj_tag") in ("agrees", "lean agrees")]
         rows = S.log(mine, args.date, st, key=S.RULE_KEY)
+        miss = S.log_near_misses([p for p in every if p.get("proj_tag") in ("disagrees", "lean disagrees")], args.date)
         print(f"Your rule (CNO +EV and BettingPros agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
-              f"{len(S.rule_rows(args.date))} on today's list.")
+              f"{len(S.rule_rows(args.date))} on today's list; {len(miss)} new near misses (BettingPros disagrees).")
         for r in rows:
             print(f"  NEW {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: CNO EV "
                   f"{100 * float(r['oa_ev']):+.2f}%, {r['kelly_u']}u ¼K  |  {r.get('proj_note')}")

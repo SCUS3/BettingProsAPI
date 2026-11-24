@@ -723,14 +723,56 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
                            ("Pastes", "r"), ("First seen", "r")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
-    lines += ["## 3. Top 10 by balanced score", "", "Your score checked against recent form, market value and BettingPros' rating.", ""]
-    lines += table(ranked(fd, lambda r: r["balanced"]), "balanced")
-    np_rows = [r for r in rows if r["price_is_fanduel"] and r.get("noproj") and r.get("balanced") is not None]
-    lines += ["## 4. FanDuel lines without a BettingPros projection", "",
-              f"{len(np_rows)} lines. Ranked on form, matchup and market value only: no edge, EV or Kelly, never a logged pick.", ""]
-    if np_rows:
-        lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(np_rows, lambda r: r["balanced"])[:n], 1)])
-        lines.append("")
+    by_pm = {(r["player"], r["market"]): r for r in rows}
+    ua3 = []
+    try:
+        import bp_tipoff
+        import bp_value as _V
+        for e in json.load(open(_V.ua_store_path(date))).values():
+            if (e.get("ev") or 0) <= 0 or (e.get("books") or 0) < 3 or (e.get("tip") and not bp_tipoff.is_open(e["tip"], e.get("team"))):
+                continue
+            c = bp_projctx.context(date, e["player"], e["market"], e["side"], e["line"])
+            if c["tag"] in ("agrees", "lean agrees"):
+                ua3.append(dict(e, proj_raw=c.get("proj")))
+    except (OSError, ValueError):
+        pass
+    ua3.sort(key=lambda e: -e["ev"])
+    upd = max((e.get("at", "") for e in ua3), default="")
+    lines += ["## 3. Unabated +EV & BettingPros agrees", "",
+              "Every FanDuel line Unabated prices (median of devigged books and exchanges at FanDuel's line, 3+ sources) with market "
+              "EV above 0, where BettingPros' projection or lean is on the same side. Ranked by market EV."
+              + (f" Prices as of {bp_projctx._et(upd)}." if upd else ""), ""]
+    if ua3:
+        body = []
+        for i, e in enumerate(ua3[:n], 1):
+            r = by_pm.get((e["player"], e["market"])) or {}
+            pr = _num(e.get("proj_raw"))
+            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
+                         "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
+                         odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r) if r else "",
+                         inj(r) if r else ""])
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c")], body) + [""]
+    else:
+        lines += ["_None yet (needs a board run or watch scan with Unabated prices)._", ""]
+    miss = bp_cno_screener.near_miss_rows(date)
+    lines += ["## 4. Near misses to watch (+EV, but BettingPros disagrees)", "",
+              "CrazyNinja-paste props with any +EV and Unabated lines at +2% or more where BettingPros' projection or lean is on "
+              "the other side (🔴). CrazyNinja near misses are logged once as research (flat 1u, no stake) next to your rule, so "
+              "the record shows whether skipping them was right; Unabated ones at +2% are already logged as '+EV only' BETs.", ""]
+    if miss:
+        body = []
+        for i, e in enumerate(miss[:n], 1):
+            r = by_pm.get((e["player"], e["market"])) or {}
+            pr = _num(e.get("proj_raw"))
+            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🔴",
+                         "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
+                         odds_s(e.get("odds")), "" if e.get("ev") is None else f"{100 * e['ev']:+.2f}%",
+                         "" if e.get("ua_ev") is None else f"{100 * e['ua_ev']:+.2f}%", e.get("src", ""), dvp_s(r) if r else ""])
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+                           ("Gap", "r"), ("FD", "r"), ("CNO EV", "r"), ("Unabated EV", "r"), ("Source", "l"), ("DvP", "r")], body) + [""]
+    else:
+        lines += ["_None right now._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from BettingPros' line", "",
