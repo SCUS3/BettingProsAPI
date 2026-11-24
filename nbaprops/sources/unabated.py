@@ -28,6 +28,7 @@ from nbaprops.app import props as bp_props  # noqa: E402
 from nbaprops.sources.rotowire import norm  # noqa: E402
 
 from nbaprops.config import ROOT as HERE  # noqa: E402
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 BASE = os.environ.get("UNABATED_API_BASE_URL", "https://data.unabated.com")
 DISCOVERY = os.path.join(HERE, "unabated_discovery.json")
 STATE = os.path.join(HERE, "unabated_state.json")
@@ -340,8 +341,7 @@ def fd_lines(data, d=None, now=None):
 
 
 def _devig_over(o, u):
-    io, iu = (100 / (a + 100) if a > 0 else -a / (-a + 100) for a in (o, u))
-    return io / (io + iu)
+    return _odds.devig_over(o, u)
 
 
 def price_board(picks, data, d, now=None):
@@ -412,7 +412,7 @@ def price_board(picks, data, d, now=None):
 
 
 def _dec(a):
-    return 1 + (a / 100 if a > 0 else 100 / -a)
+    return _odds.american_to_decimal(a)
 
 
 def main():

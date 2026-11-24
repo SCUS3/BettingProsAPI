@@ -17,6 +17,7 @@ from nbaprops.rules import ledger as L
 from nbaprops.pricing import projctx as P
 from nbaprops.sources import unabated as U
 from nbaprops.sources.rotowire import norm
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 
 MIN_EV, MIN_SOURCES, MAX_ODDS, CAP = 0.04, 3, 300, 0.5
 PROJ_MARKETS = {"3PM", "P+R"}
@@ -24,8 +25,7 @@ KEYS = {"alt_mkt": "alt, market only", "alt_proj": "alt, market + projection"}
 
 
 def _dec(a):
-    a = float(a)
-    return 1 + (a / 100 if a > 0 else 100 / -a)
+    return _odds.american_to_decimal(a)
 
 
 def ladders(data, d, now):

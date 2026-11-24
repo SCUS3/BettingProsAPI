@@ -22,6 +22,7 @@ from nbaprops.rules import ledger as L
 from nbaprops.sources.rotowire import norm
 
 from nbaprops.config import ROOT as HERE  # noqa: E402
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 KEY = "cno_scr"
 KEY_SUB = "cno_scr_sub"     # logged with --all: +EV but under the +2% bar (tracking only, kept out of the +2% record)
 
@@ -84,8 +85,7 @@ def _records(text):
 
 
 def _dec(a):
-    a = float(a)
-    return 1 + (a / 100 if a > 0 else 100 / -a)
+    return _odds.american_to_decimal(a)
 
 
 MIN_EV = 0.02        # same bar as our other +EV records

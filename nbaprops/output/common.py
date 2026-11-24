@@ -3,13 +3,11 @@ import json
 import os
 
 from nbaprops.config import ROOT as _ROOT
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 
 
 def _num(v):
-    try:
-        return None if v in (None, "") else float(v)
-    except (TypeError, ValueError):
-        return None
+    return _odds.num(v)
 
 
 def load_value(date):

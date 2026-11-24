@@ -33,6 +33,7 @@ import math
 import os
 import sys
 
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 from nbaprops.rules import ledger as bp_learn  # noqa: E402  (pick tracking, grading, self-learning)
 from nbaprops.sources import rotowire as bp_rotowire  # noqa: E402  (projected lineups and injuries)
 from nbaprops.sources import espn as bp_boxscore  # noqa: E402  (final box scores: ESPN, NBA.com fallback)
@@ -111,22 +112,7 @@ def first(*vals):
 
 
 def implied(american):
-    if american is None:
-        return None
-    a = float(american)
-    return 100 / (a + 100) if a > 0 else -a / (-a + 100)
-
-
-
-
-
-
-
-
-
-
-
-
+    return None if american is None else _odds.implied_prob(american)
 
 
 PERF_WINDOWS = {"form_l5": "last_5", "form_l10": "last_10", "form_l20": "last_20", "form_season": "season", "form_h2h": "h2h"}
@@ -382,10 +368,7 @@ INJURY_MULT = {"": 1.0, "probable": 1.0, "prob": 1.0, "dtd": 0.85, "questionable
 
 
 def _num(v):
-    try:
-        return None if v in (None, "") else float(v)
-    except (TypeError, ValueError):
-        return None
+    return _odds.num(v)
 
 
 def _phi(z):

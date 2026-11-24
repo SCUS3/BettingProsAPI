@@ -22,6 +22,7 @@ import os
 
 from nbaprops.config import ROOT as HERE  # noqa: E402
 from nbaprops.grading import grade as _grade  # noqa: E402 -- grading moved to nbaprops.grading.grade
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 # re-exported for existing callers (bp_learn.grade_date, ...)
 events_without_finals = _grade.events_without_finals
 finals_from = _grade.finals_from
@@ -88,10 +89,7 @@ FEATURE_LABELS = {
 
 # ---------------------------------------------------------------- helpers
 def _num(v):
-    try:
-        return None if v in (None, "") else float(v)
-    except (TypeError, ValueError):
-        return None
+    return _odds.num(v)
 
 
 def _read(path):
@@ -135,16 +133,12 @@ def _truthy(v):
 
 def implied(odds):
     o = _num(odds)
-    if o is None:
-        return None
-    return 100 / (o + 100) if o > 0 else -o / (-o + 100)
+    return None if o is None else _odds.implied_prob(o)
 
 
 def decimal(odds):
     o = _num(odds)
-    if o is None:
-        return None
-    return 1 + (o / 100 if o > 0 else 100 / -o)
+    return None if o is None else _odds.american_to_decimal(o)
 
 
 def no_vig(r):
@@ -821,9 +815,8 @@ def placed_record_rows():
 
 
 
-def _dec(american):
-    a = float(american)
-    return 1 + (a / 100 if a > 0 else 100 / -a)
+def _dec(a):
+    return _odds.american_to_decimal(a)
 
 
 def record(version="v2"):

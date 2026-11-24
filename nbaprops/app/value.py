@@ -27,6 +27,7 @@ import statistics
 import sys
 import time
 
+from nbaprops.pricing import devig as _odds  # noqa: E402 -- shared odds math
 from nbaprops.rules import ledger as bp_learn  # noqa: E402
 from nbaprops.app import props as bp_props  # noqa: E402
 from nbaprops.sources import unabated as U  # noqa: E402
@@ -159,11 +160,11 @@ def plan(picks, budget=None):
 
 # -------------------------------------------------------------------- math
 def implied(a):
-    return 100 / (a + 100) if a > 0 else -a / (-a + 100)
+    return _odds.implied_prob(a)
 
 
 def decimal(a):
-    return 1 + (a / 100 if a > 0 else 100 / -a)
+    return _odds.american_to_decimal(a)
 
 
 def devig(over, under):
@@ -249,9 +250,7 @@ def bet_cap():
 def bet_kelly(fair, american, cap=None):
     """Quarter-Kelly stake in units (1u = 1% of bankroll) on the market's fair probability, capped."""
     cap = bet_cap()[0] if cap is None else cap
-    b = decimal(american) - 1
-    f = (fair * (b + 1) - 1) / b
-    return round(min(max(f / 4 * 100, 0.0), cap), 2)
+    return _odds.quarter_kelly_units(fair, american, cap)
 
 
 def decide(date, shortlist, checked, results):
