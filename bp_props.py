@@ -552,8 +552,9 @@ def picks_reprice_decision(date, pulled_at, mode, after, reprice_full, fd_lines_
 
 def warn_started(tips, pulled_at):
     """Games still to tip (only these are priced); warn when some have started."""
-    upcoming = {int(e) for e, t in tips.items() if e and (not t or t > pulled_at)}
-    started = [t for e, t in tips.items() if t and t <= pulled_at]
+    import bp_tipoff                                  # bettable until start + 10 min unless ESPN shows it under way
+    upcoming = {int(e) for e, t in tips.items() if e and (not t or bp_tipoff.is_open(t, None, pulled_at))}
+    started = [t for e, t in tips.items() if t and e and int(e) not in upcoming]
     if started:
         first_tip = min(t for t in tips.values() if t)
         print(f"Warning: {len(started)} of {len(tips)} games had already tipped at this pull; they're skipped "
@@ -1087,6 +1088,11 @@ def main():
             finals.update(got)
         n_props, n_picks, pend = bp_learn.grade_date(d, finals, scored, voids)
         bp_learn.grade_placed(d, box)
+        try:
+            import bp_tipoff
+            bp_tipoff.save_actual_starts(d)                # first-play times: the grading cutoff (free, ESPN)
+        except Exception as e:
+            print(f"Actual starts {d}: not saved ({e}); cutoff falls back to tip + 10 min.")
         try:
             import bp_halftime
             bp_halftime.grade_flags(d, box)

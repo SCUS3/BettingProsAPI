@@ -278,7 +278,8 @@ def _parse_table(tbl, date, min_ev=MIN_EV):
         except (TypeError, ValueError):
             fair = (1 + ev) / _dec(odds)
         tip = _when(g.get("date"), date)
-        if tip and tip <= now:
+        import bp_tipoff                               # start + 10 min, or earlier if ESPN shows it under way
+        if tip and not bp_tipoff.is_open(tip, g.get("event"), now):
             drop("game already started")
             continue
         if ev < min_ev or ev <= 0:

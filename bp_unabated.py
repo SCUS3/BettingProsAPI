@@ -292,6 +292,15 @@ def fair_prices(picks, now=None):
     return price_board(picks, data, d, now), 1
 
 
+def _closed(ctx, now):
+    """Game no longer bettable (tip-time rule: scheduled start + 10 min, or earlier if ESPN shows it under way)."""
+    s = ctx.get("eventStart")
+    if not s:
+        return False
+    import bp_tipoff
+    return not bp_tipoff.is_open(s, ctx.get("eventName"), now)
+
+
 def fetch_board(markets):
     """The props odds board for these markets (one odds call)."""
     d = load(DISCOVERY, {})
@@ -315,7 +324,7 @@ def fd_lines(data, d=None, now=None):
     for ctx, side in walk_sides((data or {}).get("odds") if isinstance(data, dict) else data):
         if ctx.get("isLive") or ctx.get("betSubType") or str(ctx.get("periodTypeId")) not in full:
             continue
-        if ctx.get("eventStart") and str(ctx["eventStart"]) <= now:
+        if _closed(ctx, now):
             continue
         who, tag, si = people.get(str(ctx.get("personId"))), bt_tag.get(str(ctx.get("betTypeId"))), str(ctx.get("sideIndex"))
         if not who or not tag or si not in ("0", "1"):
@@ -351,7 +360,7 @@ def price_board(picks, data, d, now=None):
     for ctx, side in walk_sides((data or {}).get("odds") if isinstance(data, dict) else data):
         if ctx.get("isLive") or ctx.get("betSubType") or str(ctx.get("periodTypeId")) not in full:
             continue                            # live, alternate/milestone, or not full game
-        if ctx.get("eventStart") and str(ctx["eventStart"]) <= now:
+        if _closed(ctx, now):
             continue
         tag, who, si = bt_tag.get(str(ctx.get("betTypeId"))), people.get(str(ctx.get("personId"))), str(ctx.get("sideIndex"))
         if not tag or not who or si not in ("0", "1"):

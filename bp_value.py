@@ -133,7 +133,7 @@ def load_picks(date, top):
         rows = [r for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv")))
                 if r.get("price_is_fanduel") == "True" and r.get("balanced") not in (None, "")
                 and r.get("noproj") != "True" and r.get("placeholder") != "True"
-                and r.get("stale_price") != "True" and (not r.get("tip") or r["tip"] > now)]
+                and r.get("stale_price") != "True" and (not r.get("tip") or _open(r, now))]
         rows.sort(key=lambda r: -float(r["balanced"]))
         return [{"player": r["player"], "team": r["team"], "market": r["market"], "side": r["rec_side"],
                  "line": float(r["line"]), "odds": float(r["fd_odds_rec"]), "our_prob": _f(r.get("model_prob")),
@@ -363,7 +363,13 @@ def board_rows(date):
     now = bp_learn.utc_now()
     return [r for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv")))
             if r.get("price_is_fanduel") == "True" and r.get("stale_price") != "True" and r.get("line")
-            and (not r.get("tip") or r["tip"] > now)]
+            and (not r.get("tip") or _open(r, now))]
+
+
+def _open(r, now=None):
+    """Tip-time rule for a row: bettable until scheduled start + 10 min unless ESPN shows the game under way."""
+    import bp_tipoff
+    return bp_tipoff.is_open(r.get("tip"), r.get("team") or None, now)
 
 
 def side_picks(r):
@@ -510,7 +516,7 @@ def run_board(args):
                 data = json.load(open(args.board_file))
                 print(f"  Using the saved Unabated board {args.board_file} (no call).")
             else:
-                data = U.fetch_board(BOARD_MARKETS)
+                data = U.fetch_board(board_markets(args.date))
             extra = extra_rows(args.date, rows, data)
             if extra:
                 print(f"  {len(extra)} FanDuel lines on Unabated's board that BettingPros doesn't carry: priced too (no projection).")
@@ -726,7 +732,12 @@ def _proj_fields(r):
 
 
 
-BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]   # Unabated board + watch (R+A from 11/24)
+BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]   # Unabated board + watch
+R_A_FROM = "2026-11-24"      # R+A turned back on from this slate
+
+
+def board_markets(date):
+    return [m for m in BOARD_MARKETS if m != "R+A" or date >= R_A_FROM]
 CNO_MIN_EV = 0.02     # CrazyNinja +EV strategy: median worst-case EV across sources >= +2% (our bar)
 
 
@@ -817,7 +828,7 @@ def run_close(args):
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     bets = [r for r in led if r["date"] == args.date
-            and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS and r.get("tip", "") > now]
+            and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS and r.get("tip") and _open(r, now)]
     if not bets:
         sys.exit("No BETs for games still to tip.")
     ok, why = U.usable()
@@ -883,7 +894,7 @@ def apply_close(date, led, bets, res, at, show=False):
 
 # --------------------------------------------------------------------- watch
 WATCH_EVERY = 20 * 60        # seconds between scans
-CLOSE_LEAD = 5 * 60          # the closing scan runs this long before each tip
+CLOSE_LEAD = 5 * 60          # scans land 5 min before each tip and 5 min after it (closing: tip + 5)
 
 
 def _et_now():
@@ -909,7 +920,7 @@ def watch_scan(date, state, close_before=None):
     """One free Unabated scan: new BETs (logged) and logged BETs whose market EV fell below 0 (or line moved).
     BETs in games tipping before `close_before` (the next scan) get their closing price and CLV logged now:
     this is the last scan before their tip. Returns the tip times still ahead."""
-    data = U.fetch_board(BOARD_MARKETS)
+    data = U.fetch_board(board_markets(date))
     d = U.load(U.DISCOVERY, {})
     have_csv = os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv"))
     rows = board_rows(date) if have_csv else []
@@ -921,12 +932,12 @@ def watch_scan(date, state, close_before=None):
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
-              if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip", "") > now}
+              if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS and r.get("tip") and _open(r, now)}
     cap = bet_cap()[0]
     new_rows, found, cno_cands = [], [], []
     state.setdefault("cno_seen", [])
     for r in rows:
-        if r.get("tip") and str(r["tip"]) <= now:        # game already tipped: never log it
+        if r.get("tip") and not _open(r, now):           # past start + 10 min, or ESPN shows it under way: never log
             continue
         for sd in ("over", "under"):
             v = ua.get((r["player"], r["market"], sd))
@@ -984,8 +995,7 @@ def watch_scan(date, state, close_before=None):
                    f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources), CNO "
                    f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K")
         led = bp_learn._read(bp_learn.LEDGER)
-        if close_before:
-            bp_alts.close(date, data, d, now, close_before)
+        bp_alts.close(date, data, d, now)               # latest pregame price for open games (last before start wins)
     except Exception as e:
         print(f"[{_et_now():%H:%M}] alt ladder skipped ({e})", flush=True)
     if new_rows:
@@ -1007,33 +1017,39 @@ def watch_scan(date, state, close_before=None):
             state["dropped"].append(k)
             notify(f"BET EV BELOW 0: {r['player']} {r['market']} {r['side']} {float(r['line']):g}: mkt EV now "
                    f"{100 * v['ev_mult']:+.1f}% at {v['price_used']:+g} (bet {float(r['odds']):+g})")
-    if close_before:                                     # last scan before these games tip: closing line
-        state.setdefault("closed", [])
-        led = bp_learn._read(bp_learn.LEDGER)
-        closing = [r for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS
-                   and now < r.get("tip", "") <= close_before]        # a later scan before tip overwrites: last one wins
-        if closing:
-            cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
-                   "odds": float(r["odds"])} for r in closing]
-            res = U.price_board(cp, data, d)
-            flagged = apply_close(date, led, closing, res, now)
-            for r in closing:
-                k = f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}"
-                if k not in state["closed"]:
-                    state["closed"].append(k)
-                c = r.get("clv_ev")
-                if r["strategy"] not in bp_learn.BET_KEYS:        # CrazyNinja-record rows close silently
-                    continue
-                notify(f"CLOSE {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: "
-                       + ("no closing price" if c in (None, "") else
-                          f"CLV {100 * float(c):+.1f}%" + (f", mkt EV now {100 * float(r['close_mkt_ev']):+.1f}%"
-                                                           if r.get("close_mkt_ev") not in (None, "") else ""))
-                       + ("  EV FELL BELOW 0" if r in flagged else "") + f"; tip {str(r.get('tip'))[11:16]}Z")
-    tips = sorted({x["tip"] for x in slate_lines(data, date, d) if x["tip"] > now})
+    # Closing line: every scan records the latest pregame price for BETs whose game is still open, so the last price
+    # before the start is the close. The CLOSE alert fires once, at the scan from scheduled start + 5 min (or the first
+    # scan after ESPN shows the game under way), from the stored close.
+    import bp_tipoff as T
+    state.setdefault("closed", [])
     led = bp_learn._read(bp_learn.LEDGER)
-    tips = sorted(set(tips) | {r["tip"] for r in led if r["date"] == date and r["strategy"] in bp_learn.BET_KEYS
-                               and r.get("tip", "") > now})
-    return tips
+    keys = bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS
+    live_rows = [r for r in led if r["date"] == date and r["strategy"] in keys and r.get("tip") and _open(r, now)]
+    if live_rows:
+        cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
+               "odds": float(r["odds"])} for r in live_rows]
+        res = U.price_board(cp, data, d)
+        priced = [r for r in live_rows if (res.get((r["player"], r["market"], r["side"])) or {}).get("fair_mult") is not None]
+        if priced:
+            apply_close(date, led, priced, res, now)
+    t_now = T._t(now)
+    for r in led:
+        k = f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}"
+        if r["date"] != date or r["strategy"] not in bp_learn.BET_KEYS or not r.get("tip") or k in state["closed"]:
+            continue
+        if t_now < T._t(r["tip"]) + T.CLOSE_AFTER and _open(r, now):
+            continue                                     # not final yet: closes at start + 5 min or at the start
+        state["closed"].append(k)
+        c = r.get("clv_ev")
+        mev = r.get("close_mkt_ev")
+        notify(f"CLOSE {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: "
+               + ("no pregame closing price" if c in (None, "") else
+                  f"CLV {100 * float(c):+.1f}% (last pregame price {str(r.get('close_at'))[11:16]}Z)"
+                  + (f", mkt EV then {100 * float(mev):+.1f}%" if mev not in (None, "") else ""))
+               + ("  EV FELL BELOW 0" if mev not in (None, "") and float(mev) < 0 else "") + f"; tip {str(r.get('tip'))[11:16]}Z")
+    tips = {x["tip"] for x in slate_lines(data, date, d)}
+    tips |= {r["tip"] for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] in keys and r.get("tip")}
+    return sorted(t for t in tips if t_now < T._t(t) + T.CLOSE_AFTER + dt.timedelta(seconds=30))   # tips still to close
 
 
 def run_watch(args):
@@ -1049,7 +1065,8 @@ def run_watch(args):
     except (OSError, ValueError):
         state = {"alerted": {}, "dropped": []}
     print(f"Watching {args.date}: one free Unabated scan every {args.every} min from the first pull until the last tip, "
-          f"plus one {CLOSE_LEAD // 60} min before each tip (closing CLV). Alerts: new BETs, BETs whose market EV fell below 0.",
+          f"plus scans {CLOSE_LEAD // 60} min before and after each tip (closing CLV = last pregame price; final at tip + 5). "
+          f"Games stay bettable until tip + 10 unless ESPN shows them under way. Alerts: new BETs, BETs whose EV fell below 0.",
           flush=True)
     try:                                                  # keep the Mac awake while watching (sleep skipped scans)
         import subprocess
@@ -1065,7 +1082,7 @@ def run_watch(args):
         print(f"{_et_now():%H:%M} ET: waiting for the first pull (bp_props_{args.date}.csv); checking every 5 min.", flush=True)
         time.sleep(300)
     every = args.every * 60
-    close_before = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + every))   # first scan: games before the next
+    close_before = None
     while True:
         t0 = time.time()
         try:
@@ -1083,20 +1100,11 @@ def run_watch(args):
             print("All games have tipped. Watch done.", flush=True)
             return
         now = time.time()
-        nxt = now + every
-        for t in tips:                                    # land a scan CLOSE_LEAD before each tip
-            ts = dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc).timestamp() - CLOSE_LEAD
-            if now + 60 < ts < nxt:
-                nxt = ts
-                break
-        # the scan at `nxt` is the last one before every tip earlier than the scan after it
-        after = nxt + every
+        marks = []                                        # a scan 5 min before each tip and one at tip + 5 (closing)
         for t in tips:
-            ts = dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc).timestamp() - CLOSE_LEAD
-            if nxt + 60 < ts < after:
-                after = ts
-                break
-        close_before = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(after + CLOSE_LEAD - 1))
+            ts = dt.datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc).timestamp()
+            marks += [ts - CLOSE_LEAD, ts + CLOSE_LEAD]
+        nxt = min([m for m in marks if m > now + 60] + [now + every])
         time.sleep(max(nxt - time.time(), 1))
 
 

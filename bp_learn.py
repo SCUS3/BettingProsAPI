@@ -480,9 +480,11 @@ def counted_flags(ledger):
     for d in runs:
         cover[d] = run_coverage(d)
     covers = lambda d, t, ev: t not in cover[d] or str(ev) in cover[d][t]   # a picks-only re-price skips some games
+    import bp_tipoff
+    cut = lambda r: bp_tipoff.cutoff(r.get("tip"), r["date"], r.get("event_id"))   # actual start, else tip + 10 min
     first_seen = {}
     for r in ledger:
-        if r.get("pulled_at") and r.get("tip") and r["pulled_at"] < r["tip"]:
+        if r.get("pulled_at") and r.get("tip") and r["pulled_at"] < cut(r):
             k = (r["date"], r["strategy"], r["event_id"], r["player"], r["market"], r["side"])
             if k not in first_seen or r["pulled_at"] < first_seen[k][0]:
                 first_seen[k] = (r["pulled_at"], _num(r.get("line")))
@@ -492,7 +494,7 @@ def counted_flags(ledger):
         p, tip = r.get("pulled_at"), r.get("tip")
         if r.get("strategy") in HALF_KEYS:
             pass
-        elif not p or not tip or p >= tip:
+        elif not p or not tip or p >= cut(r):
             counted.append(False)
             clv.append(None)
             continue
@@ -511,7 +513,7 @@ def counted_flags(ledger):
             clv.append(None if cl is None or bl is None or cl[0] <= p else
                        ((cl[1] - bl) if r.get("side") == "over" else (bl - cl[1])))
             continue
-        last = max((t for t in runs[r["date"]] if t < tip and covers(r["date"], t, r.get("event_id"))), default=None)
+        last = max((t for t in runs[r["date"]] if t < cut(r) and covers(r["date"], t, r.get("event_id"))), default=None)
         ok = p == last
         counted.append(ok)
         v = None
@@ -1031,8 +1033,9 @@ def record():
     graded_dates = sorted({r["date"] for r, _ in graded}, reverse=True)
     recent = [r for r, _ in live if r["date"] in graded_dates[:3]]
     pending = [r for r, _ in live if not r.get("result")]
+    import bp_tipoff
     dropped = sum(1 for r, ok in zip(ledger, counted) if not ok and r.get("tip") and r.get("pulled_at")
-                  and r["pulled_at"] >= r["tip"])
+                  and r["pulled_at"] >= bp_tipoff.cutoff(r["tip"], r["date"], r.get("event_id")))
     model = load_model()
     weights = []
     if model.get("weights"):

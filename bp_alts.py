@@ -39,7 +39,7 @@ def ladders(data, d, now):
     for ctx, side in U.walk_sides((data or {}).get("odds") if isinstance(data, dict) else data):
         if ctx.get("isLive") or str(ctx.get("periodTypeId")) not in full:
             continue
-        if ctx.get("eventStart") and str(ctx["eventStart"]) <= now:
+        if U._closed(ctx, now):
             continue
         tag, who = bt.get(str(ctx.get("betTypeId"))), people.get(str(ctx.get("personId")))
         si = str(ctx.get("sideIndex"))
@@ -144,11 +144,13 @@ def log(date, cands, now):
     return rows
 
 
-def close(date, data, d, now, close_before):
-    """Closing fair price and CLV for logged alt rungs in games tipping before `close_before` (last scan wins)."""
+def close(date, data, d, now, close_before=None):
+    """Closing fair price and CLV for logged alt rungs whose game is still open: every scan overwrites, so the last
+    pregame price before the start is the close."""
     import bp_value as V
+    import bp_tipoff as T
     led = L._read(L.LEDGER)
-    rows = [r for r in led if r["date"] == date and r["strategy"] in KEYS and now < r.get("tip", "") <= close_before]
+    rows = [r for r in led if r["date"] == date and r["strategy"] in KEYS and r.get("tip") and T.is_open(r["tip"], None, now)]
     if not rows:
         return 0
     names = {str(s["id"]): s["name"] for s in d.get("sources", [])}
