@@ -1474,7 +1474,7 @@ def main():
     ap.add_argument("--source", default="Outside card", help="--picks-paste: source label for the record")
     ap.add_argument("--thread", help="--reddit: a specific thread URL or id instead of finding today's")
     ap.add_argument("--dry", action="store_true", help="--cno-paste: parse and show, log nothing")
-    ap.add_argument("--all", action="store_true", help="--cno-paste: also log +EV rows under +2% (separate tracking record)")
+    ap.add_argument("--all", action="store_true", help="--cno-paste: also log +EV rows under +2%% (separate tracking record)")
     ap.add_argument("--live", action="store_true", help="--cno-paste: live rows vs. BettingPros projection and halftime "
                                                         "expected final (display only)")
     ap.add_argument("--devig", help="--cno-paste: your screener's devig method (logged; warns if it changes)")
