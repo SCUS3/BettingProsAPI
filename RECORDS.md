@@ -9,6 +9,7 @@ change here, and bump the version.** Older versions stay in the ledger as archiv
 | Version | First slate | What changed |
 |---|---|---|
 | v1 | (start) to 2026-11-23 | Archive. Original strategies: top-5 model lists (incl. the old "your score" formula), Unabated BETs, CrazyNinja +EV, CNO screener, halftime experiment, sims. |
+| v2.1 | 2026-11-24 | **Sam score** (display and ranking only; never qualifies a -EV play or changes a stake): Tonight's bets sorted by score; under 50 = paper only (held out); the 8u nightly cap trims the lowest scores first (C before B before A) instead of scaling. v2.1 rows count in every v2 view (the dashboard's v2 toggle shows v2 and v2.1). |
 | v2 | 2026-11-24 | Fresh start. "Your score" = your rule (CNO +EV + BettingPros agrees); Unabated +EV & BP agrees record; Triple green (added before the first v2 slate, so it is part of v2, not a new version); near misses to your rule; alt ladder split by DvP; R+A back on; tip-time rule; raw BettingPros projections (calibration logged, off). |
 
 Every ledger row carries `rule_version` (stamped by `bp_learn._write`, from the slate date). The Record tab and Copy for
@@ -66,6 +67,36 @@ Each row shows the BettingPros projection (🟢/🔴 dot, number, gap) and the s
 sections. **Tonight's bets record** (`key: tonight`, first on the Record tab and in Copy for Claude): every listed prop
 once, graded with its ledger result, ¼K units at the **capped** stake, flat 1u alongside, CLV from the prop's row; only
 plays logged before tip count. It is computed from the ledger each time (no extra rows).
+
+## Sam score (v2.1)
+
+`nbaprops/pricing/samscore.py`, weights in `config.SAM_WEIGHTS` (hand-set). 0-100 = parts (0-1 fraction x weight) +
+penalties, clipped:
+
+| Part | Max | How |
+|---|---:|---|
+| Market edge | 30 | entry EV / 6% |
+| Market quality | 10 | 8+ sources 3 · exchange in the market 2 · CrazyNinja worst case > 0 3 · Unabated and CNO both +EV 2 |
+| BettingPros | 20 | 3PM/P+R: agrees, |gap| / SD (1 SD = 20; SD = 1.1 sqrt(max(proj, line))) · lean markets: agrees 8 · disagrees 0 |
+| DvP (side-aware) | 10 | helping 1-5 / 26-30 = 10 · helping 6-10 / 21-25 = 6 · 11-20 = 3 · hurts = 0 |
+| Line movement | 10 | since first seen (either store): toward the side 10 · none 5 · against 0 |
+| Role | 10 | projected starter 5 · rotation teammate ruled out (overs) 5 |
+| Form | 5 | side hit rate ≥ 60% 5 · 50-59% 3 · < 50% 0 |
+| Consensus | 5 | 2+ CrazyNinja pastes 2 · proven Reddit poster on the same side 3 |
+| 3PM market | 0 | weight 0 (for the fit report) |
+| Penalties | | FanDuel longer than +200 −10 · DTD −10 · outlier EV −20 · unverified both-sides −15 |
+
+Missing data is neutral: no projection 4/20, no DvP 3/10, no form 2/5, no role info 3/10; 2+ missing = "partial data".
+Tiers: A 80+, B 65-79, C 50-64, under 50 paper only. Every staked record (BETs, alt BETs, Your rule, Triple green,
+Unabated +EV & BP agrees, CNO +EV, screener, proven poster, HALF BETs) freezes `score_entry`, `score_tier`, `score_parts`
+and `score_flags` at logging (line movement = first sighting to the logging scan); the board shows a separate latest score.
+Record tab "Sam score splits": every staked record by tier and each part by its points (each prop once).
+
+**Weights over time** (`nbaprops/pricing/samfit.py`): L2 logistic with logit(FanDuel no-vig) as offset, player-games
+weighted once, same L2 schedule as the learned model, Newton solve for 95% Wald intervals, held out = latest ~30% of
+slates. The weekly review runs it once there are 500+ graded v2 player-games and switches to fitted weights
+(`sam_weights.json`) only when they beat both the hand-set score and FanDuel no-vig on held-out log loss.
+`python3 -m nbaprops.pricing.samfit` prints the one-off report on all graded data.
 
 ## Re-evaluation
 

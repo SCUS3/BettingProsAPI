@@ -109,7 +109,7 @@ def _stats(rows, clvs):
 
 def find(version: str = "v2") -> dict:
     """{"records": [{"record", "n", "splits": [...]}], "candidates": [...]} for one rule version."""
-    led = [r for r in L._read(L.LEDGER) if L.rule_version(r) == version]
+    led = [r for r in L._read(L.LEDGER) if L.in_version(r, version)]
     counted, clv = L.counted_flags(led)
     graded = [(r, v) for r, ok, v in zip(led, counted, clv) if ok and r.get("result") in ("W", "L", "P")]
     out, cands = [], []

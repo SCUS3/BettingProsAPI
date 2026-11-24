@@ -261,7 +261,7 @@ def flag_summary(version="v2"):
     and pace bucket), scored out of sample: each night's rows use 2nd-half shares from the other nights only."""
     try:
         from nbaprops.rules import ledger as bp_learn
-        rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy") and bp_learn.rule_version(r) == version]
+        rows = [r for r in csv.DictReader(open(FLAGS)) if not r.get("legacy") and bp_learn.in_version(r, version)]
     except OSError:
         rows = []
     live_rows = [r for r in rows if r.get("backfill") != "yes"]

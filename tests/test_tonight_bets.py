@@ -7,7 +7,15 @@ def _row(strat, player, mk, stake, ev="0.05", game="g1", line="10.5", side="over
             "kelly_u": str(stake), "entry_ev": ev, "entry_price": "-110", "odds": "-110", "event_id": game, "tip": "", "cno_flag": ""}
 
 
+def _hi_scores(monkeypatch):
+    from nbaprops.pricing import samscore as SS
+    monkeypatch.setattr(SS, "score", lambda r, **kw: {"score": 85.0, "tier": "A", "parts": {}, "flags": [], "penalties": [],
+                                                       "fractions": {}, "move": "none"})
+    monkeypatch.setattr(SS, "stores", lambda date: ({}, {}))
+
+
 def test_union_largest_stake_not_summed_and_global_caps(monkeypatch):
+    _hi_scores(monkeypatch)
     rows = [_row("bet_agree", "A", "PTS", 1.0), _row("my_rule", "A", "PTS", 0.6),          # same prop: one row at 1.0u
             _row("alt_mkt", "A", "REB", 0.5, line="7.5"),                                    # A total 1.5u: at the player cap
             _row("my_rule", "A", "AST", 0.4, line="5.5"),                                    # pushes A to 1.9u: capped to 1.5u
@@ -23,6 +31,7 @@ def test_union_largest_stake_not_summed_and_global_caps(monkeypatch):
 
 
 def test_record_uses_capped_stake_and_one_result_per_prop(monkeypatch):
+    _hi_scores(monkeypatch)
     rows = [dict(_row("bet_agree", "A", "PTS", 1.0), result="W", profit_u="0.91", profit_kelly="0.91"),
             dict(_row("my_rule", "A", "PTS", 0.6), result="W", profit_u="0.91", profit_kelly="0.55"),
             dict(_row("bet_only", "A", "REB", 1.0, line="7.5"), result="L", profit_u="-1", profit_kelly="-1")]

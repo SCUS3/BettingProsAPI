@@ -157,7 +157,7 @@ def poster_stats(version: str | None = None) -> list[dict]:
     counted, clv = L.counted_flags(led)
     by: dict = {}
     for r, ok, v in zip(led, counted, clv):
-        if r["strategy"] != KEY or not ok or (version and L.rule_version(r) != version):
+        if r["strategy"] != KEY or not ok or (version and not L.in_version(r, version)):
             continue
         s = by.setdefault(r.get("fair_src") or "?", {"poster": r.get("fair_src") or "?", "picks": 0, "graded": [], "clv": [], "ev": []})
         s["picks"] += 1

@@ -141,8 +141,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines += ["## Tonight's bets", "",
               "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule "
               "and Triple green props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per "
-              "player and 3.5u per game across this whole list and 8u per night (scaled). Check = re-checked / unverified "
-              "(both sides were +EV) or a contradicting rung. Everything else in this note is a paper record.", ""]
+              "player and 3.5u per game across this whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first). "
+              "Sam score (0-100, latest; entry = frozen at logging): A 80+, B 65-79, C 50-64, under 50 = paper only (held out); "
+              "display and ranking only, it never changes a stake or qualifies a -EV play. Check = re-checked / unverified "
+              "(both sides were +EV), a contradicting rung, partial data or a score penalty. Everything else in this note is a paper record.", ""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
         lines += [f"Tonight's bets record (v2): {_tr['w']}-{_tr['l']}-{_tr['p']} | ¼K at the capped stakes {_tr['kelly_units']:+.2f}u"
                   + (f" ({_tr['kelly_roi']:+}% ROI)" if _tr.get("kelly_roi") is not None else "") + f" | flat 1u {_tr['units']:+.2f}u"
@@ -151,17 +153,23 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         def _bp(x):
             t = x.get("bp_tag") or "none"
             return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
-        chk = lambda x: ", ".join(c for c in (x.get("case"), x.get("flags")) if c)
+        chk = lambda x: ", ".join(c for c in (x.get("case"), x.get("flags"), ", ".join(x.get("score_flags") or [])) if c)
+        show_sc = any(x.get("score") is not None for x in tb)
+        _scs = lambda x: "" if x.get("score") is None else f"{x['score']:g} {x.get('tier', '')}" + (
+            f" (entry {x['score_entry']:g})" if x.get("score_entry") is not None and x["score_entry"] != x["score"] else "")
         show_chk = any(chk(x) for x in tb)
         body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), _bp(x),
                  "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
                  odds_s(x["price"]), "" if x["ev"] is None else f"{100 * x['ev']:+.1f}%",
-                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u"] + ([chk(x)] if show_chk else [])
+                 bp_projctx.dvp_dot(x["side"], x.get("dvp")), f"{x['stake']:.2f}u"] + ([_scs(x)] if show_sc else [])
+                + ([chk(x)] if show_chk else [])
                 for i, x in enumerate(tb, 1)]
         tot, pre, scaled = _tn.totals(tball)
-        lines += [f"**Total {tot:.2f}u on {len(tb)} props" + (f" (scaled from {pre:.2f}u: nightly cap {_tn.C.NIGHT_CAP:g}u)" if scaled else "") + "**", ""]
+        how = "trimmed lowest Sam score first" if date >= bp_learn.SAM_START else "scaled"
+        lines += [f"**Total {tot:.2f}u on {len(tb)} props" + (f" ({how}: {pre:.2f}u -> nightly cap {_tn.C.NIGHT_CAP:g}u)" if scaled else "") + "**", ""]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake ▼", "r")] + ([("Check", "l")] if show_chk else []), body)
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV", "r"), ("DvP", "r"), ("Stake" + ("" if show_sc else " ▼"), "r")]
+                          + ([("Sam score ▼", "r")] if show_sc else []) + ([("Check", "l")] if show_chk else []), body)
         lines += [""]
     else:
         lines += ["_No bets yet tonight._", ""]
@@ -207,6 +215,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     from nbaprops.rules import tipoff as _T
     status = lambda tip, names=None: "open" if not tip or _T.is_open(tip, names) else "started"
     _led = bp_learn._read(bp_learn.LEDGER)
+    _scmap = {(x["player"], x["market"], x["side"], float(x["line"]), x["strategy"]): f"{float(x['score_entry']):g} {x.get('score_tier') or ''}".strip()
+              for x in _led if x["date"] == date and x.get("score_entry") not in (None, "")}
+    sc_of = lambda e, strat: _scmap.get((e["player"], e["market"], e["side"], float(e["line"]), strat), "")
     stake_of = {(x["player"], x["market"], x["side"], float(x["line"])): f"{float(x['kelly_u']):g}u" for x in _led
                 if x["date"] == date and x["strategy"] == "my_rule" and x.get("kelly_u") not in (None, "")}
     _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
@@ -229,10 +240,11 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
                          str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", str(e.get("seen", 1)), seen_et,
-                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), ""), status(e.get("tip"), e.get("event"))])
+                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), ""), sc_of(e, "my_rule"),
+                         status(e.get("tip"), e.get("event"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
                            ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
-                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r"), ("Game", "l")], body) + [""]
+                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
     from nbaprops.sources.rotowire import norm as _norm
@@ -262,9 +274,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
                          odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "",
-                         inj(r) if r else "", status(e.get("tip"), e.get("team"))])
+                         inj(r) if r else "", sc_of(e, "ua_agree"), status(e.get("tip"), e.get("team"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c"), ("Game", "l")], body) + [""]
+                           ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c"), ("Score", "r"),
+                           ("Game", "l")], body) + [""]
     else:
         lines += ["_None saved for this date (this record starts with the 11/24 slate; on 11/23 a scan after the last tip wiped the file, since fixed)._", ""]
     miss = bp_cno_screener.near_miss_rows(date)
@@ -357,9 +370,11 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             body.append([str(i), r["player"], r["market"], side_s(r["side"]), f"{ln:g}", "🟢", "" if pr is None else f"{pr:.1f}",
                          "" if pr is None else f"{pr - ln:+.1f}", odds_s(r.get("entry_price") or r["odds"]),
                          f"{100 * (_num(r.get('entry_ev') or r.get('oa_ev')) or 0):+.2f}%", r.get("fair_src") or "",
-                         bp_projctx.dvp_dot(r["side"], r.get("dvp")), f"{float(r['kelly_u']):g}u", status(r.get("tip"), r.get("team"))])
+                         bp_projctx.dvp_dot(r["side"], r.get("dvp")), f"{float(r['kelly_u']):g}u",
+                         "" if r.get("score_entry") in (None, "") else f"{float(r['score_entry']):g} {r.get('score_tier') or ''}".strip(),
+                         status(r.get("tip"), r.get("team"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Game", "l")], body) + [""]
+                           ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_None yet (the record starts with the 11/24 slate; checked on every CrazyNinja paste, board run and watch scan)._", ""]
     diffs = [r for r in fd if r.get("line_note")]

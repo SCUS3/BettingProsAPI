@@ -72,6 +72,11 @@ def build(end: str) -> str:
                   "All graded +EV-record plays to date, by entry EV: " + "; ".join(sig) + ". Early read: higher entry EV has "
                   "carried better CLV (4%+ about +2.0% vs. 2-4% about -0.75% at the first look), but no rule changes until every "
                   "bucket has 50+ graded plays.", ""]
+    try:
+        from nbaprops.pricing import samfit
+        lines += samfit.weekly_check()
+    except Exception as e:  # noqa: BLE001
+        lines += ["## Sam score weights", "", f"_Fit check failed: {e}_", ""]
     for label, keys in GROUPS:
         sub = [(r, v) for r, v in graded if r["strategy"] in keys]
         if len(sub) < 2:

@@ -354,15 +354,16 @@ footer b { color: var(--ink); font-weight: 600; }
       return '<tr><td class="l">' + (i + 1) + '</td><td class="l"><b>' + esc(x.player) + "</b></td><td class=\"l\">" + esc(x.market) + " " + (x.side === "over" ? "o" : "u") + x.line +
         '</td><td title="' + esc(x.bp_note || "") + '">' + (x.bp_proj == null ? '<span class="dim">–</span>' : bp + x.bp_proj.toFixed(1) + ' <span class="dim">(' + (x.bp_gap > 0 ? "+" : "") + x.bp_gap.toFixed(1) + ")</span>") +
         "</td><td>" + odds(x.price) + "</td><td>" + (x.ev == null ? "–" : (x.ev > 0 ? "+" : "") + Math.round(x.ev * 1000) / 10 + "%") + "</td><td>" + dv +
-        "</td><td><b>" + u(x.stake) + "</b>" + ([x.case, x.flags].filter(Boolean).length ? '<div class="dim">' + esc([x.case, x.flags].filter(Boolean).join(", ")) + "</div>" : "") + "</td></tr>";
+        "</td><td><b>" + u(x.stake) + "</b>" + ([x.case, x.flags].concat(x.score_flags || []).filter(Boolean).length ? '<div class="dim">' + esc([x.case, x.flags].concat(x.score_flags || []).filter(Boolean).join(", ")) + "</div>" : "") +
+        "</td><td>" + (x.score == null ? '<span class="dim">–</span>' : "<b>" + x.score.toFixed(0) + "</b> " + esc(x.tier || "") + (x.score_entry != null && x.score_entry !== x.score ? ' <span class="dim">(entry ' + x.score_entry.toFixed(0) + ")</span>" : "")) + "</td></tr>";
     }).join("");
     var total = tb.reduce(function (s, x) { return s + x.stake; }, 0);
     var pre = tb.reduce(function (s, x) { return s + (x.stake_capped != null ? x.stake_capped : x.stake); }, 0);
     var scaled = tb.some(function (x) { return x.stake_capped != null; });
-    document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (scaled from " + u(pre) + ")" : "") : ""),
-      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (scaled proportionally). Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
-      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"]]),
-      body || '<tr><td class="l dim" colspan="8">No bets yet tonight.</td></tr>') +
+    document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (" + (DATA.date >= "2026-11-24" ? "trimmed lowest Sam score first" : "scaled") + " from " + u(pre) + ")" : "") : ""),
+      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64; under 50 = paper only, held out): display and ranking only, never a stake change. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam score"]]),
+      body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>') +
       (held.length ? '<p class="dim" style="margin:6px 16px">Held out (not bet): ' + held.map(function (x) { return esc(x.player + " " + x.market + " " + x.side[0] + x.line + ": " + x.held); }).join("; ") + "</p>" : "");
   }
 
@@ -500,7 +501,7 @@ footer b { color: var(--ink); font-weight: 600; }
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       var hasHalf = G[0] === "half" && R.half && ((R.half.flags || {}).n || R.half.oddsapi);
@@ -515,7 +516,7 @@ footer b { color: var(--ink); font-weight: 600; }
       }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
-          (["tonight", "bet", "cno", "screener", "half", "alt", "rule", "ua", "allev", "reddit", "triple"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
+          (["tonight", "bet", "cno", "screener", "half", "alt", "rule", "ua", "allev", "reddit", "triple", "sam"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
@@ -641,7 +642,7 @@ footer b { color: var(--ink); font-weight: 600; }
     var isBet = r.strategy === "bet_agree" || r.strategy === "bet_only";
     var evCell = ev == null ? '<span class="dim">–</span>' : '<span class="' + (ev > 0 ? "pos" : ev < 0 ? "neg" : "") + '">' + (ev > 0 ? "+" : "") + Math.round(ev * 1000) / 10 + "%</span>";
     return "<tr" + (!isBet && ev != null && ev < 0 ? ' class="dimrow"' : "") + "><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" + projDot(r) +
-      (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
+      (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + (r.score_entry ? ' <span class="chip" title="Sam score at logging">' + esc(Number(r.score_entry).toFixed(0) + " " + (r.score_tier || "")) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }
@@ -681,6 +682,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (REC.dropped_after_tip) sNote += " " + REC.dropped_after_tip + " picks were logged after their game started and don't count.";
     var GROUPS = [
       ["tonight", "Tonight's bets (what you bet)", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
+      ["sam", "Sam score splits (v2.1)", "Every staked record split by the Sam score frozen at logging: tier A (80+), B (65-79), C (50-64), paper (under 50), and each score part by its points (each prop once), to show which parts predict results. Display and ranking only.", true],
       ["triple", "Triple green: +EV, BP agrees, DvP helps", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND BettingPros on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
       ["rule", "Your rule: CNO +EV + BettingPros agrees", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
       ["ua", "Unabated +EV & BettingPros agrees", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where BettingPros agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],

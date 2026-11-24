@@ -139,3 +139,7 @@ The note and the dashboard open with "Tonight's bets" (BETs + alt BETs + your ru
 
 `bp_top10_<date>.md` opens with Tonight's bets, then the record, then the numbered sections from most tailored to broadest: 1 Triple green, 2 Your rule, 3 Unabated +EV & BP agrees, 4 All +EV tonight, 5 Near misses, 6 Ladder candidates, 7 Proven posters, 8 Top 10 by projection gap (research). Report in that order.
 
+## Sam score (v2.1)
+
+Tonight's bets shows a Sam score and tier per prop (A 80+, B 65-79, C 50-64; under 50 is held out as paper only) and is sorted by it. Report the score/tier with each bet. It never changes a stake.
+

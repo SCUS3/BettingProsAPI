@@ -5,12 +5,14 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ---------------------------------------------------------------- rule versions (see RECORDS.md)
-RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24")]   # a rule change adds a line here and in RECORDS.md
+RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24"), ("v2.1", "2026-11-24")]   # v2.x rows count in the v2 views   # a rule change adds a line here and in RECORDS.md
 RULE_NOTES = {                  # what each version's staked rules are (RECORDS.md has the full text)
     "v1": "Unabated BETs, CrazyNinja +EV, CNO screener, alt ladder, halftime; old 'your score' model lists",
     "v2": "Your rule (CNO +EV + BP agrees); Unabated +EV & BP agrees; Triple green (+EV + BP agrees + DvP helps, added "
           "before the first v2 slate); BETs with CNO > 0; alt ladder by DvP; Tonight's bets = BETs + alt BETs + your rule + "
           "Triple green, largest stake per prop, caps across the list",
+    "v2.1": "Sam score (0-100, display and ranking only): Tonight's bets sorted by score, under 50 = paper only, the 8u "
+            "nightly cap trims the lowest scores first; score frozen at logging for the record splits",
 }
 
 # ---------------------------------------------------------------- BettingPros (requests cost; ask first)
@@ -38,6 +40,15 @@ NIGHT_CAP = 8.0                # u: Tonight's bets total; over it, every stake i
 OUTLIER_EV = 0.10              # entry EV above this needs OUTLIER_MIN_SOURCES and a price no older than OUTLIER_MAX_AGE_MIN
 OUTLIER_MIN_SOURCES = 5
 OUTLIER_MAX_AGE_MIN = 10
+# ---------------------------------------------------------------- Sam score (v2.1): display and ranking only
+SAM_WEIGHTS = {"edge": 30, "quality": 10, "bp": 20, "dvp": 10, "move": 10, "role": 10, "form": 5, "consensus": 5,
+               "threes": 0}       # points at full marks; each part is a 0-1 fraction x its weight ('threes' = 3PM market, off)
+SAM_PENALTIES = {"long_odds": -10, "dtd": -10, "outlier": -20, "unverified": -15}
+SAM_NEUTRAL = {"bp": 0.2, "dvp": 0.3, "form": 0.4, "role": 0.3}   # missing data = 4/20, 3/10, 2/5, 3/10
+SAM_TIERS = [(80, "A"), (65, "B"), (50, "C")]                     # below 50 = paper only (never in Tonight's bets)
+SAM_EDGE_FULL = 0.06           # entry EV for full edge marks
+SAM_FIT_MIN = 500              # graded v2 player-games before fitted weights may replace the hand-set ones
+SAM_LONG_ODDS = 200
 UNVERIFIED_BEFORE_TIP_MIN = 10  # both-sides conflict still unchecked this close to tip: keep the stronger side at half stake
 CNO_MIN_EV = 0.02              # CrazyNinja +EV record: median worst-case EV
 BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]

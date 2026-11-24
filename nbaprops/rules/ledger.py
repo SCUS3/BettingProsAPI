@@ -57,7 +57,9 @@ UA_KEYS = {"ua_agree"}
 EXT_KEYS = {"ext_pick"}
 ALL_EV_KEYS = {"all_ev"}
 TRIPLE_KEYS = {"triple"}      # Triple green: +EV (CNO or Unabated) + BettingPros agrees + DvP helps the side; staked
-REDDIT_KEYS = {"reddit_pick", "proven_ev"}   # Reddit picks (research, per poster) and the staked proven + market +EV record      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
+REDDIT_KEYS = {"reddit_pick", "proven_ev"}
+SAM_KEYS = {"bet_agree", "bet_only", "alt_mkt", "alt_proj", "my_rule", "triple", "ua_agree", "cno", "cno_scr", "cno_scr_sub",
+            "proven_ev", "half"}       # staked records: Sam score frozen at logging   # Reddit picks (research, per poster) and the staked proven + market +EV record      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
 EV_BUCKETS = [(0.0, 0.02, "0-2%"), (0.02, 0.04, "2-4%"), (0.04, 99, "4%+")]
 EV_RECORDS = [("Your rule", {"my_rule"}), ("Unabated +EV & BP agrees", {"ua_agree"}), ("BETs (Unabated)", {"bet_agree", "bet_only"}),
               ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
@@ -87,7 +89,7 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  # entry snapshot: set once when the row is first written, never changed afterwards
                  "entry_at", "entry_fd_line", "entry_price", "entry_fair", "entry_ev", "entry_sources",
                  # latest pregame observation (watch scans, open games only); copied to close_* when the game is final
-                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev"]
+                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev", "score_entry", "score_tier", "score_parts", "score_flags"]
 ENTRY_FROM = {"entry_at": "pulled_at", "entry_fd_line": "line", "entry_price": "odds", "entry_fair": "oa_fair",
               "entry_ev": "oa_ev", "entry_sources": "sources"}
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
@@ -120,6 +122,13 @@ def _read(path):
 # versions stay in the ledger as archives and are never deleted.
 RULE_VERSIONS = C.RULE_VERSIONS  # nbaprops/config.py
 V2_START = dict(RULE_VERSIONS)["v2"]
+SAM_START = dict(RULE_VERSIONS)["v2.1"]
+
+
+def in_version(row_or_version, version: str) -> bool:
+    """A row (or version string) belongs to `version` or one of its minor versions (v2 includes v2.1)."""
+    v = row_or_version if isinstance(row_or_version, str) else rule_version(row_or_version)
+    return v == version or v.startswith(version + ".")
 CURRENT_VERSION = RULE_VERSIONS[-1][0]
 
 
@@ -142,6 +151,9 @@ def _write(path, rows, fields):
             if r.get("date") and not r.get("entry_at"):     # freeze the entry snapshot the first time a row is written
                 for k, src in ENTRY_FROM.items():
                     r[k] = r.get(src) if src != "oa_fair" else (r.get("oa_fair") or r.get("our_prob"))
+                if r.get("strategy") in SAM_KEYS and r["date"] >= SAM_START and r.get("score_entry") in (None, ""):
+                    from nbaprops.pricing import samscore as _ss
+                    _ss.freeze(r)                         # Sam score frozen at logging (score_entry + parts)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -788,7 +800,7 @@ def half_summary(version="v2"):
     except Exception:
         out["flags"] = {"nights": [], "by_type": [], "n": 0}
     try:
-        rows = [r for r in csv.DictReader(open(os.path.join(HERE, "half_pastes.csv"))) if rule_version(r) == version]
+        rows = [r for r in csv.DictReader(open(os.path.join(HERE, "half_pastes.csv"))) if in_version(r, version)]
     except OSError:
         rows = []
     reasons = {}
@@ -800,7 +812,7 @@ def half_summary(version="v2"):
     out["pastes"] = {"rows": len(rows), "priced": sum(r["decision"] in ("HALF BET", "pass") for r in rows),
                      "bets": sum(r["decision"] == "HALF BET" for r in rows), "why_not": reasons}
     tests = sorted(p for p in glob.glob(os.path.join(HISTORY, "*", "oddsapi_live_test.json"))
-                   if rule_version({"date": os.path.basename(os.path.dirname(p))}) == version)
+                   if in_version({"date": os.path.basename(os.path.dirname(p))}, version))
     out["oddsapi"] = json.load(open(tests[-1])) if tests else None
     return out
 
@@ -864,9 +876,50 @@ def triple_rows(graded):
     return out
 
 
+SAM_RECORDS = [("BETs", BET_KEYS), ("Alt BETs", ALT_KEYS), ("Your rule", {"my_rule"}), ("Triple green", {"triple"}),
+               ("Unabated +EV & BP agrees", {"ua_agree"}), ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}),
+               ("Proven poster + market +EV", {"proven_ev"}), ("HALF BETs", {"half"})]
+SAM_PART_LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "BettingPros", "dvp": "DvP", "move": "Line movement",
+                   "role": "Role", "form": "Form", "consensus": "Consensus", "threes": "3PM market"}
+
+
+def sam_rows(graded):
+    """Sam score splits from the score frozen at logging: every staked record by tier (A / B / C / paper), and each score
+    part by its points (all staked plays, each prop once), so the record shows which parts predict results."""
+    import json as _json
+    out = []
+    sc = [(r, v) for r, v in graded if r["strategy"] in SAM_KEYS and r.get("score_entry") not in (None, "")]
+
+    def add(key, label, sub):
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=key, group="sam", label=label, n=len(sub))
+            x["clv_unit"] = "% EV at closing fair"
+            out.append(x)
+    for t in ("A", "B", "C", "paper"):
+        add("sam_all_" + t, f"All staked (each prop once): tier {t}", [(r, v) for r, v in _uniq(sc) if r.get("score_tier") == t])
+    for name, keys in SAM_RECORDS:
+        for t in ("A", "B", "C", "paper"):
+            add(f"sam_{name}_{t}", f"{name}: tier {t}", [(r, v) for r, v in sc if r["strategy"] in keys and r.get("score_tier") == t])
+    uq = _uniq(sc)
+    for part, lab in SAM_PART_LABELS.items():
+        lv: dict = {}
+        for r, v in uq:
+            try:
+                pts = _json.loads(r.get("score_parts") or "{}").get(part)
+            except ValueError:
+                pts = None
+            if pts is not None:
+                lv.setdefault(float(pts), []).append((r, v))
+        if len(lv) < 2:
+            continue
+        for pts in sorted(lv, reverse=True):
+            add(f"sam_part_{part}_{pts:g}", f"{lab} {pts:g} pts", lv[pts])
+    return out
+
+
 def sim_record_rows(version="v2"):
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
-    rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P") and rule_version(r) == version]
+    rows = [r for r in _read(SIM_LEDGER) if r.get("result") in ("W", "L", "P") and in_version(r, version)]
     if not rows:
         return []
     out = []
@@ -912,7 +965,7 @@ def _dec(a):
 def record(version: str = "v2") -> dict:
     """Summary of counted (pre-tip) picks for the dashboard and terminal, for one rule version (v2 default; v1 = the
     archive before 2026-11-24). Versions follow slate dates, so per-day run detection is unaffected by the filter."""
-    ledger = [r for r in _read(LEDGER) if rule_version(r) == version]
+    ledger = [r for r in _read(LEDGER) if in_version(r, version)]
     counted, clv = counted_flags(ledger)
     live = [(r, v) for r, ok, v in zip(ledger, counted, clv) if ok]
     graded = [(r, v) for r, v in live if r.get("result") in ("W", "L", "P")]   # voids ('V') don't count
@@ -980,6 +1033,7 @@ def record(version: str = "v2") -> dict:
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
     strategies += triple_rows(graded)
+    strategies += sam_rows(graded)
     ext = [(r, v) for r, v in graded if r["strategy"] in EXT_KEYS]
     for src in sorted({r.get("fair_src") or "?" for r, _ in ext}):
         sub = [(r, v) for r, v in ext if (r.get("fair_src") or "?") == src]

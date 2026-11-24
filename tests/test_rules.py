@@ -13,7 +13,8 @@ from nbaprops.pricing import calib as CB
 
 def test_rule_version():
     assert L.rule_version({"date": "2026-11-23"}) == "v1"
-    assert L.rule_version({"date": "2026-11-24"}) == "v2"
+    assert L.rule_version({"date": "2026-11-24"}) == "v2.1"           # v2.1 (Sam score) starts with v2's first slate
+    assert L.in_version({"date": "2026-11-24"}, "v2") and not L.in_version({"date": "2026-11-23"}, "v2")
     assert L.rule_version({"date": "2026-11-20", "rule_version": "v2"}) == "v2"
 
 

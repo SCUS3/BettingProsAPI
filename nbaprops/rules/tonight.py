@@ -98,6 +98,24 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
             else:
                 for x in (o, u):
                     x["held"] = x["held"] or "both sides +EV: re-checking at the next scan"
+    sam = date >= L.SAM_START
+    if sam:                                             # v2.1: latest Sam score on every prop; under 50 = paper only
+        from nbaprops.pricing import samscore as SS
+        try:
+            ctx = SS.stores(date)
+        except Exception:  # noqa: BLE001
+            ctx = ({}, {})
+        for x in out:
+            best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
+            try:
+                s = SS.score(best, latest=True, unverified=x["case"] == "unverified", ctx=ctx)
+            except Exception:  # noqa: BLE001
+                s = None
+            if s:
+                x.update(score=s["score"], tier=s["tier"], score_parts=s["parts"], score_flags=s["flags"],
+                         score_entry=L._num(best.get("score_entry")))
+                if s["tier"] == "paper" and not x["held"]:
+                    x["held"] = f"paper only: Sam score {s['score']:g} (under 50)"
     for o, u in contra:
         o["flags"] = ", ".join(f for f in (o["flags"], f"contradicts {u['side'][0]}{u['line']:g}") if f)
         u["flags"] = ", ".join(f for f in (u["flags"], f"contradicts {o['side'][0]}{o['line']:g}") if f)
@@ -107,7 +125,19 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
     for x, c in zip(act, cands):
         x["stake"], x["cap"] = round(c["stake"], 2), c["cap"]
     total = sum(x["stake"] for x in act)
-    if total > C.NIGHT_CAP:
+    if total > C.NIGHT_CAP and sam:                    # v2.1: trim the lowest scores first (C before B before A)
+        excess = round(total - C.NIGHT_CAP, 2)
+        for x in sorted(act, key=lambda x: (x.get("score") or 0, -(x.get("ev") or 0))):
+            if excess <= 0:
+                break
+            cut = min(x["stake"], excess)
+            x["stake_capped"] = x["stake"]
+            x["stake"] = round(x["stake"] - cut, 2)
+            excess = round(excess - cut, 2)
+            x["cap"] = ", ".join(c for c in (x.get("cap"), "trimmed: nightly cap") if c)
+            if x["stake"] <= 0:
+                x["held"] = "trimmed: nightly cap (lowest Sam score first)"
+    elif total > C.NIGHT_CAP:
         f = C.NIGHT_CAP / total
         for x in act:
             x["stake_capped"] = x["stake"]
@@ -116,13 +146,14 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
     for x in out:
         if x["held"]:
             x["stake"] = 0.0
-    return sorted([x for x in out if x["stake"] > 0], key=lambda x: (-x["stake"], -(x["ev"] or 0))) + \
-        [x for x in out if x["stake"] <= 0]
+    live = [x for x in out if x["stake"] > 0]
+    live.sort(key=(lambda x: (-(x.get("score") or 0), -x["stake"])) if sam else (lambda x: (-x["stake"], -(x["ev"] or 0))))
+    return live + [x for x in out if x["stake"] <= 0]
 
 
 def totals(items):
-    """(total staked, total before the nightly scale, scaled?)."""
-    act = [x for x in items if x["stake"] > 0]
+    """(total staked, total before the nightly cap, capped?) -- scaled (v2) or trimmed lowest score first (v2.1)."""
+    act = [x for x in items if x["stake"] > 0 or "stake_capped" in x]      # trimmed-to-zero props count in the pre-cap total
     pre = sum(x.get("stake_capped", x["stake"]) for x in act)
     return round(sum(x["stake"] for x in act), 2), round(pre, 2), any("stake_capped" in x for x in act)
 
@@ -139,7 +170,7 @@ def record_rows(version: str | None = None) -> tuple[list[dict], list]:
         for x in build(date, led):
             best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
             c, v = ok.get(id(best), (False, None))
-            if not c or best.get("result") not in ("W", "L", "P") or (version and L.rule_version(best) != version):
+            if not c or best.get("result") not in ("W", "L", "P") or (version and not L.in_version(best, version)):
                 continue
             pu = L._num(best.get("profit_u")) or 0.0
             held = "outlier" if x["held"].startswith("check: outlier") else "data error" if x["case"] == "data error" else \

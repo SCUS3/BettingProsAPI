@@ -16,8 +16,16 @@ def row(strat, player, side, line, stake, ev="0.05", src="6", mk="PTS", game="g1
                  "cno_flag": "", "entry_sources": src, "entry_at": at, "proj_tag": "agrees"}, **kw)
 
 
+SCORES: dict = {}
+
+
 @pytest.fixture
 def ledger(monkeypatch, tmp_path):
+    from nbaprops.pricing import samscore as SS
+    SCORES.clear()
+    monkeypatch.setattr(SS, "score", lambda r, **kw: {"score": SCORES.get(r["player"], 85.0), "tier": SS.tier(SCORES.get(r["player"], 85.0)),
+                                                       "parts": {}, "flags": [], "penalties": [], "fractions": {}, "move": "none"})
+    monkeypatch.setattr(SS, "stores", lambda date: ({}, {}))
     rows = []
     monkeypatch.setattr(L, "_read", lambda path: rows)
     monkeypatch.setattr(L, "HERE", str(tmp_path))           # conflicts file in tmp
@@ -73,9 +81,27 @@ def test_outlier_ev_needs_five_sources_and_fresh_price(ledger):
 
 
 # 4. nightly cap
-def test_nightly_cap_scales_everything_proportionally(ledger):
+def test_nightly_cap_trims_lowest_scores_first(ledger):
     ledger += [row("bet_only", f"P{i}", "over", 5.5, 1.25, game=f"g{i}") for i in range(10)]   # 12.5u wanted
+    SCORES.update({"P0": 52, "P1": 55, "P2": 60, "P3": 66, "P4": 70})                         # C, C, C, B, B; rest A (85)
     tb = TN.build("2026-11-24", now=NOW)
-    tot, pre, scaled = TN.totals(tb)
-    assert scaled and pre == 12.5 and tot <= 8.0 and tot > 7.9
-    assert len({x["stake"] for x in tb}) == 1                   # same proportion for every bet
+    tot, pre, capped = TN.totals(tb)
+    assert capped and pre == 12.5 and tot == 8.0
+    st = {x["player"]: x["stake"] for x in tb}
+    assert st["P0"] == st["P1"] == st["P2"] == 0 and st["P3"] == 0.5 and st["P4"] == 1.25   # 4.5u cut: C first, then B
+    assert all(st[f"P{i}"] == 1.25 for i in range(5, 10))                                    # A untouched
+    assert [x["player"] for x in tb if x["stake"] > 0][:1] == ["P5"]                         # sorted by score
+
+
+def test_nightly_cap_scales_on_archive_slates(ledger):
+    ledger += [dict(row("bet_only", f"P{i}", "over", 5.5, 1.25, game=f"g{i}"), date="2026-11-22") for i in range(10)]
+    tb = TN.build("2026-11-22", now=NOW)
+    tot, pre, capped = TN.totals(tb)
+    assert capped and tot <= 8.0 and len({x["stake"] for x in tb}) == 1                   # v2: same proportion for all
+
+
+def test_score_under_50_is_paper_only(ledger):
+    ledger += [row("bet_only", "Low", "over", 5.5, 1.0), row("bet_only", "Hi", "over", 6.5, 1.0, game="g2")]
+    SCORES.update({"Low": 49.9})
+    tb = {x["player"]: x for x in TN.build("2026-11-24", now=NOW)}
+    assert tb["Low"]["stake"] == 0 and tb["Low"]["held"].startswith("paper only") and tb["Hi"]["stake"] == 1.0
