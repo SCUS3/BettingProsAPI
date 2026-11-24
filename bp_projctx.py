@@ -62,8 +62,9 @@ def context(date, player, market, side, line):
         gap = round(cal - line, 2)
         cs = "over" if cal > line else "under" if cal < line else None
         tag = "agrees" if cs == side else "disagrees" if cs else "on the line"
-        return {"text": f"BP proj raw {proj:g} → calibrated {cal:g} (gap {gap:+.2f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')}"
-                        f" · as of {asof}", "tag": tag, "proj": proj, "proj_cal": cal, "gap": gap}
+        shown = f"raw {proj:.1f} → calibrated {cal:.1f}" if bp_calib.USE_CALIBRATION else f"{proj:.1f}"
+        return {"text": f"BP proj {shown} (gap {gap:+.1f} vs {line:g}) · {DOT.get(tag, '⚪ on the line')} · as of {asof}",
+                "tag": tag, "proj": proj, "proj_cal": bp_calib.value(market, proj), "gap": gap}
     lean = ps or r.get("bp_lean") or None
     gap = round(proj - line, 2)
     if not lean:

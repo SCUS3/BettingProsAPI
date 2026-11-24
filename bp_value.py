@@ -728,7 +728,7 @@ def _proj_fields(r):
     """Raw and calibrated BettingPros projection for the ledger (calibration applies to 3PM/P+R only)."""
     import bp_calib
     raw = _f(r.get("bp_proj"))
-    return {"bp_proj_raw": raw, "bp_proj_cal": bp_calib.calibrate(r.get("market"), raw) if raw is not None else None}
+    return {"bp_proj_raw": raw, "bp_proj_cal": bp_calib.value(r.get("market"), raw) if raw is not None else None}
 
 
 

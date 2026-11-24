@@ -626,7 +626,13 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         if p is None:
             return ""
         c = _calib(r.get("market"), p)
-        return (f"{p:g}→{c:g}" if c is not None and c != p else f"{p:g}") + ("*" if r.get("placeholder") else "")
+        return (f"{p:.1f}→{c:.1f}" if c is not None and c != p else f"{p:.1f}".rstrip("0").rstrip(".") if p == int(p) else f"{p:.1f}") \
+            + ("*" if r.get("placeholder") else "")
+    def dvp_s(r):                                   # 🟢 soft matchup (1-10), 🔴 hard (21-30); 1 = softest
+        v = _num(r.get("dvp_softness"))
+        if v is None:
+            return ""
+        return f"{'🟢 ' if v <= 10 else '🔴 ' if v >= 21 else ''}{v:g}"
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
     def table(group, bold):
         ranked_col = {"gap": "Gap %", "score": "Score", "balanced": "Bal"}[bold]
@@ -638,7 +644,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         for i, r in enumerate(group[:n], 1):
             mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"   # market EV; model lists carry no stake
             body.append([str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
-                         proj_s(r), cell(r["pct_gap"]), odds_s(r["fd_odds_rec"]), mev, cell(r["dvp_softness"]), form_s(r),
+                         proj_s(r), cell(r["pct_gap"]), odds_s(r["fd_odds_rec"]), mev, dvp_s(r), form_s(r),
                          cell(r["score"]), cell(r["balanced"]), cell(r.get("signals")), inj(r)])
         return md_table(cols, body) + [""]
     lean_cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
@@ -646,7 +652,7 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     def lean_row_cells(i, r):
         mev = "" if r.get("oa_ev") in (None, "") else f"{100 * float(r['oa_ev']):+.1f}%"
         return [str(i), cell(r["player"]), cell(r["market"]), side_s(r["rec_side"]), cell(r["line"]), bp_dot(r),
-                proj_s(r) or "–", odds_s(r["fd_odds_rec"]), mev, cell(r["dvp_softness"]), form_s(r), cell(r.get("s_market")),
+                proj_s(r) or "–", odds_s(r["fd_odds_rec"]), mev, dvp_s(r), form_s(r), cell(r.get("s_market")),
                 cell(r["balanced"]), inj(r)]
 
     lines = [f"# NBA props: {date}", "",
@@ -655,8 +661,8 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
              "Balanced: 40% Score + 25% form + 20% market value (no-vig price, line vs. consensus) + "
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
              "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
-             "Columns: BP 🟢 = BettingPros' projection (calibrated for 3PM/P+R) or lean is on the listed side, 🔴 = the other side, "
-             "– = no projection. Proj shows raw→calibrated for 3PM/P+R. Mkt EV = market EV at FanDuel's price. Mkt value = "
+             "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side (an under projected below the line is 🟢), "
+             "🔴 = the other side, – = no projection. Proj = BettingPros' raw projection. DvP 🟢 = soft matchup (1-10), 🔴 = hard (21-30). Mkt EV = market EV at FanDuel's price. Mkt value = "
              "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
              "injury report (Y/N). ▼ = the column the list is ranked by.", "",
              f"**{kelly_note}**" if kelly_note else "", ""]
@@ -1373,7 +1379,8 @@ def attach_value(rows, date):
 def _calib(market, proj):
     import bp_calib
     p = _num(proj)
-    return bp_calib.calibrate(market, p) if p is not None and market in bp_calib.MARKETS else None
+    return (bp_calib.calibrate(market, p) if p is not None and market in bp_calib.MARKETS and bp_calib.USE_CALIBRATION
+            else None)
 
 
 def write_dashboard(rows, date, kelly_note=""):

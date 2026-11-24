@@ -13,6 +13,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 MARKETS = ("3PM", "P+R")
 SHRINK_N = 200
+USE_CALIBRATION = False      # off for now: display and tags use BettingPros' raw projection; factors are still logged
 _cache = {}
 
 
@@ -54,11 +55,16 @@ def factors():
     return _cache
 
 
-def calibrate(market, proj):
-    """Calibrated projection (3PM/P+R); other markets unchanged."""
+def value(market, proj):
+    """The calibrated projection (3PM/P+R), whether or not calibration is in use. Logged as bp_proj_cal."""
     if proj is None or market not in MARKETS:
         return proj
     return round(float(proj) * factors()[market]["factor"], 2)
+
+
+def calibrate(market, proj):
+    """Projection used for display and agree/disagree: calibrated when USE_CALIBRATION, else raw."""
+    return value(market, proj) if USE_CALIBRATION else proj
 
 
 if __name__ == "__main__":

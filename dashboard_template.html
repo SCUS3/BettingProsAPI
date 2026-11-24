@@ -400,7 +400,7 @@ footer b { color: var(--ink); font-weight: 600; }
           (r.proj_cal != null && r.proj_cal !== r.proj ? '<span title="BettingPros raw projection → calibrated (actual ÷ projection on graded props)">' + num(r.proj) + ' <span class="dim">→</span> ' + num(r.proj_cal) + "</span>" : num(r.proj)),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
         odds: odds(r.odds),
-        dvp: r.dvp == null ? "" : r.dvp,
+        dvp: r.dvp == null ? "" : (r.dvp <= 10 ? '<span style="color:#1a9a4a" title="Soft matchup (1 = softest)">●</span> ' : r.dvp >= 21 ? '<span style="color:#d03a2f" title="Hard matchup (30 = hardest)">●</span> ' : "") + r.dvp,
         form: r.form == null ? '<span class="dim">–</span>' : Math.round(r.form * 100) + "%",
         score: r.score == null ? '<span class="dim">–</span>' : '<span class="pill ' + tone(r.score) + '">' + r.score + "</span>",
         bal: '<span class="pill ' + tone(r.bal) + '">' + r.bal + "</span>",
