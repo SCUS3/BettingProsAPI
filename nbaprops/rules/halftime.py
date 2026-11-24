@@ -7,7 +7,7 @@ with fouls, minutes, the margin and skip flags (3+ fouls, 20+ point margin, inju
 Then you paste live odds (bp_value.py --half-paste).
 
     python3 bp_halftime.py                 # games at halftime now
-    python3 bp_halftime.py --watch         # poll ESPN every 2 min; alert at each new halftime; exits at the next one
+    python3 bp_halftime.py --watch         # poll ESPN every 2 min; alert at every halftime; runs until the last game's half
                                            # (so the session is told), or when every game is past halftime
 
 Pregame FanDuel lines: today's saved pull (bp_props_<date>.csv), the day's value file, and the latest saved Unabated
@@ -341,37 +341,59 @@ def notify(msg):
 
 
 def run(date, watch=False, seen=None):
-    """Report games at halftime now; with watch=True poll ESPN and exit at the next halftime."""
+    """Report games at halftime now. With watch=True, poll ESPN every 2 minutes and handle every halftime as it
+    comes (snapshot, alerts, Mac notification, one 'HALFTIME ALERT' line per game) until every game is past
+    halftime; a failed ESPN check is retried at the next poll. Never needs restarting."""
     lines = pregame_lines(date)
     seen = set(seen or [])
     try:
         done = set(json.load(open(snapshot_path(date))))
     except (OSError, ValueError):
         done = set()
+    if watch:
+        try:                                          # keep the Mac awake while watching (sleep would skip halftimes)
+            import subprocess
+            subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+        except OSError:
+            pass
     while True:
-        gs = games(date)
+        try:
+            gs = games(date)
+        except Exception as e:
+            if not watch:
+                raise
+            print(f"[{time.strftime('%H:%M')}] ESPN check failed ({e}); retrying in 2 min.", flush=True)
+            time.sleep(120)
+            continue
         new = [g for g in gs if g["status"] == "STATUS_HALFTIME" and g["id"] not in done and g["id"] not in seen]
         for g in new:
-            rows = off_pace(date, g, lines)
+            try:
+                rows = off_pace(date, g, lines)
+            except Exception as e:
+                print(f"[{time.strftime('%H:%M')}] {g['name']} at halftime: box score unavailable ({e}); retrying.", flush=True)
+                continue
             al = alerts(rows)
             save(date, g, rows)
             report(date, g, al)
             print(f"  ({len(rows)} player props snapshotted for the base rate)")
             live = [x for x in al if not x["skip"]]
-            notify(f"{g['name']} at halftime: {len(live)} strong flags (paste live odds)" if live else
+            msg = (f"{g['name']} at halftime: {len(live)} strong flags (paste live odds)" if live else
                    f"{g['name']} at halftime: no strong flags")
+            notify(msg)
+            print(f"[{time.strftime('%H:%M')}] HALFTIME ALERT {msg}" +
+                  "".join(f" | {x['player']} {x['market']} exp {x.get('exp_final')} (fair live ~{x.get('fair_live')})" for x in live),
+                  flush=True)
             seen.add(g["id"])
         if not watch:
             if not new:
                 print("No game at halftime right now." if not any(g["status"] == "STATUS_HALFTIME" for g in gs)
                       else "Halftime games already reported (see history/<date>/halftime_<date>.json).")
             return
-        if new:
-            print("\nExiting so the session is told; restart --watch for the next halftime.", flush=True)
-            return
-        left = [g for g in gs if g["status"] in ("STATUS_SCHEDULED", "STATUS_IN_PROGRESS") and (g["period"] or 0) <= 2]
+        left = [g for g in gs if g["id"] not in done | seen and
+                (g["status"] in ("STATUS_SCHEDULED", "STATUS_HALFTIME") or
+                 (g["status"] == "STATUS_IN_PROGRESS" and (g["period"] or 0) <= 2))]
         if not left:
-            print("Every game is past halftime. Done.", flush=True)
+            print(f"[{time.strftime('%H:%M')}] Every game is past halftime. Watch done.", flush=True)
             return
         time.sleep(120)
 

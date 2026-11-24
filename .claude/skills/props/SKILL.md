@@ -113,7 +113,7 @@ When the user sends props in chat, run `python3 bp_value.py --proj "<player> <ma
 
 ## Halftime live (experimental, own record)
 
-On game nights, after the watch, run `python3 bp_halftime.py --watch` in the background (free ESPN polling). It exits at each new halftime so you're told: report the off-pace list (skip flags shown) and ask the user to paste live odds, then restart it for the next halftime. When they paste, save it and run `python3 bp_value.py --half-paste <file> --dry`, then without `--dry` to log HALF BETs. Paste format: `Player PTS o14.5 FD -110 | DK -125/-105 | MGM -120/-110 | Novig -118/-108`. Never mix HALF BETs into the pregame records. The Odds API live test is one call only, asked first.
+On game nights, after the watch, run `python3 bp_halftime.py --watch` in the background (free ESPN polling). It runs until the last game's halftime without restarting: at each halftime it saves the snapshot, sends the Mac notification and prints one `HALFTIME ALERT` line. Follow it with a Monitor on `tail -f halftime_<date>.log | grep --line-buffered -E "HALFTIME ALERT|failed|Traceback|Watch done"` so each alert reaches the session; report the flags (skip flags shown) and ask the user to paste live odds. When they paste, save it and run `python3 bp_value.py --half-paste <file> --dry`, then without `--dry` to log HALF BETs. Paste format: `Player PTS o14.5 FD -110 | DK -125/-105 | MGM -120/-110 | Novig -118/-108`. Never mix HALF BETs into the pregame records. The Odds API live test is one call only, asked first.
 
 ## R+A and the alt ladder (from 11/24)
 
