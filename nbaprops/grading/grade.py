@@ -11,7 +11,7 @@ from nbaprops.config import ROOT as HERE
 from nbaprops.rules import ledger as L
 
 
-def grade(side, line, actual):
+def grade(side: str, line, actual) -> str | None:
     """'W', 'L' or 'P' for the recommended side, None if not gradable."""
     line, actual = L._num(line), L._num(actual)
     if line is None or actual is None or side not in ("over", "under"):
@@ -21,7 +21,8 @@ def grade(side, line, actual):
     return "W" if (actual > line) == (side == "over") else "L"
 
 
-def profit(odds, result, stake=1.0):
+def profit(odds, result: str, stake: float = 1.0) -> float | None:
+    """Units won/lost for a result at American odds and a stake (push 0)."""
     if result == "W":
         d = L.decimal(odds)
         return round(stake * (d - 1), 3) if d else None
@@ -32,7 +33,7 @@ def profit(odds, result, stake=1.0):
     return None
 
 
-def pending_dates(today):
+def pending_dates(today: str) -> list[str]:
     """Slates before `today` that still have ungraded ledger rows or no graded props."""
     graded_dates = {r["date"] for r in L._read(L.GRADED)}
     open_ledger = {r["date"] for r in L._read(L.LEDGER) if not r.get("result")}
@@ -113,7 +114,7 @@ def finals_from_box(date, box):
     return out, dnp, unmatched
 
 
-def grade_date(date, finals, scored_markets=(), voids=()):
+def grade_date(date: str, finals: dict, scored_markets=(), voids=()) -> tuple[int, int, int]:
     """Grade the slate for `date` against final stats ({L.prop_key: actual}).
     Learning rows come from each game's last pre-tip snapshot. A pick is void ('V', no action) when its
     game and market (in `scored_markets`) have final stats but the player has none (did not play).

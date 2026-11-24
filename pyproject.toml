@@ -1,0 +1,24 @@
+[project]
+name = "nbaprops"
+version = "2.0.0"
+description = "NBA player props: FanDuel lines priced against BettingPros projections, Unabated and CrazyNinja; records and grading."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 135
+target-version = "py311"
+extend-exclude = [".venv", "history", "sim"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP"]
+ignore = [
+  "E402",   # imports after module docstrings/settings are intentional in the entry modules
+  "E501",   # long f-strings in report output
+  "E731",   # small lambdas used as local key functions
+  "E741",   # short names like l in comprehensions
+  "B008", "B023", "B905",
+  "UP006", "UP007", "UP015", "UP035", "UP045",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

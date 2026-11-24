@@ -39,7 +39,7 @@ def main():
     ev = next((e for e in evs if e.get("home_team") == home and e.get("away_team") == away), None)
     if not ev:
         sys.exit(f"No Odds API event for {away} @ {home} (it lists {len(evs)} events).")
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     body = V.get(f"/events/{ev['id']}/odds", {"regions": REGION, "markets": MARKET,
                                                                      "oddsFormat": "american"}, key, MAX_COST)
     books = []

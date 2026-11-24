@@ -11,7 +11,7 @@ CATEGORY_ORDER = [("PTS", "Points"), ("REB", "Rebounds"), ("AST", "Assists"), ("
                   ("R+A", "Rebounds + Assists")]
 
 
-def md_table(cols, rows):
+def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
     """Markdown table with padded, aligned columns. cols = [(header, "l"|"r"|"c")]; rows = lists of strings."""
     import unicodedata
     def w(s):                                       # display width (emoji dots are double width)
@@ -28,7 +28,7 @@ def md_table(cols, rows):
     return out
 
 
-def write_top_by_market(rows, date, n=10, kelly_note=""):
+def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: str = "") -> str:
     """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     from nbaprops.app.props import _num, fmt, ranked, REAL_PROJ_MARKETS, DISABLED  # scoring helpers (imported here: props imports this module)
     out = f"bp_top10_{date}.md"

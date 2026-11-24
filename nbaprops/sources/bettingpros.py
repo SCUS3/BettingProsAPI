@@ -39,7 +39,7 @@ class RunCapReached(RuntimeError):
     pass
 
 
-def get(path, params, key, retries=3):
+def get(path: str, params: dict, key: str, retries: int = 3) -> dict:
     """GET a v3 endpoint, honouring 429/503 back-off."""
     global REQUESTS_MADE
     url = f"{BASE}{path}?{urllib.parse.urlencode(params)}"
@@ -67,7 +67,7 @@ def get(path, params, key, retries=3):
 
 
 def _utc_day():
-    return dt.datetime.now(dt.timezone.utc).date().isoformat()
+    return dt.datetime.now(dt.UTC).date().isoformat()
 
 
 def _count_request():
@@ -86,7 +86,8 @@ def _count_request():
         pass
 
 
-def used_today():
+def used_today() -> int:
+    """Requests sent today (UTC day) from bp_requests.json."""
     try:
         with open(REQUEST_LOG) as f:
             return json.load(f).get(_utc_day(), 0)
@@ -152,6 +153,7 @@ BLOCK = {"steals", "steal", "blocks", "block", "turnovers", "turnover", "double"
 
 
 def load_cache():
+    """Books/markets cache (bp_cache.json), {} if missing."""
     try:
         with open(CACHE) as f:
             return json.load(f)
@@ -160,6 +162,7 @@ def load_cache():
 
 
 def save_cache(c):
+    """Write the books/markets cache."""
     try:
         with open(CACHE, "w") as f:
             json.dump(c, f, indent=1)
@@ -168,6 +171,7 @@ def save_cache(c):
 
 
 def find_fanduel(key, location, cache):
+    """FanDuel's BettingPros book id for a location (cached; 1 request on a miss)."""
     ck = f"fanduel_{location}"
     if ck in cache:
         return cache[ck]
@@ -224,6 +228,7 @@ def nba_markets(key, cache, refresh=False):
 
 
 def props_params(date, book_id, market_ids, limit, page=1, event_id=None, ev_threshold=False):
+    """Query parameters for one /props page."""
     params = {
         "sport": "NBA",
         "limit": limit,
@@ -263,6 +268,7 @@ def pull_props(key, date, book_id, market_ids, page_limit, event_id=None):
 
 
 def pages_left(first):
+    """Pages still to fetch after page 1 of a paged response."""
     return max(((first or {}).get("_pagination") or {}).get("total_pages", 1) - 1, 0)
 
 
@@ -282,6 +288,7 @@ def fetch_pages(path, params, key, list_key, first):
 
 
 def offers_params(event_ids, market_ids, book_id, limit):
+    """Query parameters for /offers (FanDuel main lines for these events and markets)."""
     return {"sport": "NBA", "event_id": ":".join(str(e) for e in sorted(event_ids)), "market_id": market_ids,
             "book_id": book_id, "condense": "true", "limit": limit}
 

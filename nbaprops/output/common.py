@@ -11,6 +11,7 @@ def _num(v):
 
 
 def load_value(date):
+    """The day's market-check value file (value_<date>.json), {} if missing."""
     try:
         with open(os.path.join(_ROOT, f"value_{date}.json")) as f:
             return json.load(f)

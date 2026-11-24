@@ -26,6 +26,7 @@ def norm(name):
 
 
 def fetch(timeout=20):
+    """Read RotoWire's public lineups page (no API request); [] if unavailable."""
     try:
         req = urllib.request.Request(URL, headers={"User-Agent": UA, "Accept": "text/html"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -35,6 +36,7 @@ def fetch(timeout=20):
 
 
 def parse(page):
+    """Parse the lineups page into player rows."""
     players = []
     blocks = page.split('class="lineup is-nba"')[1:]
     for blk in blocks:
@@ -72,8 +74,10 @@ def index(players):
 
 
 def is_out(p):
+    """True for a status that means the player won't play."""
     return p["status"] in ("Out", "OFS") or p["play_pct"] == 0
 
 
 def is_doubtful(p):
+    """True for a doubtful-type status."""
     return not is_out(p) and (p["status"] in ("Ques", "GTD", "Doubt") or p["play_pct"] <= 50)

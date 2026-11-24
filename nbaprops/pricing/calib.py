@@ -19,6 +19,7 @@ _cache = {}
 
 
 def samples():
+    """{(date, player, market): (projection, actual)} for graded 3PM/P+R props and sim pulls."""
     seen = {}
     try:
         for r in csv.DictReader(open(os.path.join(HERE, "bp_graded.csv"))):

@@ -15,6 +15,7 @@ REPRICE_PER_GAME = C.REPRICE_PER_GAME  # nbaprops/config.py
 
 
 def et(ts):
+    """A UTC time in ET."""
     try:
         from zoneinfo import ZoneInfo
         return ts.astimezone(ZoneInfo("America/New_York"))
@@ -29,12 +30,13 @@ def slate(date):
     for e in sb.get("events", []):
         if (e.get("season") or {}).get("type") != 2:
             continue
-        tip = dt.datetime.strptime(e["date"], "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc)
+        tip = dt.datetime.strptime(e["date"], "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.UTC)
         out.append((tip, e.get("shortName"), e.get("status", {}).get("type", {}).get("name")))
     return sorted(out)
 
 
 def plan(date):
+    """Earliest tip, suggested first pull and request estimates for a date."""
     games = slate(date)
     if not games:
         return {"date": date, "games": 0}

@@ -57,11 +57,13 @@ class Unavailable(Exception):
 
 
 def key():
+    """The Unabated API key from .env (never printed)."""
     bp_props.load_dotenv()
     return os.environ.get("UNABATED_API_KEY")
 
 
 def load(path, default):
+    """Read a JSON state file, or the default."""
     try:
         with open(path) as f:
             return json.load(f)
@@ -70,15 +72,18 @@ def load(path, default):
 
 
 def save(path, d):
+    """Write a JSON state file."""
     with open(path, "w") as f:
         json.dump(d, f, indent=1)
 
 
 def mark_unavailable(reason):
+    """Record a 401/403 so bp_value falls back to The Odds API."""
     save(STATE, {"disabled": True, "reason": reason, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
 
 
 def state():
+    """Unabated availability state."""
     return load(STATE, {"disabled": False})
 
 
@@ -124,22 +129,22 @@ def get(path, params=None, odds=False, tries=3):
             if e.code in (401, 403):
                 reason = f"HTTP {e.code} on {path}: {text}"
                 mark_unavailable(reason)
-                raise Unavailable(reason)
+                raise Unavailable(reason) from e
             if e.code in (429, 503) and attempt < tries - 1:
                 wait = min(_retry_after(e.headers), 60.0)
                 print(f"  Unabated {e.code} on {path}; waiting {wait:.0f}s (Retry-After)")
                 time.sleep(wait)
                 continue
-            raise RuntimeError(f"Unabated HTTP {e.code} on {path}: {text}")
+            raise RuntimeError(f"Unabated HTTP {e.code} on {path}: {text}") from e
         except (TimeoutError, urllib.error.URLError) as e:
             if attempt < tries - 1:
                 print(f"  Unabated {path}: {type(e).__name__} ({getattr(e, 'reason', e)}); retrying once more")
                 continue
-            raise RuntimeError(f"Unabated {path}: no response ({e})")
+            raise RuntimeError(f"Unabated {path}: no response ({e})") from e
         try:
             env = json.loads(body) if body.strip() else {}
-        except ValueError:
-            raise RuntimeError(f"Unabated {path}: non-JSON response")
+        except ValueError as e:
+            raise RuntimeError(f"Unabated {path}: non-JSON response") from e
         if isinstance(env, dict) and env.get("success") is False:
             raise RuntimeError(f"Unabated {path}: success=false {env.get('messages')}")
         if isinstance(env, dict) and "success" in env:
@@ -219,6 +224,7 @@ def analyze(out):
 
 
 def report(d):
+    """Print the discovery summary."""
     print(f"NBA league: {'yes' if d.get('nba') else 'NO'}")
     print("Bet types for our markets: " + (", ".join(f"{t} = {' / '.join(b['name'] + ' (' + str(b['id']) + ')' for b in v)}" for t, v in sorted(d.get("bettypes", {}).items())) or "none"))
     print(f"People (player ids) on the NBA props board: {d.get('people_count', 0)}")
@@ -250,6 +256,7 @@ def usable():
 
 
 def method():
+    """How fair prices are made with this key."""
     d = load(DISCOVERY, {})
     return "line" if d.get("line_source_id") is not None else "books"
 
@@ -346,6 +353,7 @@ def _devig_over(o, u):
 
 
 def price_board(picks, data, d, now=None):
+    """Fair price and EV for each pick from the board: median of devigged books and exchanges pricing both sides at FanDuel's line (3+ sources)."""
     now = now or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     people = {str(x["id"]): norm(_name(x)) for x in _items((d.get("raw") or {}).get("people")) if x.get("id") is not None}
     bt_tag = {str(b["id"]): t for t, v in d.get("bettypes", {}).items() for b in v}

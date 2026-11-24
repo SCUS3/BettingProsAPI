@@ -27,10 +27,12 @@ SIM_LEDGER = os.path.join(SIM, "sim_ledger.csv")
 
 
 def raw_path(date):
+    """Path of a sim date's saved raw pull."""
     return os.path.join(SIM, date, "props_raw.json")
 
 
 def pull(date, cap):
+    """Pull a past date's FanDuel props (BettingPros requests; ask first)."""
     B.load_dotenv()
     key = os.environ.get("BP_API_KEY")
     if not key:
@@ -49,6 +51,7 @@ def pull(date, cap):
 
 
 def offer_from(p, fd):
+    """FanDuel offer dict from a /props row."""
     off = {"event_id": p.get("event_id"), "market_id": p.get("market_id"),
            "player": (p.get("participant") or {}).get("name"), "player_id": str((p.get("participant") or {}).get("id") or "")}
     for side in ("over", "under"):
@@ -90,8 +93,8 @@ def live_reserve():
     For each ET date whose first pull (earliest tip - 90 min) or games fall before the window resets: the full
     pull if it hasn't run, plus the re-price. Sims only get what's left, so they never delay or trim a live pull."""
     from nbaprops.app import schedule as S
-    now = dt.datetime.now(dt.timezone.utc)
-    window_end = dt.datetime.combine(now.date() + dt.timedelta(days=1), dt.time(), dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
+    window_end = dt.datetime.combine(now.date() + dt.timedelta(days=1), dt.time(), dt.UTC)
     reserve, notes = 0, []
     et_today = dt.date.fromisoformat(B.eastern_today())
     for d in (et_today, et_today + dt.timedelta(days=1)):
@@ -107,6 +110,7 @@ def live_reserve():
 
 
 def backfill(today, cap, go):
+    """Sim unpulled dates within the spare requests (newest first)."""
     used = B.used_today()
     reserve, notes = live_reserve()
     spare = max(0, B.DAILY_LIMIT - used - reserve)
@@ -126,7 +130,7 @@ def backfill(today, cap, go):
         print("No spare requests after the live flow: no sims this window.")
         return
     spent, done = 0, []
-    for ds, g, c in reversed(todo):                   # newest first
+    for ds, _g, c in reversed(todo):                   # newest first
         if spent + c > cap:
             continue
         B.BP.REQUESTS_MADE = 0
@@ -149,6 +153,7 @@ def backfill(today, cap, go):
 
 
 def sim_record():
+    """Print the sim record."""
     led = L._read(SIM_LEDGER)
     if not led:
         return
@@ -217,6 +222,7 @@ def strip_tonight(p):
 
 
 def score(props, fd, labels, date):
+    """Score a sim pull like a live one (form with that game removed)."""
     pulled, tip = f"{date}T17:00:00Z", f"{date}T23:59:00Z"   # sim: every prop treated as pre-tip
     rows = []
     for p in props:
@@ -245,6 +251,7 @@ def score(props, fd, labels, date):
 
 
 def log_and_grade(rows, date, quiet=False):
+    """Log and grade sim picks in the sim ledger."""
     real = (L.LEDGER, L.GRADED)
     L.LEDGER, L.GRADED = SIM_LEDGER, os.path.join(SIM, "sim_graded.csv")    # never the real files
     try:

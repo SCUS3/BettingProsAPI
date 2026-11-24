@@ -113,6 +113,7 @@ def first(*vals):
 
 
 def implied(american):
+    """Implied probability of American odds (None-safe)."""
     return None if american is None else _odds.implied_prob(american)
 
 
@@ -124,6 +125,7 @@ BASE_FIELDS = ["player", "player_id", "team", "injury", "market", "event_id", "b
 
 
 def base_from_prop(p, labels):
+    """BettingPros' book-agnostic data for one /props row."""
     part = p.get("participant") or {}
     pl = part.get("player") or {}
     proj = p.get("projection") or {}
@@ -336,6 +338,7 @@ def warn_started(tips, pulled_at):
 
 
 def save_pull(date, pulled_at, fd, market_ids, events, tips, props, offers, rows, kind="full", extra=None, only=None):
+    """Save a pull's pagination and per-game counts to history/<date>/pull_<time>.json."""
     fd_rows = [r for r in rows if r["price_is_fanduel"]]
     per_game = {}
     for r in fd_rows:

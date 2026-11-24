@@ -23,6 +23,7 @@ from nbaprops.config import ROOT as HERE  # noqa: E402
 
 
 def lines_for(date):
+    """Pregame FanDuel lines for a date (pull, value file, saved boards, sim pull)."""
     out = H.pregame_lines(date)
     path = os.path.join(HERE, "sim", date, f"sim_props_{date}.csv")
     if os.path.exists(path):
@@ -130,6 +131,7 @@ def check(date):
 
 
 def backfill(date):
+    """Backfill base-rate rows for a date's final games without a live snapshot."""
     lines = lines_for(date)
     if not lines:
         return 0
@@ -171,6 +173,7 @@ def backfill(date):
 
 
 def dates():
+    """Dates with a pull or a sim pull."""
     ds = {os.path.basename(p)[9:-4] for p in glob.glob(os.path.join(HERE, "bp_props_*.csv"))}
     ds |= {os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(HERE, "sim", "*", "sim_props_*.csv"))}
     return sorted(ds)

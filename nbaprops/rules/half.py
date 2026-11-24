@@ -45,6 +45,7 @@ def _mult(o, u):
 
 
 def parse(text, names):
+    """Parse a halftime live-odds paste into props with FanDuel's price and other books' two-way prices."""
     out, bad = [], []
     for ln in [x for x in text.splitlines() if x.strip()]:
         head = ln.split("|")[0]
@@ -80,6 +81,7 @@ def context(date):
 
 
 def run(args):
+    """Price a halftime paste, log HALF BETs and every priced row (bp_value.py --half-paste)."""
     text = sys.stdin.read() if args.half_paste == "-" else open(args.half_paste).read()
     led = L._read(L.LEDGER)
     ctx = context(args.date)

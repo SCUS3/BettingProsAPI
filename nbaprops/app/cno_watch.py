@@ -21,6 +21,7 @@ KNOWN = {"/api/devigger/v1/sportsbook_devigger.aspx"}
 
 
 def check(force=False):
+    """Weekly check of CrazyNinja's API page; message when an odds endpoint appears, None if checked recently."""
     try:
         st = json.load(open(STATE))
     except (OSError, ValueError):

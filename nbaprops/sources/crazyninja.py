@@ -59,6 +59,7 @@ def params(leg_odds, other_odds, final_odds, method=WORST_CASE, boost=None, boos
 
 
 def url(*a, **k):
+    """The devigger URL for one source's two-way market (for display)."""
     return f"{URL}?{urllib.parse.urlencode(params(*a, **k))}"
 
 

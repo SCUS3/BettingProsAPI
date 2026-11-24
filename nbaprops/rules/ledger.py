@@ -108,7 +108,7 @@ V2_START = dict(RULE_VERSIONS)["v2"]
 CURRENT_VERSION = RULE_VERSIONS[-1][0]
 
 
-def rule_version(row):
+def rule_version(row: dict) -> str:
     """Rule version of a ledger-style row: its stamped rule_version, else the latest version started by its slate date."""
     if row.get("rule_version"):
         return row["rule_version"]
@@ -133,11 +133,13 @@ def _truthy(v):
 
 
 def implied(odds):
+    """Implied probability of American odds (None-safe)."""
     o = _num(odds)
     return None if o is None else _odds.implied_prob(o)
 
 
 def decimal(odds):
+    """Decimal odds from American odds (None-safe)."""
     o = _num(odds)
     return None if o is None else _odds.american_to_decimal(o)
 
@@ -161,11 +163,13 @@ def is_placeholder(proj, line):
 
 
 def prop_key(event_id, market, player):
+    """Key for one prop: event|market|player."""
     return f"{event_id}|{market}|{player}"
 
 
 def utc_now():
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Current UTC time, ISO with Z."""
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def tip_iso(scheduled):
@@ -175,6 +179,7 @@ def tip_iso(scheduled):
 
 # ------------------------------------------------------------ snapshots
 def save_snapshot(rows, date, fields):
+    """Save a pull's rows to history/<date>/."""
     pulled = rows[0].get("pulled_at") if rows else None
     if not pulled:
         return None
@@ -236,6 +241,7 @@ BP_TO_RW = {"NOR": "NOP", "PHO": "PHX", "UTH": "UTA", "GS": "GSW", "NY": "NYK", 
 
 
 def save_rotowire(players, date, pulled):
+    """Save the run's RotoWire snapshot."""
     if not players or not pulled:
         return
     os.makedirs(os.path.join(HISTORY, date), exist_ok=True)
@@ -251,6 +257,7 @@ def save_pull_log(date, pulled, data, prefix="pull_"):
 
 
 def update_pull_log(date, pulled, extra):
+    """Add fields to a saved pull log."""
     path = os.path.join(HISTORY, date, "pull_" + pulled.replace("-", "").replace(":", "") + ".json")
     try:
         with open(path) as f:
@@ -628,6 +635,7 @@ def fit_model():
 
 
 def load_model():
+    """The fitted model (bp_model.json), {} if none."""
     try:
         with open(MODEL) as f:
             return json.load(f)
@@ -636,6 +644,7 @@ def load_model():
 
 
 def trust(model):
+    """Model weight from its sample size and validation."""
     if not model.get("weights"):
         return 0.0
     n = model.get("n", 0)
@@ -820,7 +829,7 @@ def _dec(a):
     return _odds.american_to_decimal(a)
 
 
-def record(version="v2"):
+def record(version: str = "v2") -> dict:
     """Summary of counted (pre-tip) picks for the dashboard and terminal, for one rule version (v2 default; v1 = the
     archive before 2026-11-24). Versions follow slate dates, so per-day run detection is unaffected by the filter."""
     ledger = [r for r in _read(LEDGER) if rule_version(r) == version]

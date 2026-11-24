@@ -37,7 +37,7 @@ def _et(iso):
     if not iso:
         return "?"
     import datetime as dt
-    t = dt.datetime.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
+    t = dt.datetime.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.UTC)
     try:
         from zoneinfo import ZoneInfo
         t = t.astimezone(ZoneInfo("America/New_York"))
@@ -46,7 +46,7 @@ def _et(iso):
     return t.strftime("%-I:%M %p ET")
 
 
-def context(date, player, market, side, line):
+def context(date: str, player: str, market: str, side: str, line: float) -> dict:
     """-> {"text", "tag", "proj", "gap"} for the +EV side `side` at `line`."""
     idx, markets, asof = load(date)
     if market not in markets:                       # exact market only: never another market's projection
@@ -75,7 +75,7 @@ def context(date, player, market, side, line):
             "tag": tag, "proj": proj, "gap": gap}
 
 
-def dvp_effect(side, softness):
+def dvp_effect(side: str | None, softness) -> str | None:
     """Side-aware matchup: 'helps' (soft 1-10 for an over, hard 21-30 for an under), 'hurts' (the reverse),
     'neutral' (11-20), None if unknown. DvP 1 = softest defense vs. the position."""
     try:
@@ -92,7 +92,7 @@ def dvp_effect(side, softness):
     return None
 
 
-def dvp_dot(side, softness):
+def dvp_dot(side: str | None, softness) -> str:
     """'🟢 7' / '🔴 28' / '15' (side-aware), '' if unknown."""
     e = dvp_effect(side, softness)
     if e is None:
@@ -101,7 +101,7 @@ def dvp_dot(side, softness):
     return {"helps": "🟢 ", "hurts": "🔴 "}.get(e, "") + f"{v:g}"
 
 
-def dvp_of(date, player, market):
+def dvp_of(date: str, player: str, market: str) -> float | None:
     """DvP softness for a player/market from today's pull (any row, projection or not), or None."""
     import csv
     for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))) if os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv")) else []:

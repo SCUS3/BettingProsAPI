@@ -36,6 +36,7 @@ PARTS = {"PTS": ("PTS",), "REB": ("REB",), "AST": ("AST",), "3PM": ("3PM",), "P+
 
 
 def et_today():
+    """Today's ET date."""
     try:
         from zoneinfo import ZoneInfo
         return dt.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
@@ -85,6 +86,7 @@ def pregame_lines(date):
 
 
 def games(date):
+    """ESPN scoreboard for an ET date with status, period, score and margin."""
     sb = BX._get(f"{BX.ESPN}/scoreboard?dates={date.replace('-', '')}&limit=100")
     out = []
     for e in sb.get("events", []):
@@ -97,6 +99,7 @@ def games(date):
 
 
 def half_box(game_id):
+    """Live box score with first-half stats, fouls, minutes and an injury mention flag per player."""
     j = BX._get(f"{BX.ESPN}/summary?event={game_id}")
     plays = " ".join((p.get("text") or "") for p in j.get("plays", []) if (p.get("period") or {}).get("number", 9) <= 2).lower()
     players = {}
@@ -123,6 +126,7 @@ SHRINK_N = C.HALF_SHRINK_N  # nbaprops/config.py
 
 
 def bucket(pace):
+    """First-half pace bucket label for the expected-final shares."""
     return next(lbl for lo, hi, lbl in BUCKETS if (pace <= hi if lo == 0 else lo < pace <= hi) or (hi == 99 and pace > lo))
 
 
@@ -296,10 +300,12 @@ def flag_summary(version="v2"):
 
 
 def snapshot_path(date):
+    """Path of the date's halftime snapshot JSON."""
     return os.path.join(HERE, "history", date, f"halftime_{date}.json")
 
 
 def save(date, game, rows):
+    """Save a game's halftime snapshot (every player with a pregame line)."""
     path = snapshot_path(date)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
@@ -312,6 +318,7 @@ def save(date, game, rows):
 
 
 def report(date, game, rows):
+    """Print a game's halftime alerts."""
     print(f"\nHALFTIME {game['name']}  {' - '.join(f'{t} {s}' for t, s in game['score'].items())}  (margin {game['margin']})"
           + ("  SKIP GAME: 20+ margin" if game["margin"] >= MARGIN_FLAG else ""))
     if not rows:
@@ -324,6 +331,7 @@ def report(date, game, rows):
               + (f"   SKIP: {', '.join(x['skip'])}" if x["skip"] else ""))
 
 def notify(msg):
+    """macOS notification (best effort)."""
     try:
         import subprocess
         subprocess.run(["osascript", "-e", f'display notification {json.dumps(msg[:220])} with title "Halftime"'],
@@ -333,6 +341,7 @@ def notify(msg):
 
 
 def run(date, watch=False, seen=None):
+    """Report games at halftime now; with watch=True poll ESPN and exit at the next halftime."""
     lines = pregame_lines(date)
     seen = set(seen or [])
     try:

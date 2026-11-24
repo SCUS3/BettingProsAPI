@@ -24,7 +24,8 @@ MIN_REMAINING = C.ODDSAPI_MIN_REMAINING  # nbaprops/config.py
 
 
 # ------------------------------------------------------------------ credits
-def load_credits():
+def load_credits() -> dict:
+    """Odds API credit state from odds_credits.json (remaining, used, recent calls)."""
     try:
         with open(CREDITS) as f:
             return json.load(f)
@@ -33,12 +34,13 @@ def load_credits():
 
 
 def save_credits(c):
+    """Write the credit state (last 200 calls kept)."""
     c["calls"] = c.get("calls", [])[-200:]
     with open(CREDITS, "w") as f:
         json.dump(c, f, indent=1)
 
 
-def get(path, params, key, expect_cost):
+def get(path: str, params: dict, key: str, expect_cost: int) -> dict | list:
     """GET with the key; record the usage headers. Never prints the key."""
     url = f"{BASE}{path}?{urllib.parse.urlencode(dict(params, apiKey=key))}"
     try:
@@ -53,12 +55,13 @@ def get(path, params, key, expect_cost):
 
 
 def record(path, h, expect_cost):
+    """Record a call's x-requests-* headers; stop if it cost more than expected."""
     c = load_credits()
     num = lambda k: int(float(h.get(k))) if h and h.get(k) not in (None, "") else None
     used, rem, last = num("x-requests-used"), num("x-requests-remaining"), num("x-requests-last")
     if rem is not None:
         c["remaining"], c["used"] = rem, used
-    c["updated"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    c["updated"] = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     c.setdefault("calls", []).append({"at": c["updated"], "path": path.split("?")[0], "cost": last,
                                       "expected": expect_cost, "remaining": rem})
     save_credits(c)
@@ -68,7 +71,7 @@ def record(path, h, expect_cost):
         sys.exit(f"Stopped: that call cost {last}, more than the {expect_cost} expected. Check before continuing.")
 
 
-def guard(cost, hard=True):
+def guard(cost: int, hard: bool = True) -> bool:
     """False (or exit, if hard) when a call would leave fewer than MIN_REMAINING credits this month."""
     rem = load_credits().get("remaining")
     if rem is not None and rem - cost < MIN_REMAINING:

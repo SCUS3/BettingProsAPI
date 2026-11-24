@@ -45,6 +45,7 @@ SIDE = re.compile(r"\b(over|under|o|u)\s*(\d+(?:\.\d)?)\b", re.I)
 
 
 def known_players(date):
+    """Player names to match screener rows against (today's pull, ledger, graded props, Unabated people)."""
     names = set()
     for path in [os.path.join(HERE, f"bp_props_{date}.csv"), L.LEDGER, L.GRADED] + glob.glob(os.path.join(HERE, "bp_props_*.csv"))[-5:]:
         try:
@@ -162,8 +163,9 @@ def settings(text, plays, devig=None, min_books=None, max_odds=None):
 
 
 def settings_text(st):
+    """One-line summary of a paste's screener settings."""
     return (f"devig {st.get('devig') or '?'} (EV column '{st.get('ev_header') or '?'}'), min books {st.get('min_books') or '?'}, "
-            f"max odds {('%+g' % float(st['max_odds'])) if st.get('max_odds') not in (None, '') else '?'}")
+            f"max odds {format(float(st['max_odds']), '+g') if st.get('max_odds') not in (None, '') else '?'}")
 
 
 def _when(txt, date):
@@ -185,9 +187,9 @@ def _when(txt, date):
     t = dt.datetime.combine(base, dt.time(h, int(m.group(3))))
     try:
         from zoneinfo import ZoneInfo
-        t = t.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(dt.timezone.utc)
+        t = t.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(dt.UTC)
     except Exception:
-        t = (t + dt.timedelta(hours=5)).replace(tzinfo=dt.timezone.utc)
+        t = (t + dt.timedelta(hours=5)).replace(tzinfo=dt.UTC)
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -460,6 +462,7 @@ def _store_path(date):
 
 
 def store(date):
+    """Today's screener store (every row from -1% EV up), {} if none."""
     import json
     try:
         return json.load(open(_store_path(date)))

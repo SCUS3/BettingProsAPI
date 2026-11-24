@@ -30,7 +30,7 @@ ALIAS = {"GSW": "GS", "NYK": "NY", "SAS": "SA", "NOR": "NO", "NOP": "NO", "UTA":
 
 def _t(iso):
     s = str(iso).replace("Z", "")[:19]
-    return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S" if len(s) > 16 else "%Y-%m-%dT%H:%M").replace(tzinfo=dt.timezone.utc)
+    return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S" if len(s) > 16 else "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
 
 
 def _iso(t):
@@ -38,6 +38,7 @@ def _iso(t):
 
 
 def et_date(t):
+    """The ET calendar date of a UTC time."""
     try:
         from zoneinfo import ZoneInfo
         return t.astimezone(ZoneInfo("America/New_York")).date().isoformat()
@@ -45,7 +46,7 @@ def et_date(t):
         return (t - dt.timedelta(hours=5)).date().isoformat()
 
 
-def games(date):
+def games(date: str) -> list[dict]:
     """ESPN scoreboard for an ET date, cached CACHE_S seconds: [{id, start, status, abbrs, names}]."""
     hit = _sb.get(date)
     if hit and time.time() - hit[0] < CACHE_S:
@@ -78,7 +79,7 @@ def _match(tip_t, names):
     return [g for g in gs if abs((g["start"] - tip_t).total_seconds()) < 90]
 
 
-def started(tip, names=None):
+def started(tip: str, names=None) -> bool | None:
     """True if ESPN shows the game (matched by team, else by scheduled start) under way or over; None if unmatched."""
     m = _match(_t(tip), names)
     if not m:
@@ -86,11 +87,11 @@ def started(tip, names=None):
     return any(g["status"] not in ("STATUS_SCHEDULED", "STATUS_PREGAME", "STATUS_POSTPONED", "STATUS_DELAYED") for g in m)
 
 
-def is_open(tip, names=None, now=None):
+def is_open(tip: str | None, names=None, now: str | dt.datetime | None = None) -> bool:
     """Still bettable: before scheduled start + GRACE and ESPN doesn't show it under way (checked inside the window)."""
     if not tip:
         return True
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     if isinstance(now, str):
         now = _t(now)
     t = _t(tip)
@@ -101,7 +102,7 @@ def is_open(tip, names=None, now=None):
     return started(tip, names) is not True
 
 
-def deadline(tip):
+def deadline(tip: str) -> str:
     """ISO of scheduled start + GRACE (the latest a game can still be open)."""
     return _iso(_t(tip) + GRACE)
 
@@ -111,7 +112,7 @@ def _path(date):
     return os.path.join(HERE, "history", date, f"actual_starts_{date}.json")
 
 
-def save_actual_starts(date):
+def save_actual_starts(date: str) -> dict:
     """{bp event id: first-play time} for the date's final games (ESPN play-by-play), mapped by teams."""
     path = _path(date)
     try:
@@ -149,7 +150,7 @@ def save_actual_starts(date):
 _starts = {}
 
 
-def cutoff(tip, date, event_id=None):
+def cutoff(tip: str | None, date: str, event_id: str | None = None) -> str | None:
     """Grading cutoff for a row: the game's actual first play if known, else scheduled start + GRACE."""
     if not tip:
         return None

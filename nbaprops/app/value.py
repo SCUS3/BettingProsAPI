@@ -131,12 +131,14 @@ def game_teams(date):
 
 
 def report_dropped(dropped, full_cost, budget, n_games):
+    """Print what an Odds API credit cap left unchecked."""
     print(f"Odds API: the full set would cost {full_cost} credits (over {budget}). Keeping the {n_games} games with the most "
           f"shortlist plays; not checked ({len(dropped)}): " +
           "; ".join(f"#{p.get('rank', '?')} {p['player']} {p['market']} {p['side']} {p['line']:g}" for p in dropped))
 
 
 def gid(p):
+    """Game key for an Odds API event."""
     return str(int(float(p["event_id"])))
 
 
@@ -161,10 +163,12 @@ def plan(picks, budget=None):
 
 # -------------------------------------------------------------------- math
 def implied(a):
+    """Implied probability of American odds."""
     return _odds.implied_prob(a)
 
 
 def decimal(a):
+    """Decimal odds from American odds."""
     return _odds.american_to_decimal(a)
 
 
@@ -215,6 +219,7 @@ def value_for(pick, event):
 
 
 def match_event(events, teams, tip):
+    """Odds API event for a BettingPros game."""
     names = {TEAMS.get(t, t) for t in teams}
     best = None
     for e in events:
@@ -248,7 +253,7 @@ def bet_cap():
     return BET_KELLY_CAP, f"BET stakes ¼K, cap {BET_KELLY_CAP}u until 50 graded BETs show positive average CLV ({why})."
 
 
-def bet_kelly(fair, american, cap=None):
+def bet_kelly(fair: float, american: float, cap: float | None = None) -> float:
     """Quarter-Kelly stake in units (1u = 1% of bankroll) on the market's fair probability, capped."""
     cap = bet_cap()[0] if cap is None else cap
     return _odds.quarter_kelly_units(fair, american, cap)
@@ -286,6 +291,7 @@ def decide(date, shortlist, checked, results):
 
 
 def save(date, picks, results):
+    """Write the day's value file."""
     path = os.path.join(HERE, f"value_{date}.json")
     try:
         with open(path) as f:
@@ -354,12 +360,13 @@ def proj_side(r):
 
 
 def line_key(player, market, line):
+    """Key for one line: player|market|line."""
     return f"{player}|{market}|{float(line):g}"
 
 
 def et_date(tip):
     """UTC tip '2026-11-23T00:00:00Z' -> its ET slate date '2026-11-22'."""
-    t = dt.datetime.strptime(tip, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+    t = dt.datetime.strptime(tip, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.UTC)
     try:
         from zoneinfo import ZoneInfo
         return t.astimezone(ZoneInfo("America/New_York")).date().isoformat()
@@ -424,6 +431,7 @@ def cno_rows(date, cands, led, gkey, cap):
 
 
 def ua_store_path(date):
+    """Path of the day's latest Unabated EVs."""
     return os.path.join(HERE, "history", date, f"unabated_ev_{date}.json")
 
 
@@ -500,11 +508,13 @@ def daily_counts(date):
 
 
 def counts_line(date):
+    """Daily counts line (Unabated BETs, CNO +EV, both, CNO-only, screener)."""
     u, c, both, only, sc = daily_counts(date)
     return f"{date}: Unabated BETs {u}, CNO +EV {c}, both {both}, CNO-only {only}" + (f", CNO screener {sc}" if sc else "")
 
 
 def run_board(args):
+    """--board: price every FanDuel line once, log BETs, records and the alt ladder."""
     if args.go and not args.board_file and U.key():
         try:                                       # discovery refresh (free; no odds interval): current player ids
             U.discover()
@@ -669,6 +679,7 @@ def run_board(args):
 
 
 def fmtn(v):
+    """Number for display, '-' for None."""
     return "-" if v is None else f"{v:g}"
 
 
@@ -694,7 +705,8 @@ def game_resolver(rows):
     return key
 
 
-def apply_exposure(cands, logged, key, player_cap=None, game_cap=None):
+def apply_exposure(cands: list[dict], logged: list[dict], key, player_cap: float | None = None,
+                   game_cap: float | None = None) -> list[dict]:
     """Cap new BET stakes: PLAYER_CAP per player and GAME_CAP per game, counting stakes already logged that day.
     cands = [{"player", "game", "ev", "stake"}] (mutated: "stake", "cap"). When a cap binds, that player's or game's
     new BETs are scaled down proportionally to the room left; cents left over by rounding go to the largest edge first."""
@@ -732,10 +744,12 @@ def apply_exposure(cands, logged, key, player_cap=None, game_cap=None):
 
 
 def cap_text(note):
+    """' (capped: ...)' or ''."""
     return f" ({note})" if note else ""
 
 
 def value_row(date, r, strategy, side, v, stake, our_prob, cno="unset"):
+    """Ledger row for a value decision (BET, watch, CNO, ...)."""
     v = v or {}
     return {"date": date, "pulled_at": r.get("pulled_at"), "tip": r.get("tip"), "strategy": strategy, "rank": None,
             "player": r.get("player"), "team": r.get("team"), "market": r.get("market"), "side": side,
@@ -761,6 +775,7 @@ R_A_FROM = C.R_A_FROM  # nbaprops/config.py
 
 
 def board_markets(date):
+    """Markets on the Unabated board for a slate (R+A from 11/24)."""
     return [m for m in BOARD_MARKETS if m != "R+A" or date >= R_A_FROM]
 CNO_MIN_EV = C.CNO_MIN_EV  # nbaprops/config.py
 
@@ -777,6 +792,7 @@ def cno_check(side, v):
 
 
 def cno_fields(side, v, c="unset"):
+    """CrazyNinja worst-case fields for a ledger row."""
     c = cno_check(side, v) if c == "unset" else c
     if not c:
         return {"cno_flag": "no CNO check"}
@@ -794,6 +810,7 @@ def bet_gate(v, c):
 
 
 def cno_note(row):
+    """CrazyNinja note for an alert line."""
     if row.get("cno_ev") in (None, ""):
         return "; no CNO check" if row.get("cno_flag") else ""
     return f"; CNO worst-case EV {100 * float(row['cno_ev']):+.1f}% (lowest source {100 * float(row['cno_min_ev']):+.1f}%)"
@@ -992,7 +1009,7 @@ def watch_scan(date, state, close_before=None):
     cands = apply_exposure([{"player": r["player"], "game": gkey(r), "ev": v["ev_mult"],
                              "stake": bet_kelly(v["fair_mult"], v["price_used"], cap)} for r, sd, v, k, _, _ in found],
                            day_bets, gkey)
-    for (r, sd, v, k, cno, flag), c in zip(found, cands):
+    for (r, sd, v, k, cno, _flag), c in zip(found, cands):
         ps = proj_side(r)
         tag = "+EV + proj agrees" if ps == sd else "+EV only"
         stake = c["stake"]
@@ -1132,7 +1149,7 @@ def run_watch(args):
         now = time.time()
         marks = []                                        # a scan 5 min before each tip and one at tip + 5 (closing)
         for t in tips:
-            ts = dt.datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc).timestamp()
+            ts = dt.datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.UTC).timestamp()
             marks += [ts - CLOSE_LEAD, ts + CLOSE_LEAD]
         nxt = min([m for m in marks if m > now + 60] + [now + every])
         time.sleep(max(nxt - time.time(), 1))
@@ -1159,6 +1176,7 @@ def parse_placed(text):
 
 
 def run_cno_paste(args):
+    """--cno-paste: parse a screener paste, update the daily store, log your rule / screener / near misses."""
     from nbaprops.rules import screener as S
     text = sys.stdin.read() if args.cno_paste == "-" else open(args.cno_paste).read()
     if args.live:

@@ -29,6 +29,7 @@ ALIASES = {}   # norm(BettingPros/FanDuel name) -> norm(box score name), for spe
 
 
 def norm(name):
+    """Name key for matching players across sources (accents, punctuation, Jr./II stripped)."""
     s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
     s = re.sub(r"[.'`\-]", "", s)
     s = re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", "", s)
@@ -43,6 +44,7 @@ def _get(url, headers=UA, timeout=30):
 
 
 def stat(p, market):
+    """Final number for a market (PTS/REB/AST/3PM or a combo) from a box-score row, None if the player didn't play."""
     if not p or not p.get("played") or market not in PARTS:
         return None
     vals = [p.get(k) for k in PARTS[market]]
@@ -58,6 +60,7 @@ def _int(x):
 
 
 def espn_games(date):
+    """ESPN scoreboard games for an ET date: id, teams, final or not."""
     sb = _get(f"{ESPN}/scoreboard?dates={date.replace('-', '')}")
     out = []
     for ev in sb.get("events", []):
@@ -69,6 +72,7 @@ def espn_games(date):
 
 
 def espn_box(game_id):
+    """ESPN box score for one game: {name key: stats}."""
     j = _get(f"{ESPN}/summary?event={game_id}")
     players = {}
     for t in (j.get("boxscore") or {}).get("players", []):
@@ -90,6 +94,7 @@ def espn_box(game_id):
 
 # ------------------------------------------------------------------ NBA.com
 def nba_games(date):
+    """NBA.com schedule games for an ET date (fallback source)."""
     s = _get(NBA_SCHEDULE, NBA_HEADERS)
     want = dt.date.fromisoformat(date).strftime("%m/%d/%Y")
     out = []
@@ -102,6 +107,7 @@ def nba_games(date):
 
 
 def nba_box(game_id):
+    """NBA.com box score for one game (fallback source)."""
     j = _get(NBA_BOX.format(game_id), NBA_HEADERS)
     g = j.get("game", {})
     players = {}
@@ -182,6 +188,7 @@ def finals(date, refresh=False, log=print):
 
 
 def lookup(box, player):
+    """A player's box-score row by name, or None."""
     return box.get("players", {}).get(norm(player))
 
 
