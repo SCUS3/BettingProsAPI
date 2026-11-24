@@ -73,3 +73,38 @@ def context(date, player, market, side, line):
     tag = "lean agrees" if lean == side else "lean disagrees"
     return {"text": f"BP lean: proj {proj:g} (gap {gap:+.2f} vs {line:g}) · {DOT[tag.split()[1]]} · as of {asof}",
             "tag": tag, "proj": proj, "gap": gap}
+
+
+def dvp_effect(side, softness):
+    """Side-aware matchup: 'helps' (soft 1-10 for an over, hard 21-30 for an under), 'hurts' (the reverse),
+    'neutral' (11-20), None if unknown. DvP 1 = softest defense vs. the position."""
+    try:
+        v = float(softness)
+    except (TypeError, ValueError):
+        return None
+    if 11 <= v <= 20:
+        return "neutral"
+    soft = v <= 10
+    if side == "over":
+        return "helps" if soft else "hurts"
+    if side == "under":
+        return "hurts" if soft else "helps"
+    return None
+
+
+def dvp_dot(side, softness):
+    """'🟢 7' / '🔴 28' / '15' (side-aware), '' if unknown."""
+    e = dvp_effect(side, softness)
+    if e is None:
+        return ""
+    v = float(softness)
+    return {"helps": "🟢 ", "hurts": "🔴 "}.get(e, "") + f"{v:g}"
+
+
+def dvp_of(date, player, market):
+    """DvP softness for a player/market from today's pull (any row, projection or not), or None."""
+    import csv
+    for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))) if os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv")) else []:
+        if norm(r["player"]) == norm(player) and r["market"] == market and r.get("dvp_softness") not in (None, ""):
+            return float(r["dvp_softness"])
+    return None

@@ -34,7 +34,7 @@ STRATEGIES = [("bal", "Top 5 balanced"), ("score", "Top 5 your score"), ("gap", 
 # never replaced by a later run. CLV = FanDuel's line in the last pull before tip vs. the line bet.
 VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: +EV only"),
                     ("watch", "Watch list (shortlist, not bet)"), ("cno", "CrazyNinja +EV"), ("cno_scr", "CNO screener"), ("cno_scr_sub", "CNO screener (under +2%, tracking only)"),
-                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("near_miss", "Near misses: CNO +EV, BP disagrees (not taken)"),
+                    ("my_rule", "Your rule: CNO +EV + BP agrees"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("alt_mkt", "Alt, market only"),
                     ("alt_proj", "Alt, market + projection")]
 BET_KEYS = {"bet_agree", "bet_only"}
@@ -61,7 +61,7 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  "odds", "gap", "placeholder", "score", "balanced", "learned", "our_prob", "nv_prob", "kelly_u",
                  "injury", "tm_out", "event_id", "result", "actual", "profit_u", "profit_kelly", "oa_fair", "oa_ev", "fair_src",
                  "sources", "close_fair", "clv_ev", "close_mkt_ev", "close_fd_line", "close_at", "cno_ev", "cno_min_ev", "cap_note", "cno_fair", "cno_flag", "proj_tag", "proj_note", "scr_settings",
-                 "bp_proj_raw", "bp_proj_cal"]
+                 "bp_proj_raw", "bp_proj_cal", "dvp_tag", "dvp"]
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
 FEATURES = ["edge", "ev", "matchup", "form", "market", "implied", "under", "self_injured",
             "teammates_out", "teammates_dtd", "form_x_teammates_out", "threes", "combo", "placeholder", "starter"]
@@ -1006,6 +1006,14 @@ def record():
         if sub:
             x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="half_" + tag.replace(" ", "_"), group="half",
                      label="HALF BET: " + lab)
+            x["clv_unit"] = "% EV at closing fair"
+            strategies.append(x)
+    al = [(r, v) for r, v in graded if r["strategy"] in ALT_KEYS]
+    for tag, lab in (("helps", "DvP helps the side"), ("neutral", "DvP neutral (11-20)"), ("hurts", "DvP hurts the side"),
+                     ("unknown", "DvP unknown")):
+        sub = [(r, v) for r, v in al if (r.get("dvp_tag") or "unknown") == tag]
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="alt_dvp_" + tag, group="alt", label="Alt: " + lab)
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
     strategies += sim_record_rows()          # placed_record_rows() kept but unused: the record is the system's BETs only

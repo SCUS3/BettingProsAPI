@@ -628,11 +628,8 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
         c = _calib(r.get("market"), p)
         return (f"{p:.1f}→{c:.1f}" if c is not None and c != p else f"{p:.1f}".rstrip("0").rstrip(".") if p == int(p) else f"{p:.1f}") \
             + ("*" if r.get("placeholder") else "")
-    def dvp_s(r):                                   # 🟢 soft matchup (1-10), 🔴 hard (21-30); 1 = softest
-        v = _num(r.get("dvp_softness"))
-        if v is None:
-            return ""
-        return f"{'🟢 ' if v <= 10 else '🔴 ' if v >= 21 else ''}{v:g}"
+    def dvp_s(r, side=None):                        # side-aware: 🟢 matchup helps the listed side, 🔴 hurts, 11-20 plain
+        return bp_projctx.dvp_dot(side or r.get("rec_side"), r.get("dvp_softness"))
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
     def table(group, bold):
         ranked_col = {"gap": "Gap %", "score": "Score", "balanced": "Bal"}[bold]
@@ -662,7 +659,8 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
              "15% BettingPros bet rating. Signals: how many of six factors lean the same way. "
              "Kelly: quarter-Kelly stake, 1u = 1% of bankroll. All scores are cut for injury status.", "",
              "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side (an under projected below the line is 🟢), "
-             "🔴 = the other side, – = no projection. Proj = BettingPros' raw projection. DvP 🟢 = soft matchup (1-10), 🔴 = hard (21-30). Mkt EV = market EV at FanDuel's price. Mkt value = "
+             "🔴 = the other side, – = no projection. Proj = BettingPros' raw projection. DvP 🟢 = the matchup helps the listed side "
+             "(soft 1-10 for an over, hard 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Mkt EV = market EV at FanDuel's price. Mkt value = "
              "no-vig price and line vs. consensus (0-100). Bal = Balanced score. Sig = signals agreeing (of 6). Inj = on the "
              "injury report (Y/N). ▼ = the column the list is ranked by.", "",
              f"**{kelly_note}**" if kelly_note else "", ""]
@@ -703,10 +701,18 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
     lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
     import bp_cno_screener
     mine = bp_cno_screener.rule_rows(date)
+    _led = bp_learn._read(bp_learn.LEDGER)
+    stake_of = {(x["player"], x["market"], x["side"], float(x["line"])): f"{float(x['kelly_u']):g}u" for x in _led
+                if x["date"] == date and x["strategy"] == "my_rule" and x.get("kelly_u") not in (None, "")}
+    _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
     lines += ["## 2. Top 10 by your score", "",
               "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +200 or shorter, "
               "main line) AND BettingPros' projection or lean agrees with the side. Built from today's pastes; EV and price "
-              "are from the latest paste that listed the prop. Ranked by CrazyNinja EV.", ""]
+              "are from the latest paste that listed the prop. Ranked by CrazyNinja EV. ¼K = the logged stake.", ""]
+    if _rr and _rr[0]["w"] + _rr[0]["l"] + _rr[0]["p"]:
+        x = _rr[0]
+        lines += [f"Your rule record: {x['w']}-{x['l']}-{x['p']} | flat 1u {x['units']:+.2f}u | ¼K {x['kelly_units']:+.2f}u"
+                  + (f" | CLV {x['clv']:+}% EV" if x.get("clv") is not None else ""), ""]
     if mine:
         by = {(r["player"], r["market"]): r for r in rows}
         body = []
@@ -717,10 +723,11 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
             seen_et = bp_projctx._et(e.get("first_seen", "")).replace(" ET", "") if e.get("first_seen") else ""
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
-                         str(e.get("books") or ""), dvp_s(r) if r else "", str(e.get("seen", 1)), seen_et])
+                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", str(e.get("seen", 1)), seen_et,
+                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), "")])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
                            ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
-                           ("Pastes", "r"), ("First seen", "r")], body) + [""]
+                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
     from bp_rotowire import norm as _norm
@@ -750,28 +757,28 @@ def write_top_by_market(rows, date, n=10, kelly_note=""):
             pr = _num(e.get("proj_raw"))
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
-                         odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r) if r else "",
+                         odds_s(e.get("price")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "",
                          inj(r) if r else ""])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
                            ("Gap", "r"), ("FD", "r"), ("Mkt EV ▼", "r"), ("Sources", "r"), ("DvP", "r"), ("Inj", "c")], body) + [""]
     else:
         lines += ["_None yet (needs a board run or watch scan with Unabated prices)._", ""]
     miss = bp_cno_screener.near_miss_rows(date)
-    lines += ["## 4. Near misses to watch (+EV, but BettingPros disagrees)", "",
-              "CrazyNinja-paste props with any +EV and Unabated lines at +2% or more where BettingPros' projection or lean is on "
-              "the other side (🔴). CrazyNinja near misses are logged once as research (flat 1u, no stake) next to your rule, so "
-              "the record shows whether skipping them was right; Unabated ones at +2% are already logged as '+EV only' BETs.", ""]
+    lines += ["## 4. Near misses to your rule", "",
+              "From today's CrazyNinja pastes: CNO EV between -1% and 0% with BettingPros agreeing (EV just short), or CNO EV "
+              "above 0 with BettingPros disagreeing or no BettingPros projection. Logged once as research (flat 1u, no stake) "
+              "next to your rule, so the record shows whether skipping them was right.", ""]
     if miss:
         body = []
         for i, e in enumerate(miss[:n], 1):
             r = by_pm.get((_norm(e["player"]), e["market"])) or {}
             pr = _num(e.get("proj_raw"))
-            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🔴",
-                         "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - float(e['line']):+.1f}",
-                         odds_s(e.get("odds")), "" if e.get("ev") is None else f"{100 * e['ev']:+.2f}%",
-                         "" if e.get("ua_ev") is None else f"{100 * e['ua_ev']:+.2f}%", e.get("src", ""), dvp_s(r) if r else ""])
+            dot = "🟢" if e.get("proj_tag") in ("agrees", "lean agrees") else "🔴" if e.get("proj_tag") in ("disagrees", "lean disagrees") else "–"
+            body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", dot,
+                         "" if pr is None else f"{pr:.1f}", odds_s(e.get("odds")), f"{100 * e['ev']:+.2f}%", e["why"],
+                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else ""])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
-                           ("Gap", "r"), ("FD", "r"), ("CNO EV", "r"), ("Unabated EV", "r"), ("Source", "l"), ("DvP", "r")], body) + [""]
+                           ("FD", "r"), ("CNO EV", "r"), ("Why it missed", "l"), ("Books", "r"), ("DvP", "r")], body) + [""]
     else:
         lines += ["_None right now._", ""]
     diffs = [r for r in fd if r.get("line_note")]

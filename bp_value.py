@@ -632,9 +632,11 @@ def run_board(args):
         import bp_alts
         arows = bp_alts.log(args.date, bp_alts.scan(data, U.load(U.DISCOVERY, {}), args.date, bp_learn.utc_now()), bp_learn.utc_now())
         for r in arows:
+            import bp_projctx
             lines_out.append(f"  ALT [{bp_alts.KEYS[r['strategy']]}] {r['player']} {r['market']} {r['side']} {float(r['line']):g} "
                              f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources, "
-                             f"{r['cap_note']}), CNO worst-case {100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K  |  {r.get('proj_note') or '–'}")
+                             f"{r['cap_note']}), CNO worst-case {100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; "
+                             f"DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} ({r.get('dvp_tag')})  |  {r.get('proj_note') or '–'}")
         lines_out.append(f"  Alt ladder: {len(arows)} new rungs logged (EV >= +4%, 3+ two-sided sources, <= +300, CNO > 0, one per player).")
     except Exception as e:
         lines_out.append(f"  Alt ladder skipped ({e}).")
@@ -1017,9 +1019,11 @@ def watch_scan(date, state, close_before=None):
             bp_learn._write(bp_learn.LEDGER, led + new_rows, bp_learn.LEDGER_FIELDS)
             led, new_rows = led + new_rows, []
         for r in bp_alts.log(date, bp_alts.scan(data, d, date, now), now):
+            import bp_projctx
             notify(f"NEW ALT [{bp_alts.KEYS[r['strategy']]}] {r['player']} {r['market']} {r['side']} {float(r['line']):g} "
                    f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources), CNO "
-                   f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K")
+                   f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} "
+                   f"({r.get('dvp_tag')})")
         led = bp_learn._read(bp_learn.LEDGER)
         bp_alts.close(date, data, d, now)               # latest pregame price for open games (last before start wins)
     except Exception as e:
@@ -1165,16 +1169,17 @@ def run_cno_paste(args):
             print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
                   f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']}) | now {r['now']}")
         return
-    every, _ = S.parse(text, args.date, 0.0)            # every +EV row (fixed settings) feeds your rule's daily store
+    every, _ = S.parse(text, args.date, S.NEAR_LOW)     # every row from -1% EV up (fixed settings) feeds the daily store
     plays, dropped = S.parse(text, args.date, 0.0 if args.all else None)
     st = S.settings(text, plays, args.devig, args.min_books, args.max_odds) if not args.dry else None
     if not args.dry:
         S.update_store(args.date, every)
-        mine = [p for p in every if p.get("proj_tag") in ("agrees", "lean agrees")]
+        mine = [p for p in every if p["ev"] > 0 and p.get("proj_tag") in ("agrees", "lean agrees")]
         rows = S.log(mine, args.date, st, key=S.RULE_KEY)
-        miss = S.log_near_misses([p for p in every if p.get("proj_tag") in ("disagrees", "lean disagrees")], args.date)
+        miss = S.log_near_misses(every, args.date)
         print(f"Your rule (CNO +EV and BettingPros agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
-              f"{len(S.rule_rows(args.date))} on today's list; {len(miss)} new near misses (BettingPros disagrees).")
+              f"{len(S.rule_rows(args.date))} on today's list; {len(miss)} new near misses"
+              + (" (" + "; ".join(f"{m['player']} {m['market']}: {m['cap_note']}" for m in miss) + ")" if miss else "") + ".")
         for r in rows:
             print(f"  NEW {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: CNO EV "
                   f"{100 * float(r['oa_ev']):+.2f}%, {r['kelly_u']}u ¼K  |  {r.get('proj_note')}")

@@ -111,8 +111,13 @@ def scan(data, d, date, now):
             c["key"] = "alt_mkt"
             pc = P.context(date, c["player"], c["market"], c["side"], c["line"])
         c["proj_note"], c["proj_raw"], c["proj_cal"] = pc["text"], pc.get("proj"), pc.get("proj_cal", pc.get("proj"))
+        dv = P.dvp_of(date, c["player"], c["market"])
+        c["dvp"], c["dvp_tag"] = dv, P.dvp_effect(c["side"], dv) or "unknown"
+        c["dvp_dot"] = P.dvp_dot(c["side"], dv) or "–"
         out.append(c)
-    return out
+    # qualification is unchanged; among qualifying rungs, a matchup that helps the side ranks first
+    order = {"helps": 0, "neutral": 1, "unknown": 1, "hurts": 2}
+    return sorted(out, key=lambda c: (order[c["dvp_tag"]], -c["ev"]))
 
 
 def log(date, cands, now):
@@ -137,7 +142,8 @@ def log(date, cands, now):
                      "odds": c["odds"], "our_prob": c["fair"], "nv_prob": c["fair"], "kelly_u": stake, "oa_fair": c["fair"],
                      "oa_ev": c["ev"], "fair_src": "Unabated alt rung", "sources": c["books"], "cno_ev": c["cno"]["median_ev"],
                      "cno_min_ev": c["cno"]["min_ev"], "proj_note": c.get("proj_note"),
-                     "bp_proj_raw": c.get("proj_raw"), "bp_proj_cal": c.get("proj_cal"),
+                     "bp_proj_raw": c.get("proj_raw"), "bp_proj_cal": c.get("proj_cal"), "dvp_tag": c.get("dvp_tag"),
+                     "dvp": c.get("dvp"),
                      "cap_note": f"alt (FanDuel main {c['main']:g})" if c.get("main") is not None else "alt"})
     if rows:
         L._write(L.LEDGER, led + rows, L.LEDGER_FIELDS)

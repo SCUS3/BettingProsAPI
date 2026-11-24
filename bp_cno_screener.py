@@ -282,8 +282,8 @@ def _parse_table(tbl, date, min_ev=MIN_EV):
         if tip and not bp_tipoff.is_open(tip, g.get("event"), now):
             drop("game already started")
             continue
-        if ev < min_ev or ev <= 0:
-            drop(f"EV below +{100 * min_ev:g}%")
+        if ev < min_ev or (min_ev >= 0 and ev <= 0):
+            drop(f"EV below {100 * min_ev:+g}%")
             continue
         try:
             books = int(g.get("books"))
@@ -495,52 +495,49 @@ def rule_rows(date, include_started=False):
 NEAR_KEY = "near_miss"        # CNO +EV but BettingPros disagrees: research (flat 1u, no stake), next to your rule
 
 
+NEAR_LOW = -0.01            # a prop with BettingPros agreeing and CNO EV in [-1%, 0) "just missed" on EV
+
+
+def miss_reason(p):
+    """Why a paste row missed your rule, or None if it didn't miss (or is too far off to count as a near miss)."""
+    ev, tag = p.get("ev", 0), p.get("proj_tag") or "none"
+    agrees = tag in ("agrees", "lean agrees")
+    if agrees and NEAR_LOW <= ev <= 0:
+        return f"EV short by {100 * -ev:.2f}%"
+    if ev > 0 and tag in ("disagrees", "lean disagrees"):
+        return f"BP disagrees (proj {float(p['proj_raw']):.1f})" if p.get("proj_raw") is not None else "BP disagrees"
+    if ev > 0 and not agrees:
+        return "no BP projection"
+    return None
+
+
 def log_near_misses(plays, date):
-    """Log each near miss once per day as research (no stake) so the record shows whether skipping them was right."""
+    """Log each near miss once per day as research (flat 1u, no stake) with the reason it missed your rule."""
     import bp_value as V
     led = L._read(L.LEDGER)
     have = {(r["player"], r["market"], r["side"], str(V._f(r.get("line")))) for r in led
             if r["date"] == date and r["strategy"] == NEAR_KEY}
     now, out = L.utc_now(), []
     for p in plays:
-        if (p["player"], p["market"], p["side"], str(float(p["line"]))) in have:
+        why = miss_reason(p)
+        if not why or (p["player"], p["market"], p["side"], str(float(p["line"]))) in have:
             continue
         out.append({"date": date, "pulled_at": now, "tip": p.get("tip") or "", "strategy": NEAR_KEY, "player": p["player"],
                     "market": p["market"], "side": p["side"], "line": p["line"], "odds": p["odds"], "our_prob": p["fair"],
                     "nv_prob": p["fair"], "kelly_u": None, "oa_fair": p["fair"], "oa_ev": p["ev"], "fair_src": "CNO screener",
                     "sources": p["books"], "proj_tag": p.get("proj_tag"), "proj_note": p.get("proj_note"),
-                    "bp_proj_raw": p.get("proj_raw")})
+                    "bp_proj_raw": p.get("proj_raw"), "cap_note": why})
     if out:
         L._write(L.LEDGER, led + out, L.LEDGER_FIELDS)
     return out
 
 
 def near_miss_rows(date):
-    """Display list: CNO +EV (latest paste) where BettingPros disagrees, plus Unabated +2% sides where it disagrees."""
-    import json
-    import bp_projctx as P
+    """Display list: today's store rows that just missed your rule, with the reason; biggest EV first."""
     import bp_tipoff
-    import bp_value as V
-    out = {}
+    out = []
     for e in store(date).values():
-        if e.get("ev", 0) > 0 and e.get("proj_tag") in ("disagrees", "lean disagrees") and \
-                (not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event"))):
-            out[(e["player"], e["market"], e["side"], float(e["line"]))] = dict(e, src="CNO")
-    try:
-        ua = json.load(open(V.ua_store_path(date)))
-    except (OSError, ValueError):
-        ua = {}
-    for e in ua.values():
-        if (e.get("ev") or 0) < 0.02 or (e.get("books") or 0) < 3 or (e.get("tip") and not bp_tipoff.is_open(e["tip"], e.get("team"))):
-            continue
-        c = P.context(date, e["player"], e["market"], e["side"], e["line"])
-        if c["tag"] not in ("disagrees", "lean disagrees"):
-            continue
-        k = (e["player"], e["market"], e["side"], float(e["line"]))
-        if k in out:
-            out[k]["src"] = "CNO + Unabated"
-            out[k]["ua_ev"] = e["ev"]
-        else:
-            out[k] = {"player": e["player"], "market": e["market"], "side": e["side"], "line": e["line"], "odds": e["price"],
-                      "ev": None, "ua_ev": e["ev"], "books": e["books"], "proj_raw": c.get("proj"), "src": "Unabated"}
-    return sorted(out.values(), key=lambda e: -max(e.get("ev") or 0, e.get("ua_ev") or 0))
+        why = miss_reason(e)
+        if why and (not e.get("tip") or bp_tipoff.is_open(e["tip"], e.get("event"))):
+            out.append(dict(e, why=why))
+    return sorted(out, key=lambda e: -e["ev"])
