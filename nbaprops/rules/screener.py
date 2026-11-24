@@ -224,7 +224,7 @@ def parse(text, date, min_ev=None):
     tbl = _table(text)
     if tbl is not None:
         return _parse_table(tbl, date, MIN_EV if min_ev is None else min_ev)
-    return _parse_loose(text, date)
+    return _parse_loose(text, date, MIN_EV if min_ev is None else min_ev)
 
 
 def fd_main_lines(date):
@@ -313,9 +313,14 @@ def _with_proj(plays, date):
     return plays
 
 
-def _parse_loose(text, date):
+def _parse_loose(text, date, min_ev=MIN_EV):
+    """Header-less pastes (one row per line). Same fixed-settings checks as the table parser: game started, alt line,
+    EV floor, min books, max odds."""
+    from nbaprops.rules import tipoff as bp_tipoff
     names = known_players(date)
     nmap = {norm(n): n for n in names}
+    mains = fd_main_lines(date)
+    now = L.utc_now()
     plays, dropped = [], {}
     drop = lambda why: dropped.__setitem__(why, dropped.get(why, 0) + 1)
     for rec in _records(text):
@@ -360,9 +365,33 @@ def _parse_loose(text, date):
         if fair is None:
             fair = (1 + evv) / _dec(fd)
         bm = re.search(r"(\d+)\s*books?\b|books?\s*[:=]?\s*(\d+)", low)
-        books = int(bm.group(1) or bm.group(2)) if bm else None
+        tail = re.search(r"(?:fanduel|\bfd\b).*?[+-]\d{3,4}\s+(\d{1,2})\s*$", low)   # "... FanDuel  +413  6": books last
+        books = int(bm.group(1) or bm.group(2)) if bm else int(tail.group(1)) if tail else None
+        tip = _when(rec, date)
+        ev_m = re.search(r"([A-Z][\w .'-]+? @ [A-Z][\w .'-]+?)\s{2,}", rec)
+        event = ev_m.group(1).strip() if ev_m else None
+        if tip and not bp_tipoff.is_open(tip, event, now):
+            drop("game already started")
+            continue
+        main = mains.get((norm(player), mk))
+        line_note = ""
+        if main is not None and abs(line - main) >= ALT_GAP:
+            drop(f"alt line (FanDuel main {main:g} at the pull)")
+            continue
+        if main is not None and line != main:
+            line_note = f"line differs from the pull's FanDuel main {main:g} (moved, or an alt)"
+        if evv < min_ev or (min_ev >= 0 and evv <= 0):
+            drop(f"EV below {100 * min_ev:+g}%")
+            continue
+        if books is not None and books < FIXED["min_books"]:
+            drop(f"under {FIXED['min_books']} books")
+            continue
+        if fd > FIXED["max_odds"]:
+            drop(f"odds over +{FIXED['max_odds']:g}")
+            continue
         plays.append({"player": player, "market": mk, "side": side, "line": line, "odds": fd, "ev": round(evv, 4),
-                      "fair": round(fair, 4), "books": books, "raw": rec[:200]})
+                      "fair": round(fair, 4), "books": books, "tip": tip, "event": event, "line_note": line_note,
+                      "raw": rec[:200]})
     return _with_proj(plays, date), dropped
 
 
