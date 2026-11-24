@@ -69,7 +69,7 @@ def scan(data, d, date, now):
     fd = str(d.get("fanduel_source_id"))
     ok = {i for i, n in names.items() if n in U.BOOK_SOURCES or n in U.EXCHANGE_SOURCES} - {fd}
     lad, mains = ladders(data, d, now)
-    best = {}
+    best, near = {}, []
     for (ev_name, tip, player, mk), srcs in lad.items():
         main = mains.get((ev_name, tip, player, mk))
         for pts, fdp in (srcs.get(fd) or {}).items():
@@ -91,6 +91,10 @@ def scan(data, d, date, now):
                 fair = statistics.median(fairs)
                 ev = fair * _dec(price) - 1
                 if ev < MIN_EV:
+                    if ev >= NEAR_EV:                       # ladder candidate: close, but under the EV bar
+                        near.append({"player": player, "market": mk, "side": sd, "line": pts, "odds": price, "fair": round(fair, 4),
+                                     "ev": round(ev, 4), "books": len(two), "tip": tip, "event": ev_name, "main": main,
+                                     "why": f"EV {100 * ev:.1f}% (needs {100 * MIN_EV:g}%)"})
                     continue
                 cand = {"player": player, "market": mk, "side": sd, "line": pts, "odds": price, "fair": round(fair, 4),
                         "ev": round(ev, 4), "books": len(two), "two_way": two, "tip": tip, "event": ev_name, "main": main}
@@ -101,12 +105,15 @@ def scan(data, d, date, now):
     for c in sorted(best.values(), key=lambda c: -c["ev"]):
         cno = C.check(c["side"], c["two_way"], c["odds"])
         if cno is None or cno["median_ev"] <= 0:
+            near.append(dict({k: v for k, v in c.items() if k != "two_way"},
+                             why="CNO down" if cno is None else f"CNO worst case {100 * cno['median_ev']:+.1f}%"))
             continue
         c["cno"] = cno
         if c["market"] in PROJ_MARKETS:
             pc = P.context(date, c["player"], c["market"], c["side"], c["line"])
             if pc["tag"] != "agrees":
-                continue                                  # market + projection: the calibrated projection must agree
+                near.append(dict({k: v for k, v in c.items() if k not in ("two_way", "cno")}, why="BettingPros disagrees at the rung"))
+                continue                                  # market + projection: the projection must agree
             c["key"] = "alt_proj"
         else:
             c["key"] = "alt_mkt"
@@ -116,9 +123,37 @@ def scan(data, d, date, now):
         c["dvp"], c["dvp_tag"] = dv, P.dvp_effect(c["side"], dv) or "unknown"
         c["dvp_dot"] = P.dvp_dot(c["side"], dv) or "–"
         out.append(c)
+    save_candidates(date, near, now)
     # qualification is unchanged; among qualifying rungs, a matchup that helps the side ranks first
     order = {"helps": 0, "neutral": 1, "unknown": 1, "hurts": 2}
     return sorted(out, key=lambda c: (order[c["dvp_tag"]], -c["ev"]))
+
+
+NEAR_EV = 0.02                # ladder candidate floor: alt rungs at +2% or more that missed the alt-ladder rules
+
+
+def candidates_path(date):
+    import os
+    return os.path.join(L.HERE, "history", date, f"alt_candidates_{date}.json")
+
+
+def save_candidates(date, near, now):
+    """Ladder candidates (rungs that came close), merged per day; the first sighting's price and EV are frozen."""
+    import json
+    import os
+    try:
+        st = json.load(open(candidates_path(date)))
+    except (OSError, ValueError):
+        st = {}
+    for c in near:
+        k = f"{c['player']}|{c['market']}|{c['side']}|{float(c['line']):g}"
+        e = st.get(k) or {"entry_at": now, "entry_odds": c["odds"], "entry_ev": c["ev"]}
+        e.update({x: c.get(x) for x in ("player", "market", "side", "line", "odds", "fair", "ev", "books", "tip", "event", "main", "why")},
+                 last_at=now)
+        st[k] = e
+    if near:
+        os.makedirs(os.path.dirname(candidates_path(date)), exist_ok=True)
+        json.dump(st, open(candidates_path(date), "w"), indent=1)
 
 
 def log(date, cands, now):

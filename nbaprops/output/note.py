@@ -212,6 +212,38 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                            ("FD", "r"), ("CNO EV", "r"), ("Why it missed", "l"), ("Books", "r"), ("DvP", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_None right now._", ""]
+    allev = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] == "all_ev"]
+    allev.sort(key=lambda r: -(_num(r.get("entry_ev")) or 0))
+    lines += ["## 5. All +EV tonight (any source)", "",
+              "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, once each at its first sighting (entry price and "
+              "EV frozen; later sources noted). Logged as the 'All +EV' research record.", ""]
+    if allev:
+        body = [[str(i), r["player"], r["market"], side_s(r["side"]), f"{float(r['line']):g}", odds_s(r.get("entry_price") or r["odds"]),
+                 f"{100 * (_num(r.get('entry_ev')) or 0):+.2f}%", r.get("fair_src") or "", (r.get("cap_note") or "").replace("also ", ""),
+                 bp_dot({"player": r["player"], "market": r["market"], "rec_side": r["side"], "line": _num(r["line"])}),
+                 status(r.get("tip"), r.get("team"))] for i, r in enumerate(allev[:25], 1)]
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("Entry EV ▼", "r"),
+                           ("First source", "l"), ("Also", "l"), ("BP", "c"), ("Game", "l")], body)
+        lines += ([f"_{len(allev) - 25} more in the ledger (strategy all_ev)._"] if len(allev) > 25 else []) + [""]
+    else:
+        lines += ["_None logged for this date yet (the log starts with the 11/24 slate)._", ""]
+    try:
+        from nbaprops.pricing import alts as _alts
+        cand = sorted(json.load(open(_alts.candidates_path(date))).values(), key=lambda e: -e["ev"])
+    except (OSError, ValueError):
+        cand = []
+    lines += ["## 6. Ladder candidates", "",
+              "Alt rungs that came close to the alt-ladder rules: market EV +2% or more with 3+ two-sided sources and FanDuel "
+              "+300 or shorter, but under the +4% bar, or CrazyNinja's worst case at or below 0, or (3PM/P+R) BettingPros "
+              "disagreeing at the rung. Display only.", ""]
+    if cand:
+        body = [[str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "" if e.get("main") is None else f"{e['main']:g}",
+                 odds_s(e.get("odds")), f"{100 * e['ev']:+.2f}%", str(e.get("books") or ""), e.get("why", ""), status(e.get("tip"), e.get("event"))]
+                for i, e in enumerate(cand[:n], 1)]
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Rung", "r"), ("Main", "r"), ("FD", "r"),
+                           ("Mkt EV ▼", "r"), ("Sources", "r"), ("Why not", "l"), ("Game", "l")], body) + [""]
+    else:
+        lines += ["_None saved for this date yet (saved from each board run and watch scan from 11/24)._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from BettingPros' line", "",
