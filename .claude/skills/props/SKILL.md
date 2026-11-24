@@ -123,3 +123,7 @@ R+A (market 337) is in every pull again: after the first 11/24 pull, report the 
 
 Report the v2 record (current rules, from 2026-11-24) by default; mention the v1 archive only when asked. When the user changes a rule, update RECORDS.md and add a version to `RULE_VERSIONS` in bp_learn.py.
 
+## Weekly review and outside picks
+
+`python3 bp_props.py --weekly --date YYYY-MM-DD` (0 requests) for the weekly review. When the user pastes outside pick cards (Reddit / X / RotoWire), save them and run `python3 bp_value.py --picks-paste <file> --date <card date> --source "<source>" --dry`, then without `--dry`. Skip game totals/spreads.
+
