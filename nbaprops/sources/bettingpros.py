@@ -272,11 +272,17 @@ def pages_left(first):
     return max(((first or {}).get("_pagination") or {}).get("total_pages", 1) - 1, 0)
 
 
+PARTIAL: list = []   # items fetched before a RunCapReached, so the caller can keep them
+
+
 def fetch_pages(path, params, key, list_key, first):
-    """Every page of a paginated endpoint, starting from an already-fetched page 1."""
+    """Every page of a paginated endpoint, starting from an already-fetched page 1. If the run cap stops it, the items
+    fetched so far are left in PARTIAL."""
     items, data, page = [], first, 1
+    PARTIAL.clear()
     while True:
         items += data.get(list_key, [])
+        PARTIAL[:] = items
         pag = data.get("_pagination") or {}
         PULL_LOG.append({"path": path, "page": page, "rows": len(data.get(list_key, [])),
                          "total_items": pag.get("total_items"), "total_pages": pag.get("total_pages")})

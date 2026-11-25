@@ -759,8 +759,8 @@ def main():
               f"(not tipped; FanDuel hasn't posted or BettingPros hasn't picked them up). Re-pull those later with --only-events.")
     if not offers:
         sys.exit("No FanDuel lines for these games yet; stopping before /props.")
-    if args.unfiltered_props:
-        prop_queries = [props_params(args.date, None, market_ids, args.page_limit)]
+    if args.unfiltered_props:                          # all books, but only games still to tip (live games' props churn)
+        prop_queries = [props_params(None, None, market_ids, args.page_limit, event_id=":".join(str(e) for e in sorted(upcoming)))]
     else:
         ids = sorted({o["player_id"] for o in offers.values() if o["player_id"]})
         evs = ":".join(str(e) for e in sorted(upcoming))
@@ -770,10 +770,18 @@ def main():
     if not args.unfiltered_props:
         check_projection_match(firsts[0], offers, labels)
     firsts += [get("/props", dict(q, page=1), key) for q in prop_queries[1:]]
-    mode = budget_math(used_before, grading, BP.REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts), reprice_est,
-                       args.max_requests, "exact")
+    exact = BP.REQUESTS_MADE - grading + sum(pages_left(f) for f in firsts)
+    mode = budget_math(used_before, grading, exact + max(2, math.ceil(0.1 * exact)), reprice_est,   # +10% slack: totals can grow
+                       args.max_requests, "exact (+10% slack)")
     after = DAILY_LIMIT - used_before - (BP.REQUESTS_MADE + sum(pages_left(f) for f in firsts))
-    props = [p for q, f in zip(prop_queries, firsts) for p in fetch_pages("/props", q, key, "props", f)]
+    props = []
+    for q, f in zip(prop_queries, firsts):
+        try:
+            props += fetch_pages("/props", q, key, "props", f)
+        except BP.RunCapReached as e:                  # keep what was paid for: save the partial pull, say so
+            props += BP.PARTIAL
+            print(f"WARNING: {e}. Saving the {len(props)} props fetched so far (partial pull); re-pull the rest later.")
+            break
     bases = {}
     for p in props:
         b = base_from_prop(p, labels)
