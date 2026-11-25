@@ -1140,7 +1140,7 @@ def watch_scan(date, state, close_before=None):
     state.setdefault("closed", [])
     led = bp_learn._read(bp_learn.LEDGER)
     keys = (bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS | bp_learn.UA_KEYS
-            | bp_learn.REDDIT_KEYS | bp_learn.ALL_EV_KEYS | bp_learn.TRIPLE_KEYS)
+            | bp_learn.REDDIT_KEYS | bp_learn.ALL_EV_KEYS | bp_learn.TRIPLE_KEYS | bp_learn.TWO3_KEYS)
     live_rows = [r for r in led if r["date"] == date and r["strategy"] in keys and r.get("tip") and _open(r, now)]
     if live_rows:
         cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
@@ -1175,7 +1175,7 @@ def tips_to_close(date, data, d, t_now):
     tips = {x["tip"] for x in slate_lines(data, date, d)}
     tips |= {r["tip"] for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r.get("tip")
              and r["strategy"] in bp_learn.BET_KEYS | bp_learn.CNO_KEYS | bp_learn.SCREENER_KEYS | bp_learn.RULE_KEYS
-             | bp_learn.UA_KEYS | bp_learn.ALT_KEYS | bp_learn.TRIPLE_KEYS}
+             | bp_learn.UA_KEYS | bp_learn.ALT_KEYS | bp_learn.TRIPLE_KEYS | bp_learn.TWO3_KEYS}
     return sorted(t for t in tips if t_now < T._t(t) + T.CLOSE_AFTER)
 
 

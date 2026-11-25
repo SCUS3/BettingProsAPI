@@ -35,7 +35,7 @@ def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
 
 # Numbered note sections, most tailored (fewest, strictest) first down to the broadest research list.
 # Matched by the heading text after "## N. "; each is renumbered 1..n in this order.
-SECTION_ORDER = ["Triple green", "Top 10 by your score", "Unabated +EV & BettingPros agrees", "All +EV tonight",
+SECTION_ORDER = ["Triple green", "2 of 3", "Top 10 by your score", "Unabated +EV & BettingPros agrees", "All +EV tonight",
                  "Near misses to your rule", "Ladder candidates", "Proven posters today", "Top 10 by projection gap"]
 SECTION_TITLES = {"Top 10 by your score": "Your rule: CNO +EV + BettingPros agrees"}
 
@@ -389,6 +389,28 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                            ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]
     else:
         lines += ["_None yet (the record starts with the 11/24 slate; checked on every CrazyNinja paste, board run and watch scan)._", ""]
+    _t23 = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] == "two_of_three"]
+    _o = {"all 3": 0, "EV+BP": 1, "EV+DvP": 2, "BP+DvP": 3}
+    _t23.sort(key=lambda r: (_o.get(r.get("fair_src"), 9), -(_num(r.get("entry_ev") or r.get("oa_ev")) or -9)))
+    _t23r = next((x for x in rec["strategies"] if x.get("key") == "two3_all"), None)
+    lines += ["## 9. 2 of 3: +EV / BettingPros / DvP", "",
+              "Any FanDuel side where at least two of the three Triple green checks hold: +EV (CrazyNinja screener, or Unabated "
+              "with 3+ sources), BettingPros agrees, DvP helps the side. Research only (flat 1u, never bet: a BP + DvP pair "
+              "can be -EV). Logged once at its first qualifying sighting; ranked all 3 > EV+BP > EV+DvP > BP+DvP, then EV.", ""]
+    if _t23:
+        body = []
+        for i, r in enumerate(_t23[:15], 1):
+            pr, ln = _num(r.get("bp_proj_raw")), float(r["line"])
+            ev = _num(r.get("entry_ev") or r.get("oa_ev"))
+            bpd = "🟢" if (r.get("proj_tag") or "") in ("agrees", "lean agrees") else "🔴" if "disagrees" in (r.get("proj_tag") or "") else "–"
+            body.append([str(i), r["player"], r["market"], side_s(r["side"]), f"{ln:g}", r.get("fair_src") or "", bpd,
+                         "" if pr is None else f"{pr:.1f}", "" if pr is None else f"{pr - ln:+.1f}", odds_s(r.get("entry_price") or r["odds"]),
+                         "" if ev is None else f"{100 * ev:+.2f}%", bp_projctx.dvp_dot(r["side"], r.get("dvp"))])
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("Checks", "l"), ("BP", "c"),
+                           ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("EV", "r"), ("DvP", "r")], body)
+        lines += ([f"_{len(_t23) - 15} more in the ledger (strategy two_of_three)._"] if len(_t23) > 15 else []) + [""]
+    else:
+        lines += ["_None yet (checked on every CrazyNinja paste, board run and watch scan from 11/24)._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from BettingPros' line", "",

@@ -49,14 +49,16 @@ VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: 
                     ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("all_ev", "All +EV (any source, deduped)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("reddit_pick", "Reddit picks (research, per poster)"),
                     ("proven_ev", "Proven poster + market +EV"), ("alt_mkt", "Alt, market only"),
-                    ("alt_proj", "Alt, market + projection"), ("triple", "Triple green (+EV, BP agrees, DvP helps)")]
+                    ("alt_proj", "Alt, market + projection"), ("triple", "Triple green (+EV, BP agrees, DvP helps)"),
+                    ("two_of_three", "2 of 3: +EV / BP agrees / DvP helps (research, flat 1u)")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
 RULE_KEYS = {"my_rule", "near_miss"}
 UA_KEYS = {"ua_agree"}
 EXT_KEYS = {"ext_pick"}
 ALL_EV_KEYS = {"all_ev"}
-TRIPLE_KEYS = {"triple"}      # Triple green: +EV (CNO or Unabated) + BettingPros agrees + DvP helps the side; staked
+TRIPLE_KEYS = {"triple"}
+TWO3_KEYS = {"two_of_three"}  # 2 of 3 (+EV, BP agrees, DvP helps): research, flat 1u      # Triple green: +EV (CNO or Unabated) + BettingPros agrees + DvP helps the side; staked
 REDDIT_KEYS = {"reddit_pick", "proven_ev"}
 SAM_KEYS = {"bet_agree", "bet_only", "alt_mkt", "alt_proj", "my_rule", "triple", "ua_agree", "cno", "cno_scr", "cno_scr_sub",
             "proven_ev", "half"}       # staked records: Sam score frozen at logging   # Reddit picks (research, per poster) and the staked proven + market +EV record      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
@@ -608,7 +610,7 @@ def log_value_decisions(date, rows):
     old = _read(LEDGER)
     cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS
     have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
     new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
@@ -977,14 +979,14 @@ def record(version: str = "v2") -> dict:
         if strat in VALUE_KEYS and version == "v1" and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
         x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
                       "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
-                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "model")
+                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "two3" if strat in TWO3_KEYS else "model")
         strategies.append(x)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
@@ -1034,6 +1036,13 @@ def record(version: str = "v2") -> dict:
             strategies.append(x)
     strategies += triple_rows(graded)
     strategies += sam_rows(graded)
+    t23 = [(r, v) for r, v in graded if r["strategy"] in TWO3_KEYS]
+    for w in ("all 3", "EV+BP", "EV+DvP", "BP+DvP"):
+        sub = [(r, v) for r, v in t23 if r.get("fair_src") == w]
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="two3_" + w, group="two3", label=f"2 of 3: {w}", n=len(sub))
+            x["clv_unit"] = "% EV at closing fair"
+            strategies.append(x)
     ext = [(r, v) for r, v in graded if r["strategy"] in EXT_KEYS]
     for src in sorted({r.get("fair_src") or "?" for r, _ in ext}):
         sub = [(r, v) for r, v in ext if (r.get("fair_src") or "?") == src]

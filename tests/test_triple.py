@@ -30,3 +30,12 @@ def test_compare_rows_split_your_rule_by_dvp(monkeypatch):
     by = {x["key"]: x for x in rows}
     assert (by["cmp_triple"]["w"], by["cmp_rule"]["n"], by["cmp_rule_nodvp"]["l"]) == (1, 2, 1)
     assert by["triple_src_CNO"]["n"] == 1 and by["triple_ev_2-4%"]["n"] == 1
+
+
+def test_two_of_three_any_two_checks(monkeypatch):
+    from nbaprops.rules import twothree as T23
+    _ctx({"A": "agrees", "B": "agrees", "C": "disagrees", "D": "disagrees"}, {"A": 15, "B": 5, "C": 25, "D": 15}, monkeypatch)
+    ua = [{"player": p, "market": "PTS", "side": s, "line": 19.5, "ev": ev, "fair": 0.5, "price": -110, "books": 4}
+          for p, s, ev in (("A", "over", 0.01), ("B", "over", -0.03), ("C", "under", 0.02), ("D", "over", 0.05))]
+    got = {x["player"]: x["which"] for x in T23.candidates("2026-11-24", [], ua)}
+    assert got == {"A": "EV+BP", "B": "BP+DvP", "C": "EV+DvP"}            # D: only +EV (1 of 3) -> out

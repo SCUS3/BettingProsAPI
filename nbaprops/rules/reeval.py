@@ -1,6 +1,6 @@
 """Re-evaluate every store-based record after each CNO paste, Unabated board run and watch scan, so anything that newly
 qualifies is logged at its first sighting (that sighting's price and EV become the frozen entry):
-Your rule, CNO screener (+2%), near misses, Unabated +EV & BP agrees, All +EV and Triple green, from the day's CNO
+Your rule, CNO screener (+2%), near misses, Unabated +EV & BP agrees, All +EV, Triple green and 2 of 3, from the day's CNO
 screener store and Unabated EV store. Started games are skipped (nothing is written after a tip). The alt ladder needs the
 live Unabated board, so it is re-scanned on every board run and watch scan (not on a CNO paste).
 """
@@ -53,6 +53,8 @@ def run(date: str) -> dict:
     out["All +EV"] = V.log_all_ev(date, [dict(e, src="CNO screener") for e in cno if (e.get("ev") or 0) > 0]
                                   + [dict(e, odds=e["price"], src="Unabated") for e in uap])
     out["Triple green"] = TG.log(date, cno, ua)
+    from nbaprops.rules import twothree as T23
+    out["2 of 3"] = T23.log(date, cno, ua)
     return {k: v for k, v in out.items() if v}
 
 
