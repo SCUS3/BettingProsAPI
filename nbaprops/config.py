@@ -47,6 +47,7 @@ SAM_PENALTIES = {"long_odds": -10, "dtd": -10, "outlier": -20, "unverified": -15
 SAM_NEUTRAL = {"bp": 0.2, "dvp": 0.3, "form": 0.4, "role": 0.3}   # missing data = 4/20, 3/10, 2/5, 3/10
 SAM_TIERS = [(80, "A"), (65, "B"), (50, "C")]                     # below 50 = paper only (never in Tonight's bets)
 SAM_EDGE_FULL = 0.06           # entry EV for full edge marks
+SAM_ADAPT_N0 = 500            # nightly adaptation: weight on the fit = n / (n + 500) graded player-games
 SAM_FIT_MIN = 500              # graded v2 player-games before fitted weights may replace the hand-set ones
 SAM_LONG_ODDS = 200
 UNVERIFIED_BEFORE_TIP_MIN = 10  # both-sides conflict still unchecked this close to tip: keep the stronger side at half stake

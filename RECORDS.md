@@ -93,6 +93,12 @@ Unabated +EV & BP agrees, CNO +EV, screener, proven poster, HALF BETs) freezes `
 and `score_flags` at logging (line movement = first sighting to the logging scan); the board shows a separate latest score.
 Record tab "Sam score splits": every staked record by tier and each part by its points (each prop once).
 
+**Nightly adaptation** (`scripts/nightly.sh`, launchd job `com.nbaprops.nightly`, 4:00 AM or on wake): grades
+yesterday from free box scores, grades halftime flags, then `samfit --adapt` refits the parts on every graded prop (each
+once, market fair as the baseline) and moves the weights toward the fit by s = n / (n + 500) player-games; a part can
+shrink toward 0 but not flip sign before 500. The adapted weights (`sam_weights.json`) drive the latest score and
+Tonight's bets; frozen entry scores never change. The weekly review shows hand-set vs. current weights and the fit.
+
 **Weights over time** (`nbaprops/pricing/samfit.py`): L2 logistic with logit(FanDuel no-vig) as offset, player-games
 weighted once, same L2 schedule as the learned model, Newton solve for 95% Wald intervals, held out = latest ~30% of
 slates. The weekly review runs it once there are 500+ graded v2 player-games and switches to fitted weights

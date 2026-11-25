@@ -35,3 +35,4 @@ half_pastes.csv
 halftime_*.log
 .venv/
 cards_v1.txt
+logs/

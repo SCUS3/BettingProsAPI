@@ -85,8 +85,10 @@ def _ll(ps, ys, ws):
     return sum(w * -(y * math.log(max(p, 1e-6)) + (1 - y) * math.log(max(1 - p, 1e-6))) for p, y, w in zip(ps, ys, ws)) / (sum(ws) or 1)
 
 
-def dataset(version=None):
-    """Graded props (W/L), each once, with Sam parts, the hand-set score, FanDuel no-vig at that line and a 1/k weight."""
+def dataset(version=None, fd_only=True):
+    """Graded props (W/L), each once, with Sam parts, the hand-set score, a market baseline probability and a 1/k
+    weight. fd_only: baseline = FanDuel no-vig at that line (rows without it are dropped; used for the switch test).
+    Otherwise the baseline falls back to the row's market fair, then FanDuel's price with ~4.5% vig removed."""
     led = [r for r in L._read(L.LEDGER) if r.get("result") in ("W", "L") and r["strategy"] not in SKIP
            and (version is None or L.in_version(r, version))]
     seen, rows = set(), []
@@ -97,9 +99,16 @@ def dataset(version=None):
         seen.add(k)
         br = SS.board_row(r["date"], r["player"], r["market"])
         o, u = L.implied(br.get("over_odds")), L.implied(br.get("under_odds"))
-        if not br or o is None or u is None or L._num(br.get("line")) != L._num(r.get("line")):
+        if br and o is not None and u is not None and L._num(br.get("line")) == L._num(r.get("line")):
+            nv = (o if r["side"] == "over" else u) / (o + u)
+        elif fd_only:
             continue
-        nv = (o if r["side"] == "over" else u) / (o + u)
+        else:
+            fair = L._num(r.get("entry_fair") or r.get("oa_fair") or r.get("nv_prob"))
+            imp = L.implied(r.get("entry_price") or r.get("odds"))
+            nv = fair if fair and 0 < fair < 1 else (imp / 1.045 if imp else None)
+            if nv is None:
+                continue
         try:
             ctx = SS.stores(r["date"])
             feat = SS.features(r, ctx=ctx)
@@ -154,6 +163,12 @@ def weekly_check() -> list[str]:
     rows = dataset("v2")
     n_eff = sum(r["w"] for r in rows)
     lines = ["## Sam score weights", ""]
+    try:
+        cur = json.load(open(os.path.join(L.HERE, "sam_weights.json")))
+        if cur.get("mode") == "shrunk":
+            lines += adapt_lines(cur) + [""]
+    except (OSError, ValueError):
+        pass
     if n_eff < C.SAM_FIT_MIN:
         return lines + [f"{n_eff:.0f} graded v2 player-games with a FanDuel no-vig price; fitting starts at {C.SAM_FIT_MIN}. "
                         "Hand-set weights in use.", ""]
@@ -171,5 +186,56 @@ def weekly_check() -> list[str]:
     return lines + [""]
 
 
+def adapt(write=True) -> dict:
+    """Nightly: move the Sam score weights toward what results say, shrunk by sample size.
+    Fit the parts on every graded prop (v1 + v2, each once, player-games weighted once, market baseline as offset),
+    convert the log-odds effects to points on the hand-set scale, and blend: w = (1 - s) * hand + s * fitted, with
+    s = n / (n + SAM_ADAPT_N0). Below SAM_FIT_MIN player-games a part can shrink toward 0 but never flip sign (a
+    negative fit pulls it toward 0 only). Weights are rescaled to the hand-set total. Written to sam_weights.json
+    (active) with the fit, so the latest score and Tonight's bets use them; frozen entry scores never change."""
+    rows = dataset(fd_only=False)
+    if len(rows) < 30:
+        return {}
+    f = fit([r["x"] for r in rows], [r["y"] for r in rows], [r["w"] for r in rows], [_logit(r["nv"]) for r in rows])
+    n = sum(r["w"] for r in rows)
+    s = n / (n + C.SAM_ADAPT_N0)
+    hand = C.SAM_WEIGHTS
+    coef = {p: (c or 0.0) for p, c in zip(SS.PARTS, f["coef"])}
+    pos = sum(max(coef[p], 0) for p in SS.PARTS if hand[p] > 0) or 1.0
+    total = sum(hand.values())
+    fitted = {p: coef[p] / pos * total for p in SS.PARTS}           # log-odds -> points, positive parts sum to 100
+    new = {}
+    for p in SS.PARTS:
+        target = fitted[p] if n >= C.SAM_FIT_MIN else max(fitted[p], 0.0)
+        new[p] = (1 - s) * hand[p] + s * target if hand[p] > 0 or n >= C.SAM_FIT_MIN else 0.0
+    scale = total / (sum(max(v, 0) for v in new.values()) or 1)
+    new = {p: round(v * scale, 1) for p, v in new.items()}
+    out = {"active": True, "mode": "shrunk", "n": round(n, 1), "props": len(rows), "s": round(s, 3), "weights": new,
+           "hand": hand, "coef": {p: round(c, 3) for p, c in coef.items()},
+           "ci95": {p: (None if se is None else [round(c - 1.96 * se, 3), round(c + 1.96 * se, 3)])
+                    for p, c, se in zip(SS.PARTS, [coef[p] for p in SS.PARTS], f["se"])},
+           "at": L.utc_now()}
+    if write:
+        json.dump(out, open(os.path.join(L.HERE, "sam_weights.json"), "w"), indent=1)
+    return out
+
+
+def adapt_lines(res) -> list[str]:
+    if not res:
+        return ["Sam score weights: not enough graded props to adapt yet (hand-set in use)."]
+    lines = [f"Sam score weights adapted from {res['props']} graded props ({res['n']} player-games), shrink s = {res['s']} "
+             f"(0 = hand-set, 1 = fully fitted; no sign flips under {C.SAM_FIT_MIN} player-games):", "",
+             "| Part | Hand-set | Now | Fitted effect (log-odds) | 95% CI |", "|---|---:|---:|---:|---|"]
+    for p in SS.PARTS:
+        ci = res["ci95"].get(p)
+        lines.append(f"| {p} | {res['hand'][p]} | {res['weights'][p]} | {res['coef'][p]:+.3f} | "
+                     + ("–" if ci is None else f"[{ci[0]:+.2f}, {ci[1]:+.2f}]") + " |")
+    return lines
+
+
 if __name__ == "__main__":
-    print("\n".join(table(compare(dataset()))))
+    import sys
+    if "--adapt" in sys.argv:
+        print("\n".join(adapt_lines(adapt())))
+    else:
+        print("\n".join(table(compare(dataset()))))

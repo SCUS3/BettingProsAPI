@@ -82,3 +82,20 @@ def test_score_entry_frozen_at_first_write(env, monkeypatch, tmp_path):
 def test_bp_scaled_by_gap_in_sd_for_3pm(env):
     env["ctx"] = {"tag": "agrees", "proj": 4.0, "gap": 1.5}         # SD = 1.1 * sqrt(4) = 2.2 -> 1.5 / 2.2 = 0.68 of 20
     assert SS.score(row())["parts"]["bp"] == 13.6
+
+
+def test_adapt_shrinks_toward_fit_without_sign_flips(monkeypatch):
+    import random
+    from nbaprops.pricing import samfit as SF
+    random.seed(1)
+    rows = []
+    for i in range(300):                                   # DvP hurts results, line movement helps
+        x = [random.random() for _ in SS.PARTS]
+        z = 1.5 * (x[SS.PARTS.index("move")] - 0.5) - 1.5 * (x[SS.PARTS.index("dvp")] - 0.5)
+        y = 1.0 if random.random() < 1 / (1 + 2.718 ** -z) else 0.0
+        rows.append({"x": x, "y": y, "w": 1.0, "nv": 0.5, "score": 50, "date": "2026-11-24"})
+    monkeypatch.setattr(SF, "dataset", lambda fd_only=True, version=None: rows)
+    res = SF.adapt(write=False)
+    w = res["weights"]
+    assert 0 <= w["dvp"] < SS.C.SAM_WEIGHTS["dvp"] and w["move"] > SS.C.SAM_WEIGHTS["move"]
+    assert abs(sum(w.values()) - sum(SS.C.SAM_WEIGHTS.values())) < 1 and 0 < res["s"] < 1
