@@ -468,7 +468,7 @@ def live_stats(date):
     return out
 
 
-def live_line(p, g, mk, side, line):
+def live_line(p, g, mk, side, line, proj=None):
     """One line of live stats for a prop: stat now vs. the line, minutes, shooting, fouls, score and clock, pace needed."""
     from nbaprops.rules import halftime as H
     now = sum(p.get(k) or 0 for k in H.PARTS[mk])
@@ -481,7 +481,8 @@ def live_line(p, g, mk, side, line):
         f"needs {need:g} more" if side == "over" else f"{line - now:g} of room")
     rate = f", {now / mins:.2f}/min" if mins else ""
     flags = (", EJECTED" if p.get("ejected") else "") + (", injury mention" if p.get("injury") else "")
-    return (f"LIVE {mk} {now} vs {side[0]}{line:g} ({status}) in {mins} min{rate} | {box} | {shoot} | {p.get('PF') or 0} PF{flags}"
+    bp = "BP pregame proj –" if proj is None else f"BP pregame proj {float(proj):.1f}"
+    return (f"LIVE {mk} {now} vs {side[0]}{line:g} ({status}) in {mins} min{rate} | {bp} | {box} | {shoot} | {p.get('PF') or 0} PF{flags}"
             f" | {score}, {g.get('detail') or g.get('status', '')}")
 
 
@@ -534,7 +535,7 @@ def live_compare(text, date):
         lv = stats.get(norm(names_map(date).get(norm(pl), pl)))
         out.append({"player": pl, "market": mk, "side": side, "line": line, "odds": t.get("odds"), "ev": t.get("ev"),
                     "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now,
-                    "live": live_line(lv[0], lv[1], mk, side, line) if lv else "LIVE: no live box score (not started or name not matched)"})
+                    "live": live_line(lv[0], lv[1], mk, side, line, c.get("proj")) if lv else "LIVE: no live box score (not started or name not matched)"})
     return out, skipped
 
 

@@ -323,6 +323,16 @@ def save(date, game, rows):
     json.dump(snap, open(path, "w"), indent=1)
 
 
+def bp_pregame(date, player, market):
+    """BettingPros' pregame projection for player/market from the day's pull, as text ('–' if none)."""
+    try:
+        from nbaprops.pricing import samscore as SS
+        v = SS._num(SS.board_row(date, player, market).get("bp_proj"))
+        return "–" if v is None else f"{v:.1f}"
+    except Exception:  # noqa: BLE001
+        return "–"
+
+
 def report(date, game, rows):
     """Print a game's halftime alerts."""
     print(f"\nHALFTIME {game['name']}  {' - '.join(f'{t} {s}' for t, s in game['score'].items())}  (margin {game['margin']})"
@@ -331,7 +341,8 @@ def report(date, game, rows):
         print("  no strong pace flags (<=25% with 12+ min, or >=80% still under; minimum lines)")
     for x in rows:
         X = x.get("fair_live")
-        print(f"  {x['player']:22} {x['market']:4} pregame {x['line']:g}: 1st half {x['half']} ({round(100 * x['pace'])}%, "
+        bp = bp_pregame(date, x["player"], x["market"])
+        print(f"  {x['player']:22} {x['market']:4} pregame {x['line']:g} (BP proj {bp}): 1st half {x['half']} ({round(100 * x['pace'])}%, "
               f"{x['pace_flag']}), {x['min']} min, {x['pf']} PF; expected final {x.get('exp_final')} (n {x.get('exp_n')})"
               f"  -> lean: OVER if live line below {X}, UNDER if above {X}"
               + (f"   SKIP: {', '.join(x['skip'])}" if x["skip"] else ""))
