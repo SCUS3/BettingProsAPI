@@ -88,3 +88,11 @@ Logo for FanDuel"""
     rows = BPP.parse(text)
     assert [(r["player"], r["market"], r["line"], r["bp_proj"], r["bp_rec_side"], r["dvp_softness"], r["price_book"]) for r in rows] == [
         ("Brandin Podziemski", "PRA", 24.5, 28.0, "over", 8, "Polymarket US"), ("Mikal Bridges", "AST", 3.5, 2.0, "under", 6, "FanDuel")]
+
+
+def test_espn_form_fields():
+    from nbaprops.sources import espn_form as EF
+    games = [{"PTS": p, "REB": 5, "AST": 2, "3PM": 1} for p in (20, 12, 25, 9, 18, 30, 11, 14, 22, 8, 16)]   # newest first
+    f = EF.form_fields(games, "PTS", "over", 15.5)
+    assert f == {"form_l5": "3-5", "form_l10": "5-10", "form_l20": "6-11", "form_season": "6-11"}
+    assert EF.form_fields(games, "P+A", "under", 17.5)["form_l5"] == "2-5"                # 22,14,27,11,20 -> 14 and 11 under

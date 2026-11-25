@@ -60,6 +60,37 @@ def parse(text: str) -> list[dict]:
     return out
 
 
+RW_DTD = {"ques", "doubt", "gtd", "dtd", "questionable", "doubtful"}
+
+
+def enrich(rows: list[dict], date: str) -> None:
+    """Free extras for a page-built board: recent form from ESPN game logs (L5/L10/L20/season hit counts vs. the line)
+    and RotoWire's lineups (starter, status, teammates out); RotoWire Questionable/Doubtful -> injury 'DTD'."""
+    from nbaprops.rules import ledger as L
+    from nbaprops.sources import espn as BX
+    from nbaprops.sources import espn_form as EF
+    from nbaprops.sources import rotowire as RW
+    logs = EF.load(date, {r["player"]: r["team"] for r in rows})
+    n_form = 0
+    for r in rows:
+        f = EF.form_fields(logs.get(BX.norm(r["player"])) or [], r["market"], r["rec_side"], float(r["line"]))
+        if f:
+            r.update(f)
+            n_form += 1
+    try:
+        rw = RW.fetch()
+    except Exception:  # noqa: BLE001
+        rw = []
+    if rw:
+        L.save_rotowire(rw, date, rows[0]["pulled_at"] if rows else L.utc_now())   # same stamp as the board (re-score reloads it)
+        L.add_teammate_context(rows, date, rw)
+        for r in rows:
+            if (r.get("rw_status") or "").strip().lower() in RW_DTD:
+                r["injury"] = "DTD"
+    print(f"Form (ESPN game logs) on {n_form} of {len(rows)} props; RotoWire lineups: "
+          + (f"{len(rw)} players" if rw else "unavailable"))
+
+
 def tips(date):
     """{frozenset(ESPN team abbrs): (tip ISO, status)} from ESPN's scoreboard (free)."""
     from nbaprops.rules import halftime as H
@@ -97,6 +128,7 @@ def to_board(rows: list[dict], date: str) -> str:
                     "opp_rank_raw": r["opp_rank_raw"], "dvp_softness": r["dvp_softness"], "event_id": "", "tip": tip or "",
                     "pulled_at": now, "lean_only": r["market"] not in ("3PM", "P+R"), "placeholder": False,
                     "source": "cheat sheet page"})
+    enrich(out, date)
     path = os.path.join(L.HERE, f"bp_props_{date}.csv")
     fields = list(dict.fromkeys(k for r in out for k in r))
     with open(path, "w", newline="") as f:
