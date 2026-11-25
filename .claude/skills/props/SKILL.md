@@ -147,3 +147,7 @@ Tonight's bets shows a Sam score and tier per prop (A 80+, B 65-79, C 50-64; und
 
 Screener pastes that include games under way automatically list those rows with live stats (ESPN, free): the stat now vs. the line, minutes, PTS/REB/AST/3PM, FG and 3PT shooting, fouls, score and clock, plus BettingPros and the halftime expected final. `--cno-paste FILE --live` does the same for a whole paste. Display only; never logged.
 
+## Free alternative: the cheat-sheet page
+
+If the user pastes BettingPros' public Prop Bet Cheat Sheet page, save it to `history/<date>/bp_cheatsheet_page.txt` and run `python3 -m nbaprops.sources.bp_page <file> --date <date>` (0 API requests): it writes the day's board (projections + opponent rank as DvP; games not yet started). Then `python3 bp_props.py --from-csv --date <date>` and the Unabated board. No form, injury or starter data from the page (Sam score uses neutral values there).
+
