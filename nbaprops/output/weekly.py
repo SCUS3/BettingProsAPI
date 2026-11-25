@@ -7,10 +7,25 @@ import datetime as dt
 from nbaprops.output.note import md_table
 from nbaprops.rules import ledger as L
 
-GROUPS = [("Your rule", {"my_rule"}), ("Near misses (research)", {"near_miss"}), ("Unabated +EV & BP agrees", {"ua_agree"}),
+GROUPS = [("Tonight's bets", {"__tonight__"}), ("Triple green", {"triple"}), ("2 of 3 (research)", {"two_of_three"}),
+          ("2 of 3: all 3", {"__t23:all 3"}), ("2 of 3: EV+BP", {"__t23:EV+BP"}), ("2 of 3: EV+DvP", {"__t23:EV+DvP"}),
+          ("2 of 3: BP+DvP", {"__t23:BP+DvP"}), ("Your rule", {"my_rule"}), ("Near misses (research)", {"near_miss"}), ("Unabated +EV & BP agrees", {"ua_agree"}),
           ("BETs (Unabated)", {"bet_agree", "bet_only"}), ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}),
           ("Alt ladder", {"alt_mkt", "alt_proj"}), ("All +EV (any source)", {"all_ev"}), ("HALF BETs", {"half"}),
           ("Outside picks", {"ext_pick"}), ("Projection model (research)", {"bal", "gap", "learned"})]
+
+
+def _select(keys, graded, start, end):
+    """Graded (row, clv) pairs for a group: ledger strategies, a 2 of 3 combination ('__t23:<checks>'), or Tonight's bets
+    ('__tonight__': each listed prop once at its capped stake, held-out props excluded)."""
+    k = next(iter(keys))
+    if k == "__tonight__":
+        from nbaprops.rules import tonight as TN
+        rr, rc = TN.record_rows()
+        return [(r, v) for r, v in zip(rr, rc) if start <= r["date"] <= end and not r["tn_held"]]
+    if k.startswith("__t23:"):
+        return [(r, v) for r, v in graded if r["strategy"] == "two_of_three" and r.get("fair_src") == k[6:]]
+    return [(r, v) for r, v in graded if r["strategy"] in keys]
 
 
 def _line_type(r):
@@ -54,7 +69,7 @@ def build(end: str) -> str:
              + ", ".join(sorted({L.rule_version(r) for r, _ in graded})) + ".", ""]
     body = []
     for label, keys in GROUPS:
-        sub = [(r, v) for r, v in graded if r["strategy"] in keys]
+        sub = _select(keys, graded, start, end)
         if sub:
             body.append(_row(label, [r for r, _ in sub], [v for _, v in sub if v is not None]))
     lines += ["## Every record", ""] + (md_table(COLS, body) if body else ["_Nothing graded this week._"]) + [""]
@@ -78,7 +93,7 @@ def build(end: str) -> str:
     except Exception as e:  # noqa: BLE001
         lines += ["## Sam score weights", "", f"_Fit check failed: {e}_", ""]
     for label, keys in GROUPS:
-        sub = [(r, v) for r, v in graded if r["strategy"] in keys]
+        sub = _select(keys, graded, start, end)
         if len(sub) < 2:
             continue
         lines += [f"## {label}", ""]

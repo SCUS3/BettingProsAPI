@@ -16,6 +16,8 @@ from nbaprops import config as C
 from nbaprops.rules import ledger as L
 
 RECORDS = [  # (record label, strategies) -- the v2 records that carry results
+    ("Triple green", {"triple"}),
+    ("2 of 3 (research)", {"two_of_three"}),
     ("Your rule", {"my_rule"}),
     ("Unabated +EV & BP agrees", {"ua_agree"}),
     ("BETs (Unabated)", {"bet_agree", "bet_only"}),
@@ -87,6 +89,8 @@ DIMENSIONS = [
                                           abs(_f(r["bp_proj_raw"]) - _f(r["line"])), [0.5, 1.0, 2.0], ["< 0.5", "0.5-1", "1-2", "2+"])),
     ("Sources", lambda r: _bucket(_f(r.get("sources")), [4, 6], ["3", "4-5", "6+"])),
     ("Logged before tip", lambda r: _bucket(_minutes_before_tip(r), [30, 120], ["< 30 min", "30 min - 2 h", "2 h+"])),
+    ("Checks (2 of 3)", lambda r: r.get("fair_src") if r.get("strategy") == "two_of_three" else None),
+    ("Sam score tier", lambda r: r.get("score_tier") or None),
 ]
 
 

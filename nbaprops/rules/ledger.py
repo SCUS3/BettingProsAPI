@@ -65,7 +65,8 @@ SAM_KEYS = {"bet_agree", "bet_only", "alt_mkt", "alt_proj", "my_rule", "triple",
 EV_BUCKETS = [(0.0, 0.02, "0-2%"), (0.02, 0.04, "2-4%"), (0.04, 99, "4%+")]
 EV_RECORDS = [("Your rule", {"my_rule"}), ("Unabated +EV & BP agrees", {"ua_agree"}), ("BETs (Unabated)", {"bet_agree", "bet_only"}),
               ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
-              ("All +EV (any source)", {"all_ev"}), ("Triple green", {"triple"}), ("Proven poster + market +EV", {"proven_ev"})]       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
+              ("All +EV (any source)", {"all_ev"}), ("Triple green", {"triple"}), ("2 of 3 (+EV pairs; research)", {"two_of_three"}),
+              ("Proven poster + market +EV", {"proven_ev"})]       # outside picks (Reddit / X / RotoWire cards), per source; flat 1u, graded from box scores        # v2: Unabated +EV (any, 3+ sources) where BettingPros agrees; ¼K on the Unabated fair       # your score from 11/23: CNO screener +EV (any) and BettingPros agrees; own record
 LOG_SKIP = {"score"}          # the old score formula no longer logs picks (its history stays in the record)   # CrazyNinja's own +EV screener, pasted (bp_value.py --cno-paste); own record
 CNO_KEYS = {"cno"}
 HALF_KEYS = {"half"}
