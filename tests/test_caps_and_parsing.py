@@ -48,7 +48,7 @@ def test_live_line_and_headerless_live_rows():
     assert rows[0]["bet"] == "Ausar Thompson Over 9.5" and rows[0]["odds"] == "+450" and rows[0]["books"] == "5"
     p = {"MIN": 18, "PTS": 15, "REB": 3, "AST": 2, "FG": "6-12", "3PT": "1-3", "PF": 0}
     g = {"score": {"ORL": 36, "DET": 48}, "detail": "Halftime"}
-    ln = S.live_line(p, g, "AST", "over", 5.5, 4.0)
-    assert "BP pregame proj 4.0" in ln
+    ln = S.live_line(p, g, "AST", "over", 5.5, 4.0, "lean disagrees", 26)
+    assert "BP pregame proj 🔴 4.0" in ln and "DvP 🔴 26" in ln
     assert "LIVE AST 2 vs o5.5 (needs 4 more) in 18 min" in ln and "FG 6-12" in ln and "Halftime" in ln
     assert "OVER CASHED" in S.live_line(p, g, "PTS", "over", 14.5) and "UNDER LOST" in S.live_line(p, g, "PTS", "under", 14.5)
