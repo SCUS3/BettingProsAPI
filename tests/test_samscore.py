@@ -89,7 +89,7 @@ def test_adapt_shrinks_toward_fit_without_sign_flips(monkeypatch):
     from nbaprops.pricing import samfit as SF
     random.seed(1)
     rows = []
-    for i in range(300):                                   # DvP hurts results, line movement helps
+    for _i in range(300):                                  # DvP hurts results, line movement helps
         x = [random.random() for _ in SS.PARTS]
         z = 1.5 * (x[SS.PARTS.index("move")] - 0.5) - 1.5 * (x[SS.PARTS.index("dvp")] - 0.5)
         y = 1.0 if random.random() < 1 / (1 + 2.718 ** -z) else 0.0
