@@ -139,7 +139,8 @@ def report_dropped(dropped, full_cost, budget, n_games):
 
 def gid(p):
     """Game key for an Odds API event."""
-    return str(int(float(p["event_id"])))
+    ev = str(p.get("event_id") or "").strip()
+    return str(int(float(ev))) if ev else f"tip:{p.get('tip') or p.get('team') or '?'}"   # page-built boards have no event id
 
 
 def plan(picks, budget=None):

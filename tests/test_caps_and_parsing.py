@@ -52,3 +52,39 @@ def test_live_line_and_headerless_live_rows():
     assert "BP pregame proj 🔴 4.0" in ln and "DvP 🔴 26" in ln
     assert "LIVE AST 2 vs o5.5 (needs 4 more) in 18 min" in ln and "FG 6-12" in ln and "Halftime" in ln
     assert "OVER CASHED" in S.live_line(p, g, "PTS", "over", 14.5) and "UNDER LOST" in S.live_line(p, g, "PTS", "under", 14.5)
+
+
+def test_cheat_sheet_page_parse():
+    from nbaprops.sources import bp_page as BPP
+    text = """Brandin PodziemskiLogo for GSW
+Brandin Podziemski
+G
+- SAC @ GSW
+24.5
+Pts + Ast + Reb
+28.0
+Over
+64.4%
+3 out of 5 stars
++9%
+23rd
+40%	47%
+O 24.5
+(-144)
+Logo for Polymarket US
+Mikal BridgesLogo for NYK
+Mikal Bridges
+F
+- CLE @ NYK
+3.5
+Ast
+2.0
+Under
+Click to view premium content
+25th
+U 3.5
+(-245)
+Logo for FanDuel"""
+    rows = BPP.parse(text)
+    assert [(r["player"], r["market"], r["line"], r["bp_proj"], r["bp_rec_side"], r["dvp_softness"], r["price_book"]) for r in rows] == [
+        ("Brandin Podziemski", "PRA", 24.5, 28.0, "over", 8, "Polymarket US"), ("Mikal Bridges", "AST", 3.5, 2.0, "under", 6, "FanDuel")]
