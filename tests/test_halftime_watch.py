@@ -20,3 +20,15 @@ def test_watch_handles_every_halftime_then_stops(monkeypatch, tmp_path):
     monkeypatch.setattr("subprocess.Popen", lambda *a, **k: None)
     H.run("2026-11-24", watch=True)
     assert alerts == ["G1 at halftime: no strong flags", "G2 at halftime: no strong flags"]
+
+
+def test_end_of_first_quarter_is_not_past_halftime(monkeypatch):
+    from nbaprops.rules import halftime as H
+    assert H.at_half({"status": "STATUS_END_PERIOD", "period": 2}) and not H.at_half({"status": "STATUS_END_PERIOD", "period": 1})
+    games = [[{"id": "1", "name": "DAL @ DEN", "status": "STATUS_END_PERIOD", "period": 1, "score": {}, "margin": 0}],
+             [{"id": "1", "name": "DAL @ DEN", "status": "STATUS_FINAL", "period": 4, "score": {}, "margin": 0}]]
+    calls = []
+    monkeypatch.setattr(H, "games", lambda d: calls.append(1) or games[min(len(calls) - 1, 1)])
+    monkeypatch.setattr(H.time, "sleep", lambda s: None)
+    H.run("2026-11-24", watch=True)
+    assert len(calls) == 2                       # kept watching through the end-of-1st break; stopped once final

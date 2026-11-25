@@ -374,6 +374,14 @@ def notify(msg):
         pass
 
 
+OVER = ("STATUS_FINAL", "STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_SUSPENDED")
+
+
+def at_half(g):
+    """At halftime: ESPN's halftime status, or the end-of-period break after the 2nd quarter."""
+    return g["status"] == "STATUS_HALFTIME" or (g["status"] == "STATUS_END_PERIOD" and (g.get("period") or 0) == 2)
+
+
 def run(date, watch=False, seen=None):
     """Report games at halftime now. With watch=True, poll ESPN every 2 minutes and handle every halftime as it
     comes (snapshot, alerts, Mac notification, one 'HALFTIME ALERT' line per game) until every game is past
@@ -399,7 +407,7 @@ def run(date, watch=False, seen=None):
             print(f"[{time.strftime('%H:%M')}] ESPN check failed ({e}); retrying in 2 min.", flush=True)
             time.sleep(120)
             continue
-        new = [g for g in gs if g["status"] == "STATUS_HALFTIME" and g["id"] not in done and g["id"] not in seen]
+        new = [g for g in gs if at_half(g) and g["id"] not in done and g["id"] not in seen]
         for g in new:
             try:
                 rows = off_pace(date, g, lines)
@@ -423,9 +431,8 @@ def run(date, watch=False, seen=None):
                 print("No game at halftime right now." if not any(g["status"] == "STATUS_HALFTIME" for g in gs)
                       else "Halftime games already reported (see history/<date>/halftime_<date>.json).")
             return
-        left = [g for g in gs if g["id"] not in done | seen and
-                (g["status"] in ("STATUS_SCHEDULED", "STATUS_HALFTIME") or
-                 (g["status"] == "STATUS_IN_PROGRESS" and (g["period"] or 0) <= 2))]
+        left = [g for g in gs if g["id"] not in done | seen and g["status"] not in OVER and
+                (g["status"] in ("STATUS_SCHEDULED", "STATUS_HALFTIME") or (g["period"] or 0) <= 2)]
         if not left:
             print(f"[{time.strftime('%H:%M')}] Every game is past halftime. Watch done.", flush=True)
             return

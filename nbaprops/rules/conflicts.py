@@ -99,7 +99,7 @@ def reprice(date, data, d, now, items=None):
     st, done = load(date), []
     for o, u in both:
         k = key(o["player"], o["market"], o["line"])
-        if st.get(k, {}).get("case") or (o.get("tip") and not T.is_open(o["tip"])):
+        if st.get(k, {}).get("case") or (o.get("tip") and not T.is_open(o["tip"], now=now)):   # open at the snapshot
             continue
         snap = reprice_snapshot(data, d, now, o["player"], o["market"], o["line"])
         logged = {"over": {"ev": o.get("ev"), "price": o.get("price"), "from": o.get("from"), "at": o.get("entry_at")},
