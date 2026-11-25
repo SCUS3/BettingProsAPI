@@ -263,13 +263,6 @@ def _parse_table(tbl, date, min_ev=MIN_EV):
             continue
         player_txt = (g.get("bet") or "")[:sm.start()].strip()
         player = names.get(norm(player_txt), player_txt)
-        main = mains.get((norm(player), mk))
-        line_note = ""
-        if main is not None and abs(float(sm.group(2)) - main) >= ALT_GAP:
-            drop(f"alt line (FanDuel main {main:g} at the pull)")
-            continue
-        if main is not None and float(sm.group(2)) != main:
-            line_note = f"line differs from the pull's FanDuel main {main:g} (moved, or an alt)"
         try:
             odds = float(g.get("odds"))
             ev = float(str(g.get("ev")).rstrip("%")) / 100
@@ -285,6 +278,13 @@ def _parse_table(tbl, date, min_ev=MIN_EV):
         if tip and not bp_tipoff.is_open(tip, g.get("event"), now):
             drop("game already started")
             continue
+        main = mains.get((norm(player), mk))
+        line_note = ""
+        if main is not None and abs(float(sm.group(2)) - main) >= ALT_GAP:
+            drop(f"alt line (FanDuel main {main:g} at the pull)")
+            continue
+        if main is not None and float(sm.group(2)) != main:
+            line_note = f"line differs from the pull's FanDuel main {main:g} (moved, or an alt)"
         if ev < min_ev or (min_ev >= 0 and ev <= 0):
             drop(f"EV below {100 * min_ev:+g}%")
             continue
