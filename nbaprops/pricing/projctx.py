@@ -29,6 +29,10 @@ def load(date):
                     idx.setdefault((norm(r["player"]), r["market"]), r)
         except OSError:
             pass
+        for r in page_rows(date):                      # pasted cheat-sheet page: every game, incl. ones already started
+            markets.add(r["market"])
+            idx.setdefault((norm(r["player"]), r["market"]), {"bp_proj": r["bp_proj"], "dvp_softness": r["dvp_softness"],
+                                                              "player": r["player"], "market": r["market"]})
         _cache[date] = (idx, markets, _et(pulled))
     return _cache[date]
 
@@ -101,10 +105,25 @@ def dvp_dot(side: str | None, softness) -> str:
     return {"helps": "🟢 ", "hurts": "🔴 "}.get(e, "") + f"{v:g}"
 
 
+def page_rows(date):
+    """Rows from the day's pasted BettingPros cheat-sheet page (history/<date>/bp_cheatsheet_page.txt), [] if none."""
+    p = os.path.join(HERE, "history", date, "bp_cheatsheet_page.txt")
+    if not os.path.exists(p):
+        return []
+    try:
+        from nbaprops.sources import bp_page as BPP
+        return BPP.parse(open(p).read())
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def dvp_of(date: str, player: str, market: str) -> float | None:
     """DvP softness for a player/market from today's pull (any row, projection or not), or None."""
     import csv
     for r in csv.DictReader(open(os.path.join(HERE, f"bp_props_{date}.csv"))) if os.path.exists(os.path.join(HERE, f"bp_props_{date}.csv")) else []:
         if norm(r["player"]) == norm(player) and r["market"] == market and r.get("dvp_softness") not in (None, ""):
+            return float(r["dvp_softness"])
+    for r in page_rows(date):                          # fallback: the pasted cheat-sheet page
+        if norm(r["player"]) == norm(player) and r["market"] == market and r.get("dvp_softness") is not None:
             return float(r["dvp_softness"])
     return None

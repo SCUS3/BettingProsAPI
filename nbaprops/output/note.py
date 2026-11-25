@@ -209,7 +209,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                   f"{100 * b['close']['mkt_ev']:+.1f}%" + (" FLAG" if b['close']['mkt_ev'] < 0 else "")
                   if b.get("close") and b["close"].get("mkt_ev") is not None else "") for b in bets] or ["- No BET plays today."]
         lines += ["", "Watch (not bets): " + "; ".join(
-            f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * r['oa_ev']:+.1f}%)" if r.get("oa_ev") is not None else "")
+            f"{r['player']} {r['market']} {r['rec_side']} {fmt(r['line'])}" + (f" (mkt EV {100 * float(r['oa_ev']):+.1f}%)" if r.get("oa_ev") not in (None, "") else "")
             for r in watch), ""]
     lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
               "real projection unless the price alone is +EV.", ""]
