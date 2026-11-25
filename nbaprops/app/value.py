@@ -1290,6 +1290,19 @@ def parse_placed(text):
     return {"name": name, "market": market, "side": side, "line": line, "odds": odds, "stake": stake}
 
 
+def refresh_note(date):
+    """Rewrite today's note from saved data (the day's pull if there is one, plus the stores and ledger). No API calls."""
+    try:
+        from nbaprops.app import props as _P
+        from nbaprops.output import note as _N
+        path = os.path.join(HERE, f"bp_props_{date}.csv")
+        rows = _P.typed_csv_rows(list(csv.DictReader(open(path)))) if os.path.exists(path) else []
+        out = _N.write_top_by_market(rows, date)
+        print(f"Note -> {os.path.join(HERE, out)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Note not rebuilt: {e}")
+
+
 def run_cno_paste(args):
     """--cno-paste: parse a screener paste, update the daily store, log your rule / screener / near misses."""
     from nbaprops.rules import screener as S
@@ -1344,6 +1357,8 @@ def run_cno_paste(args):
               f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}"
               + (f"  [{p['line_note']}]" if p.get("line_note") else ""))
     if args.dry or not plays:
+        if not args.dry:
+            refresh_note(args.date)
         return
     rows = S.log([p for p in plays if p["ev"] >= S.MIN_EV], args.date, st)
     if args.all:
@@ -1358,6 +1373,7 @@ def run_cno_paste(args):
           + ". " + counts_line(args.date))
     for r in rows:
         print(f"  {r['player']} {r['market']} {r['side']} {float(r['line']):g} {float(r['odds']):+g}: {r['kelly_u']}u ¼K{cap_text(r['cap_note'])}")
+    refresh_note(args.date)
 
 
 def run_proj(args):
