@@ -143,3 +143,7 @@ The note and the dashboard open with "Tonight's bets" (BETs + alt BETs + your ru
 
 Tonight's bets shows a Sam score and tier per prop (A 80+, B 65-79, C 50-64; under 50 is held out as paper only) and is sorted by it. Report the score/tier with each bet. It never changes a stake.
 
+## Live rows
+
+Screener pastes that include games under way automatically list those rows with live stats (ESPN, free): the stat now vs. the line, minutes, PTS/REB/AST/3PM, FG and 3PT shooting, fouls, score and clock, plus BettingPros and the halftime expected final. `--cno-paste FILE --live` does the same for a whole paste. Display only; never logged.
+

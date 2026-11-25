@@ -39,3 +39,15 @@ def test_headerless_screener_paste_applies_fixed_settings(monkeypatch):
     assert dropped == {"not FanDuel": 1, "odds over +200": 1, "under 4 books": 1}   # "Books" header line = not FanDuel
     assert plays[0]["tip"] == "2026-11-25T00:00:00Z" and plays[0]["event"] == "Detroit Pistons @ Orlando Magic"
     assert [p["player"] for p in S.parse(text, "2026-11-24")[0]] == ["Ausar Thompson"]        # +2% floor for the screener record
+
+
+def test_live_line_and_headerless_live_rows():
+    from nbaprops.rules import screener as S
+    rows = S._loose_table("0.91%            Today at 7:00 PM    Basketball    NBA    Detroit Pistons @ Orlando Magic    Player Points"
+                          "    Ausar Thompson Over 9.5    +450    FanDuel    +445    5")
+    assert rows[0]["bet"] == "Ausar Thompson Over 9.5" and rows[0]["odds"] == "+450" and rows[0]["books"] == "5"
+    p = {"MIN": 18, "PTS": 15, "REB": 3, "AST": 2, "FG": "6-12", "3PT": "1-3", "PF": 0}
+    g = {"score": {"ORL": 36, "DET": 48}, "detail": "Halftime"}
+    ln = S.live_line(p, g, "AST", "over", 5.5)
+    assert "LIVE AST 2 vs o5.5 (needs 4 more) in 18 min" in ln and "FG 6-12" in ln and "Halftime" in ln
+    assert "OVER CASHED" in S.live_line(p, g, "PTS", "over", 14.5) and "UNDER LOST" in S.live_line(p, g, "PTS", "under", 14.5)

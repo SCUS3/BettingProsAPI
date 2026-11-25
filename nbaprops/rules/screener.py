@@ -431,13 +431,68 @@ def log(plays, date, st=None, key=KEY):
     return out
 
 
+def names_map(date):
+    """{norm name: board name} for today's players (pasted names -> box-score names)."""
+    return {norm(n): n for n in known_players(date)}
+
+
+def _loose_table(text):
+    """Header-less screener rows -> the same dicts _table returns (columns found by content, not position)."""
+    out = []
+    for ln in text.splitlines():
+        cells = [c.strip() for c in re.split(r"\t|\s{2,}", ln.strip()) if c.strip()]
+        ev = next((c for c in cells if re.fullmatch(r"-?\d+(\.\d+)?%", c)), None)
+        ei = next((i for i, c in enumerate(cells) if " @ " in c), None)
+        if ev is None or ei is None or ei + 4 >= len(cells):
+            continue
+        rest = cells[ei + 1:]
+        out.append({"ev": ev, "date": next((c for c in cells if re.search(r"\bat \d{1,2}:\d{2}", c)), ""),
+                    "league": next((c for c in cells[:ei] if c.upper() in ("NBA", "WNBA", "NCAAB")), ""), "event": cells[ei],
+                    "market": rest[0], "bet": rest[1], "odds": rest[2], "book": rest[3] if len(rest) > 3 else "",
+                    "fair": rest[4] if len(rest) > 4 else "", "books": rest[5] if len(rest) > 5 else ""})
+    return out
+
+
+def live_stats(date):
+    """{name key: (player live box, game)} for every game in progress (ESPN, free)."""
+    from nbaprops.rules import halftime as H
+    out = {}
+    try:
+        for g in H.games(date):
+            if g["status"] in ("STATUS_SCHEDULED", "STATUS_FINAL"):
+                continue
+            for k, p in H.half_box(g["id"]).items():
+                out[k] = (p, g)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def live_line(p, g, mk, side, line):
+    """One line of live stats for a prop: stat now vs. the line, minutes, shooting, fouls, score and clock, pace needed."""
+    from nbaprops.rules import halftime as H
+    now = sum(p.get(k) or 0 for k in H.PARTS[mk])
+    mins = p.get("MIN") or 0
+    need = line + 0.5 - now if side == "over" else None
+    box = f"{p.get('PTS') or 0} PTS, {p.get('REB') or 0} REB, {p.get('AST') or 0} AST, {(p.get('3PT') or '0-0').split('-')[0]} 3PM"
+    shoot = f"FG {p.get('FG') or '-'}, 3PT {p.get('3PT') or '-'}"
+    score = " - ".join(f"{t} {v}" for t, v in g.get("score", {}).items())
+    status = "OVER CASHED" if side == "over" and now > line else "UNDER LOST" if side == "under" and now > line else (
+        f"needs {need:g} more" if side == "over" else f"{line - now:g} of room")
+    rate = f", {now / mins:.2f}/min" if mins else ""
+    flags = (", EJECTED" if p.get("ejected") else "") + (", injury mention" if p.get("injury") else "")
+    return (f"LIVE {mk} {now} vs {side[0]}{line:g} ({status}) in {mins} min{rate} | {box} | {shoot} | {p.get('PF') or 0} PF{flags}"
+            f" | {score}, {g.get('detail') or g.get('status', '')}")
+
+
 def live_compare(text, date):
     """Live screener rows (games under way) vs. both projection models: BettingPros' pregame projection/lean and the
     halftime expected final (snapshot), plus the stat now (ESPN, free). Display only; nothing is logged."""
     import json
     from nbaprops.rules import halftime as H
     from nbaprops.pricing import projctx as P
-    tbl = _table(text) or []
+    tbl = _table(text) or _loose_table(text)
+    stats = live_stats(date)
     snap = {}
     try:
         for g in json.load(open(H.snapshot_path(date))).values():
@@ -476,8 +531,10 @@ def live_compare(text, date):
                    if p and g else "final" if gname not in live else "-")
         else:
             ht, htag, now = "no halftime snapshot", "none", "-"
+        lv = stats.get(norm(names_map(date).get(norm(pl), pl)))
         out.append({"player": pl, "market": mk, "side": side, "line": line, "odds": t.get("odds"), "ev": t.get("ev"),
-                    "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now})
+                    "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now,
+                    "live": live_line(lv[0], lv[1], mk, side, line) if lv else "LIVE: no live box score (not started or name not matched)"})
     return out, skipped
 
 

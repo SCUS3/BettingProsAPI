@@ -1300,7 +1300,7 @@ def run_cno_paste(args):
         for r in rows:
             both = r["half_tag"] == "agrees" and r["bp_tag"] in ("agrees", "lean agrees")
             print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
-                  f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']}) | now {r['now']}")
+                  f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']})\n      {r['live']}")
         return
     every, _ = S.parse(text, args.date, S.NEAR_LOW)     # every row from -1% EV up (fixed settings) feeds the daily store
     plays, dropped = S.parse(text, args.date, 0.0 if args.all else None)
@@ -1330,6 +1330,15 @@ def run_cno_paste(args):
             print("  WARNING: " + w)
     print(f"CNO screener paste: {len(plays)} NBA FanDuel player props kept"
           + (f"; dropped {sum(dropped.values())} ({', '.join(f'{k} {v}' for k, v in sorted(dropped.items()))})" if dropped else ""))
+    if dropped.get("game already started"):              # live rows: show them with live stats (display only, never logged)
+        lrows, _ = S.live_compare(text, args.date)
+        lrows = [r for r in lrows if not r["live"].startswith("LIVE: no live")]
+        if lrows:
+            print(f"Live rows ({len(lrows)}, games under way; display only):")
+            for r in lrows:
+                both = r["half_tag"] == "agrees" and r["bp_tag"] in ("agrees", "lean agrees")
+                print(f"  {r['player']} {r['market']} {r['side']} {r['line']:g} {r['odds']} ({r['ev']} LW-M, {r['books']} books)"
+                      f"{'  <- both models agree' if both else ''}\n      BP: {r['bp']} | Halftime: {r['half']} ({r['half_tag']})\n      {r['live']}")
     for p in plays:
         print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {p['odds']:+g}: CNO EV {100 * p['ev']:+.1f}%, "
               f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}"

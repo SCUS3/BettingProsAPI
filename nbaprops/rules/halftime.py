@@ -94,6 +94,9 @@ def games(date):
         comp = (e.get("competitions") or [{}])[0]
         score = {c["team"]["abbreviation"]: int(c.get("score") or 0) for c in comp.get("competitors", [])}
         out.append({"id": e["id"], "name": e.get("shortName"), "status": st.get("type", {}).get("name"),
+                    "detail": st.get("type", {}).get("shortDetail") or "", "clock": st.get("displayClock"),
+                    "full": " @ ".join(c.get("team", {}).get("displayName", "") for c in sorted(
+                        comp.get("competitors", []), key=lambda c: c.get("homeAway") != "away")),
                     "period": st.get("period"), "score": score, "margin": abs(max(score.values()) - min(score.values())) if score else 0})
     return out
 
@@ -115,7 +118,10 @@ def half_box(game_id):
                 name = a.get("athlete", {}).get("displayName", "")
                 last = name.split()[-1].lower() if name else "~"
                 injury = bool(re.search(rf"{re.escape(last)}[^.]{{0,60}}injur|injur[^.]{{0,60}}{re.escape(last)}", plays))
+                raw = lambda k: s[idx[k]] if k in idx and idx[k] < len(s) else ""
                 players[norm(name)] = {"name": name, "team": team, "MIN": g("minutes"), "PTS": g("points"), "REB": g("rebounds"),
+                                       "FG": raw("fieldGoalsMade-fieldGoalsAttempted"),
+                                       "3PT": raw("threePointFieldGoalsMade-threePointFieldGoalsAttempted"),
                                        "AST": g("assists"), "3PM": g("threePointFieldGoalsMade-threePointFieldGoalsAttempted"),
                                        "PF": g("fouls"), "ejected": bool(a.get("ejected")), "injury": injury}
     return players
