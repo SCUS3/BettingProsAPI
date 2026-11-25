@@ -173,8 +173,9 @@ def record_rows(version: str | None = None) -> tuple[list[dict], list]:
             if not c or best.get("result") not in ("W", "L", "P") or (version and not L.in_version(best, version)):
                 continue
             pu = L._num(best.get("profit_u")) or 0.0
-            held = "outlier" if x["held"].startswith("check: outlier") else "data error" if x["case"] == "data error" else \
-                "other side" if x["held"] else ""
+            held = ("outlier" if x["held"].startswith("check: outlier") else "data error" if x["case"] == "data error" else
+                    "paper" if x["held"].startswith("paper only") else "trimmed" if x["held"].startswith("trimmed") else
+                    "other side" if x["held"] else "")
             out.append(dict(best, strategy="tonight", kelly_u=x["stake"], profit_kelly=round(pu * x["stake"], 4),
                             tn_case=x["case"], tn_held=held))
             clvs.append(v)
