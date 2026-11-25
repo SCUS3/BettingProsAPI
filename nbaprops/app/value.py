@@ -1296,9 +1296,17 @@ def refresh_note(date):
     try:
         from nbaprops.app import props as _P
         from nbaprops.output import note as _N
+        import contextlib
+        import io
         path = os.path.join(HERE, f"bp_props_{date}.csv")
-        rows = _P.typed_csv_rows(list(csv.DictReader(open(path)))) if os.path.exists(path) else []
-        out = _N.write_top_by_market(rows, date)
+        if os.path.exists(path):                       # same as bp_props.py --from-csv: re-score, then note + dashboard
+            rows = list(csv.DictReader(open(path, newline="")))
+            _P.typed_csv_rows(rows)
+            with contextlib.redirect_stdout(io.StringIO()):
+                _P.finish(rows, date)
+            out = f"bp_top10_{date}.md"
+        else:
+            out = _N.write_top_by_market([], date)
         print(f"Note -> {os.path.join(HERE, out)}")
     except Exception as e:  # noqa: BLE001
         print(f"Note not rebuilt: {e}")
