@@ -223,8 +223,6 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     _scmap = {(x["player"], x["market"], x["side"], float(x["line"]), x["strategy"]): f"{float(x['score_entry']):g} {x.get('score_tier') or ''}".strip()
               for x in _led if x["date"] == date and x.get("score_entry") not in (None, "")}
     sc_of = lambda e, strat: _scmap.get((e["player"], e["market"], e["side"], float(e["line"]), strat), "")
-    stake_of = {(x["player"], x["market"], x["side"], float(x["line"])): f"{float(x['kelly_u']):g}u" for x in _led
-                if x["date"] == date and x["strategy"] == "my_rule" and x.get("kelly_u") not in (None, "")}
     _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
     lines += ["## 2. Top 10 by your score", "",
               "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +200 or shorter, "
@@ -234,6 +232,17 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         x = _rr[0]
         lines += [f"Your rule record: {x['w']}-{x['l']}-{x['p']} | flat 1u {x['units']:+.2f}u | ¼K {x['kelly_units']:+.2f}u"
                   + (f" | CLV {x['clv']:+}% EV" if x.get("clv") is not None else ""), ""]
+    def sam_of(e):                                  # latest Sam score out of 100 for a store row (same as Tonight's bets)
+        try:
+            from nbaprops.pricing import samscore as _SS
+            s = _SS.score({"date": date, "player": e["player"], "market": e["market"], "side": e["side"], "line": e["line"],
+                           "entry_price": e.get("odds"), "entry_ev": e.get("ev"), "entry_sources": e.get("books"),
+                           "injury": (by_inj.get((_norm(e["player"]), e["market"])) or "")}, latest=True)
+            return f"{s['score']:g}/100 {s['tier']}"
+        except Exception:  # noqa: BLE001
+            return ""
+    from nbaprops.sources.rotowire import norm as _norm
+    by_inj = {(_norm(r["player"]), r["market"]): r.get("injury") for r in rows}
     if mine:
         by = {(r["player"], r["market"]): r for r in rows}
         body = []
@@ -244,12 +253,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             seen_et = bp_projctx._et(e.get("first_seen", "")).replace(" ET", "") if e.get("first_seen") else ""
             body.append([str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "🟢",
                          "" if pr is None else f"{pr:.1f}", gap, odds_s(e["odds"]), f"{100 * e['ev']:+.2f}%",
-                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", str(e.get("seen", 1)), seen_et,
-                         stake_of.get((e["player"], e["market"], e["side"], float(e["line"])), ""), sc_of(e, "my_rule"),
-                         status(e.get("tip"), e.get("event"))])
+                         str(e.get("books") or ""), dvp_s(r, e["side"]) if r else "", seen_et, sam_of(e)])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"),
                            ("BP proj", "r"), ("Gap", "r"), ("FD", "r"), ("CNO EV ▼", "r"), ("Books", "r"), ("DvP", "r"),
-                           ("Pastes", "r"), ("First seen", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]
+                           ("First seen", "r"), ("Sam score", "r")], body) + [""]
     else:
         lines += ["_No props yet: paste the CrazyNinja screener during the day and this list builds up._", ""]
     from nbaprops.sources.rotowire import norm as _norm
