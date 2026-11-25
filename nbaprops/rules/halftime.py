@@ -82,6 +82,12 @@ def pregame_lines(date):
                         out.setdefault((who, tag), float(ln["points"]))
     except Exception:
         pass
+    try:                                                   # pasted BettingPros cheat-sheet page (lines for every game)
+        from nbaprops.sources import bp_page as BPP
+        for r in BPP.parse(open(os.path.join(HERE, "history", date, "bp_cheatsheet_page.txt")).read()):
+            out.setdefault((norm(r["player"]), r["market"]), float(r["line"]))
+    except (OSError, ValueError):
+        pass
     return out
 
 
