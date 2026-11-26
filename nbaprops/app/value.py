@@ -1259,6 +1259,7 @@ def run_watch(args):
         json.dump(state, open(path, "w"), indent=1)
         print(f"{_et_now():%H:%M} ET scan done in {time.time() - t0:.0f} s; {len(tips)} tip times still ahead. "
               f"{counts_line(args.date)}", flush=True)
+        refresh_note(args.date)                        # note + dashboard current after every scan (local files)
         if not tips:
             print("All games have tipped. Watch done.", flush=True)
             return
