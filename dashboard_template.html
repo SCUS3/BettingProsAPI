@@ -222,6 +222,21 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
   #view-tonight .scroll table { font-size: 14.5px; }
 }
 
+/* long tables: scroll inside the box, headings stay visible */
+.board.tall .scroll, #props-board .scroll { max-height: 560px; overflow: auto; }
+.board.tall th, #props-board th { position: sticky; top: 0; z-index: 1; }
+.board, .held, #tonight-bets, .best { scroll-margin-top: 84px; }
+
+/* jump-to bars */
+.jump { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: thin; }
+.jump-label { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); white-space: nowrap; }
+.jump button {
+  flex: none; white-space: nowrap; background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 999px;
+  font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: 0.12em; padding: 8px 12px; cursor: pointer;
+}
+.jump button:hover { border-color: var(--accent-dim); color: var(--ink); }
+.jump button:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; }
+
 /* sortable headings */
 th button.sort {
   background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
@@ -316,6 +331,13 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   </div>
 
   <div class="view" id="view-tonight" role="tabpanel" aria-labelledby="tab-tonight">
+  <nav class="jump" aria-label="Jump to a section">
+    <span class="jump-label">Jump to</span>
+    <button type="button" data-jump="tonight-bets">Tonight's bets</button>
+    <button type="button" data-jump="held-out">Held out</button>
+    <button type="button" data-jump="best">Strongest tonight</button>
+    <button type="button" data-jump="props-board">Props board</button>
+  </nav>
   <div id="tonight-bets"></div>
   <section class="best" aria-labelledby="best-label">
     <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
@@ -342,7 +364,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     <textarea id="copytext" readonly></textarea>
   </div>
 
-  <section class="board">
+  <section class="board" id="props-board">
     <div class="board-head">
       <h2 id="board-title"></h2>
       <p id="board-note"></p>
@@ -756,7 +778,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   function units(v) { return v == null ? "" : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + v.toFixed(2) + "u</span>"; }
   function pct(v) { return v == null ? '<span class="dim">–</span>' : v + "%"; }
   function board(title, note, head, body) {
-    return '<section class="board"><div class="board-head"><h2>' + title + "</h2>" + (note ? "<p>" + note + "</p>" : "") +
+    var tall = ((body || "").match(/<tr/g) || []).length > 14;      // long tables scroll inside their own box
+    return '<section class="board' + (tall ? " tall" : "") + '"><div class="board-head"><h2>' + title + "</h2>" + (note ? "<p>" + note + "</p>" : "") +
       '</div><div class="scroll"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div></section>";
   }
   var TIPS = {                            // plain-language meaning of each column and Sam score part (ⓘ buttons)
@@ -771,13 +794,14 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
     "Count": "Number of graded plays in this bucket.",
     "EV at paste": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
+    "Expected": "What a 1u bet at that price is expected to make on average, from the EV at paste: +0.04u means about 4 cents per dollar over many bets. Compare it with Units, what it actually made.",
     "Halftime exp.": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. Blank if the game had no halftime snapshot yet.",
     "Live at paste": "The player's stat for this prop at the moment you pasted (from ESPN's live box score). Blank for pastes logged before this was recorded.",
     "Final": "The player's final stat for this prop.",
     "Result": "W = won, L = lost, P = push, · = not graded yet.",
     "Pasted (ET)": "When you pasted the row, Eastern time.",
     "Why not bet": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
-    "DvP": "DvP stands for Defense vs. Position: how the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
+    "DvP": "How the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
     "BP proj (gap)": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "FD": "FanDuel's price for this bet. +150 pays 1.5u profit on 1u; -150 risks 1.5u to win 1u.",
     "Stake": "How much to bet in units (1u = 1% of your bankroll): quarter-Kelly on the market's fair odds, capped at 1.5u per player, 3.5u per game and 8u per night.",
@@ -803,7 +827,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   function partTip(label) {
     var k = PART_KEYS[label], now = (SW.now || {})[k], hand = (SW.hand || {})[k];
     var moved = now != null && hand != null && Math.abs(now - hand) >= 0.05;
-    return (k === "dvp" ? "DvP stands for Defense vs. Position. " : "") + label + " is one of the 8 parts of the Sam score. " + samIntro().split(". ")[0] + ". " +
+    return label + " is one of the 8 parts of the Sam score. " + samIntro().split(". ")[0] + ". " +
       label + " is worth up to " + now + " of those 100 points right now" +
       (moved ? " (it started at " + hand + "; each night the model moves it toward what has actually been winning)" : "") + ". " +
       "It rewards " + PART_WHAT[k] + " In this table: high = the bet earned at least two-thirds of this part's points, mid = one- to two-thirds, low = less. " +
@@ -962,12 +986,13 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
             "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
             " (" + LPS.clv_n + " rows seen again in a later paste). Newest first; sort any column.",
-            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Books", "hide-sm"], ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"],
-                ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["Units"], ["CLV"]]),
+            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Expected"], ["Books", "hide-sm"],
+                ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"], ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["Units"], ["CLV"]]),
             LPS.rows.map(function (r) {
               var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
               return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
-                (r.side === "over" ? "o" : "u") + esc(r.line) + "</td><td>" + n2(r.odds) + "</td><td>" + pctx(r.ev) + '</td><td class="hide-sm">' + n2(r.books) + '</td><td class="hide-sm">' + n2(r.bp_proj) +
+                (r.side === "over" ? "o" : "u") + esc(r.line) + "</td><td>" + n2(r.odds) + "</td><td>" + pctx(r.ev) + "</td><td>" +
+                (r.ev === "" || r.ev == null ? '<span class="dim">–</span>' : units(Number(r.ev) / 100)) + '</td><td class="hide-sm">' + n2(r.books) + '</td><td class="hide-sm">' + n2(r.bp_proj) +
                 '</td><td class="hide-sm">' + n2(r.half_exp) + '</td><td class="hide-sm">' + n2(r.live_now) + "</td><td>" + n2(r.actual) + "</td><td>" + res + "</td><td>" +
                 (r.profit_u === "" || r.profit_u == null ? '<span class="dim">–</span>' : units(Number(r.profit_u))) + "</td><td>" + pctx(r.clv_ev) + "</td></tr>";
             }).join(""));
@@ -1075,6 +1100,18 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     });
     html += '<div class="rec-grid"><div class="view">' + left + '</div><div class="view">' + right + "</div></div>";
     el.innerHTML = html;
+    var secs = el.querySelectorAll(".board"), chips = [], used = {};    // jump bar: one chip per section on this tab
+    Array.prototype.forEach.call(secs, function (b) {
+      var h = b.querySelector("h2"); if (!h) return;
+      var name = h.textContent.split(" · ")[0].trim(), id = "sec-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (used[id]) { used[id]++; id += "-" + used[id]; } else used[id] = 1;
+      b.id = id;
+      if (!/^\d{4}-\d{2}-\d{2}/.test(name)) chips.push('<button type="button" data-jump="' + id + '">' + esc(name) + "</button>");
+    });
+    var bar = document.createElement("nav"); bar.className = "jump"; bar.setAttribute("aria-label", "Jump to a section");
+    bar.innerHTML = '<span class="jump-label">Jump to</span>' + chips.join("");
+    var seg = el.querySelector('.seg[aria-label="Rule version"]');
+    if (seg && seg.nextSibling) el.insertBefore(bar, seg.nextSibling); else el.insertBefore(bar, el.firstChild);
   }
   var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
   function showTab(which) {
@@ -1106,8 +1143,16 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     out.push(cur);
     return out;
   }
+  var TITLE_FULL = {                      // tooltip title line: abbreviations spelled out
+    "DvP": "DvP (Defense vs. Position)", "CLV": "CLV (Closing line value)", "ROI": "ROI (Return on investment)",
+    "FD": "FD (FanDuel price)", "W-L-P": "W-L-P (Wins-Losses-Pushes)", "¼K units": "¼K units (quarter-Kelly stakes)",
+    "Kelly units": "Kelly units (quarter-Kelly stakes)", "BP proj (gap)": "BP proj (BettingPros projection)", "BP proj": "BP proj (BettingPros projection)",
+    "EV at paste": "EV at paste (expected value)", "Entry EV": "Entry EV (expected value when logged)", "p": "p (chance it's luck)",
+    "Expected": "Expected (expected profit per 1u)", "Sam score": "Sam score (ScuseBET's 0-100 rating)", "Tier": "Tier (Sam score band)"
+  };
   function tipHTML(text, label) {         // sentences as short paragraphs; every "X = Y" on its own row
     var title = (label || "").replace(/^What is /, "").replace(/\?$/, "");
+    title = TITLE_FULL[title] || title;
     var sentences = String(text).match(/(?:[^.]|\.(?=\d))+(?:\.(?!\d)|$)/g) || [String(text)];
     var html = title ? '<div class="tip-title">' + esc(title) + "</div>" : "", rows = [];
     function flush() { if (rows.length) { html += '<div class="tip-rows">' + rows.join("") + "</div>"; rows = []; } }
@@ -1156,6 +1201,14 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     window.addEventListener("scroll", hide, true);
   })();
 
+  document.addEventListener("click", function (e) {                    // "Jump to" chips
+    var b = e.target.closest && e.target.closest("[data-jump]");
+    if (!b) return;
+    var t = document.getElementById(b.getAttribute("data-jump"));
+    if (!t) { toast("That section isn't on the page tonight."); return; }
+    if (t.tagName === "DETAILS") t.open = true;
+    t.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   (function () {                          // nav: menu, icon shortcuts and the hero button
     var mb = document.getElementById("menu-btn"), menu = document.getElementById("menu");
     function closeMenu() { menu.hidden = true; mb.setAttribute("aria-expanded", "false"); }
