@@ -401,7 +401,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   var CATS = [["ALL", "All"], ["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["3PM", "3PM"], ["P+A", "P+A"], ["P+R", "P+R"], ["PRA", "PRA"], ["R+A", "R+A"]];
   CATS = CATS.filter(function (c) { return (DATA.disabled || []).indexOf(c[0]) < 0; });   // categories left out of pulls
   var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists", "R+A": "Rebounds + Assists" };
-  var RANKS = [["gap", "Gap"], ["score", "Old score (v1)"], ["bal", "Balanced"], ["learned", "Learned"]];
+  var RANKS = [["gap", "Gap"], ["learned", "Learned"], ["bal", "Balanced"], ["score", "Old score (v1)"]];
   var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by the old v1 score (edge, FanDuel EV, matchup): research only; your score in v2 is your rule (see the Your rule chips and the note's section 2).", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
   var LIMITS = [[10, "Top 10"], [25, "Top 25"]];
 
@@ -456,7 +456,9 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     }).join("");
     el.addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
-      state[field] = cast ? cast(b.dataset.v) : b.dataset.v; state.open = null; save(); render();
+      state[field] = cast ? cast(b.dataset.v) : b.dataset.v; state.open = null;
+      if (field === "rank" || field === "cat") colSort = null;     // a new ranking or category starts unsorted by column
+      save(); render();
     });
   }
   seg("cat", CATS, "cat");
@@ -552,25 +554,55 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     return (helps ? "🟢 " : hurts ? "🔴 " : "") + v;
   }
   function pctEv(v) { return v == null ? '<span class="dim">–</span>' : '<span class="' + (v > 0 ? "pos" : v < 0 ? "neg" : "") + '">' + (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%</span>"; }
+  var colSort = null;                     // {key, dir} when a props-board heading was clicked
+  var BVAL = {                            // value each props-board column sorts by (null = blank, always last)
+    rk: function (r) { return r._rk; }, player: function (r) { return (r.player || "").toLowerCase(); },
+    prop: function (r) { return (r.market || "") + " " + String(r.line).padStart(6, "0"); },
+    proj: function (r) { return r.proj_cal != null ? r.proj_cal : r.proj; }, gap: function (r) { return r.gap; },
+    odds: function (r) { return r.odds; }, dvp: function (r) { return r.dvp; }, form: function (r) { return r.form; },
+    ev: function (r) { return r.ev; }, oa: function (r) { return r.oa_ev; }, src: function (r) { return r.fair_src ? String(r.fair_src).toLowerCase() : null; },
+    score: function (r) { return r.score; }, bal: function (r) { return r.bal; }, learned: function (r) { return r.learned; },
+    kelly: function (r) { return r.kelly; }
+  };
+  document.getElementById("thead").addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button.bsort"); if (!b) return;
+    var k = b.getAttribute("data-col"), textCol = k === "player" || k === "prop" || k === "src" || k === "rk";
+    colSort = colSort && colSort.key === k ? { key: k, dir: colSort.dir === "descending" ? "ascending" : "descending" }
+      : { key: k, dir: textCol ? "ascending" : "descending" };
+    render();
+  });
   function render() {
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
     dtdBox.checked = state.hideDtd;
     renderTonightBets();
     renderBest();
     var rows = ranked(state.cat, state.rank, state.limit);
+    rows.forEach(function (r, i) { r._rk = i + 1; });
+    if (colSort && BVAL[colSort.key]) {                           // column sort within the ranked list
+      var f = BVAL[colSort.key], sgn = colSort.dir === "ascending" ? 1 : -1;
+      rows = rows.slice().sort(function (a, b) {
+        var x = f(a), y = f(b);
+        if (x == null && y == null) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return typeof x === "string" ? sgn * x.localeCompare(y) : sgn * (x - y);
+      });
+    }
     var label = RANKS.filter(function (x) { return x[0] === state.rank; })[0][1];
     document.getElementById("board-title").textContent = CAT_NAMES[state.cat] + " · top " + state.limit + " by " + label.toLowerCase();
     document.getElementById("board-note").textContent = RANK_NOTE[state.rank];
     document.getElementById("thead").innerHTML = COLS.map(function (c) {
       var on = c[0] === state.rank ? " on" : "";
-      return '<th class="' + c[2] + on + '" scope="col">' + c[1] + "</th>";
+      var srt = colSort && colSort.key === c[0] ? colSort.dir : "none";
+      return '<th class="' + c[2] + on + '" scope="col" aria-sort="' + srt + '"><button type="button" class="sort bsort" data-col="' + c[0] +
+        '" title="Sort by ' + esc(c[1]) + '">' + c[1] + "</button></th>";
     }).join("");
     var tb = document.getElementById("tbody");
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="' + COLS.length + '" class="empty">No FanDuel-priced props in this category tonight.</td></tr>'; return; }
     tb.innerHTML = rows.map(function (r, i) {
       var k = key(r), open = state.open === k;
       var cells = {
-        rk: i + 1,
+        rk: r._rk,
         player: (r.decision === "BET" ? '<span class="chip bet" title="' + esc(r.bet_tag || "") + '">BET' + (r.bet_side && r.bet_side !== r.side ? " " + (r.bet_side === "over" ? "O" : "U") : "") + (r.bet_tag === "+EV only" ? " ·EV" : "") + "</span>" +
           (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") +
@@ -861,7 +893,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest("button.sort");
-    if (!b) return;
+    if (!b || b.classList.contains("bsort")) return;
     var cell = b.closest("th"), table = cell.closest("table"), body = table && table.tBodies[0];
     if (!body || body.querySelector("tr.detail")) return;
     var col = cell.cellIndex, rows = Array.prototype.slice.call(body.rows).filter(function (r) { return r.cells.length > col; });
