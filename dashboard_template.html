@@ -327,7 +327,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       <div class="menu" id="menu" hidden>
         <button type="button" data-go="tonight">Tonight's bets</button>
         <button type="button" data-go="record">Record</button>
-        <button type="button" data-go="footer">Data &amp; disclaimer</button>
+        <button type="button" data-go="footer">Disclaimer</button>
       </div>
     </div>
     <a class="logo" href="#" aria-label="ScuseBET home">SCUSE<span>BET</span></a>
@@ -994,22 +994,22 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       "No graded picks yet. Picks from the last run before each game's tip get graded on the next /props run after the games finish.";
     if (REC.dropped_after_tip) sNote += " " + REC.dropped_after_tip + " picks were logged after their game started and don't count.";
     var GROUPS = [
-      ["tonight", "Tonight's bets (what you bet)", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
+      ["tonight", "Tonight's bets", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
       ["sam", "Sam score splits", "Every staked prop once, by the Sam score frozen when it was logged: first the four tiers, then each part of the score as high (two-thirds of its points or more), mid or low. A part that predicts results wins more at high than at low. Small samples swing a lot; read the counts. Tap any ⓘ for a plain explanation of the Sam score, each part and how much it is worth right now.", true],
-      ["triple", "Triple green: +EV, BP agrees, DvP helps", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND BettingPros on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
-      ["two3", "2 of 3: +EV / BP agrees / DvP helps", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, BettingPros on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
-      ["rule", "Your rule: CNO +EV + BettingPros agrees", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
-      ["ua", "Unabated +EV & BettingPros agrees", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where BettingPros agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
-      ["bet", "BETs: Unabated market +EV", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
-      ["cno", "CrazyNinja +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
+      ["triple", "Triple green", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND BettingPros on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
+      ["two3", "2 of 3", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, BettingPros on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
+      ["rule", "Your rule", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
+      ["ua", "Unabated + BP", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where BettingPros agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
+      ["bet", "BETs", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
+      ["cno", "CNO +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
-      ["allev", "All +EV (any source, deduped)", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
+      ["allev", "All +EV", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
       ["reddit", "Reddit picks", "Picks from r/sportsbook's daily NBA thread, per poster (research, flat 1u); 'Proven poster + market +EV' is the only staked Reddit record (¼K, BET caps).", true],
-      ["ext", "Outside picks (cards)", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
+      ["ext", "Outside cards", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
       ["alt", "Alt ladder", "FanDuel alternate rungs vs. other sources at the same rung (3+ two-sided), market EV +4% or more, FanDuel price +300 or shorter, CrazyNinja worst case above 0, one rung per player, ¼K capped 0.5u. 'Market only' for PTS/REB/AST/P+A/PRA/R+A; 'market + projection' for 3PM/P+R (the BettingPros projection must agree at the rung). CLV at the rung's closing fair price.", true],
-      ["half", "Halftime live (experimental)", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
-      ["model", "BettingPros Projection Model (research)", "Top 5 of each model list. " + sNote, false],
-      ["sim", "Sims (research, separate)", "Days you didn't pull, simmed from near-closing lines with that game removed from form. Never mixed into the records above.", false]];
+      ["half", "Halftime", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
+      ["model", "BP model (research)", "Top 5 of each model list. " + sNote, false],
+      ["sim", "Sims", "Days you didn't pull, simmed from near-closing lines with that game removed from form. Never mixed into the records above.", false]];
     GROUPS.forEach(function (G) {
       var rs = rowsOf(G[0]);
       if (G[0] === "model" && REC.combined) rs = rs.concat([REC.combined]);
@@ -1018,17 +1018,17 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       if (G[0] === "half" && (rs.length || (HF.flags && HF.flags.n) || HF.oddsapi || LPS.n)) {
         var hh = "";
         var F = HF.flags || {nights: [], by_type: []};
-        if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime. Alerts are strong pace flags (≤25% with 12+ minutes, or ≥80% still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player) with no side: the side comes only from the expected final vs. FanDuel's live line in a paste. 11/22's 9 alerts were reversal bets and are kept only as legacy reversal flags.",
+        if (F.nights.length) hh += board("Halftime flags", "Every player with a pregame FanDuel line is snapshotted at halftime. Alerts are strong pace flags (≤25% with 12+ minutes, or ≥80% still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player) with no side: the side comes only from the expected final vs. FanDuel's live line in a paste. 11/22's 9 alerts were reversal bets and are kept only as legacy reversal flags.",
           th([["Night", "l"], ["Games"], ["Props"], ["Alerts"], ["Legacy"]]),
           F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + (n.legacy_reversal || "–") + "</td></tr>"; }).join(""));
         var BF = F.backfill || {}, ACC = (F.accuracy || []);
-        if (ACC.length) hh += board("Expected final accuracy", "Final stat minus expected final (first half + base-rate 2nd-half share × pregame line), scored out of sample: each night uses shares from the other nights only. Bias > 0 means the expected final runs too low; < 0 too high." +
+        if (ACC.length) hh += board("HT model accuracy", "Final stat minus expected final (first half + base-rate 2nd-half share × pregame line), scored out of sample: each night uses shares from the other nights only. Bias > 0 means the expected final runs too low; < 0 too high." +
           (BF.rows ? " Includes " + BF.rows + " backfill rows from " + BF.games + " past games." : ""),
           th([["Market", "l"], ["1H pace", "l"], ["n"], ["Miss"], ["Bias"]]),
           ACC.map(function (a) { var s = a.bucket === "all" ? "<b>" : "", e = a.bucket === "all" ? "</b>" : "";
             return '<tr><td class="l">' + s + esc(a.market) + e + '</td><td class="l">' + s + esc(a.bucket) + e + "</td><td>" + a.n + "</td><td>" + a.miss + "</td><td>" + (a.bias > 0 ? "+" : "") + a.bias + "</td></tr>"; }).join(""));
         var Pp = HF.pastes || {};
-        if (Pp.rows) hh += board("Halftime tool pastes", "Live props sent through the halftime tool: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
+        if (Pp.rows) hh += board("HT tool pastes", "Live props sent through the halftime tool: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
           (Object.keys(Pp.why_not || {}).map(function (k) { return k + " " + Pp.why_not[k]; }).join(", ") || "–") + ".", "", "");
         if (LPS.n) {
           var etTime = function (iso) {
@@ -1068,7 +1068,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     });
 
     var PO = REC.posters || [];
-    html += board("Reddit posters: leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
+    html += board("Reddit leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
       th([["Poster", "l"], ["Picks"], ["Graded"], ["W-L-P"], ["Units"], ["ROI"], ["CLV"], ["Entry EV", "hide-sm"]]),
       PO.filter(function (p) { return p.n >= 5; }).slice(0, 20).map(function (p) {
         return '<tr><td class="l">' + (p.proven ? "⭐ " : "") + esc(p.poster) + "</td><td>" + p.picks + "</td><td>" + p.n + "</td><td>" + p.w + "-" + p.l + "-" + p.p +
@@ -1089,7 +1089,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         }).join("") + "</section>";
     }
     var EVB = REC.ev_buckets || [];
-    html += board("Entry EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
+    html += board("EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
       th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat u"], ["¼K u"], ["CLV"]]),
       EVB.map(function (r) { return r.buckets.map(function (b, i) {
         return '<tr><td class="l"><b>' + esc(r.record) + '</b></td><td class="l">' + esc(b.bucket) + "</td><td>" + b.n + "</td><td>" + b.w + "-" + b.l + "-" + b.p +
@@ -1105,18 +1105,18 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var sitNote = "Each record's graded plays split by market, side, EV size, odds, DvP (side-aware), BettingPros gap, sources and time before tip. " +
       "⭐ candidate rule = " + (SIT.min_n || 100) + "+ plays, positive units, CLV above 0 and p < " + (SIT.p || 0.05) +
       " that it beats breakeven. Candidates are never switched on automatically: adopting one is a new rule version (RECORDS.md).";
-    html += board("Situations: candidate rules", sitNote, sitHead,
+    html += board("Candidate rules", sitNote, sitHead,
       SIT.candidates.length ? SIT.candidates.map(function (s) { return sitRow(s, true); }).join("") :
         '<tr><td class="l dim" colspan="7">No candidate rules yet (needs ' + (SIT.min_n || 100) + "+ graded plays in a split).</td></tr>");
     SIT.records.forEach(function (rec) {
-      html += board("Situations: " + rec.record, rec.n + " graded plays. A split is one slice of them (for example only unders, or only PTS) and shows once that slice has 5+ plays of its own; best splits first.", sitHead,
+      html += board("Splits: " + rec.record, rec.n + " graded plays. A split is one slice of them (for example only unders, or only PTS) and shows once that slice has 5+ plays of its own; best splits first.", sitHead,
         rec.splits.slice(0, 12).map(function (s) { return sitRow(s, false); }).join("") ||
         '<tr><td class="l dim" colspan="7">No slice has 5 plays yet (' + rec.n + " graded so far). Splits appear as this record grows.</td></tr>");
     });
 
     var left = "", right = "";
     if (REC.by_cat.length) {
-      left += board("By category", "All strategies combined.", th([["Category", "l"], ["W-L"], ["Units"]]),
+      left += board("By market", "All strategies combined.", th([["Category", "l"], ["W-L"], ["Units"]]),
         REC.by_cat.map(function (c) { return '<tr><td class="l">' + esc(c.market) + "</td><td>" + c.w + "-" + c.l + "</td><td>" + units(c.units) + "</td></tr>"; }).join(""));
     }
     var learnBody;
@@ -1133,25 +1133,25 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       right += board("What the model learned", "From " + REC.model_n + " player-games (each player's props in a game count once). Learned score = " + REC.trust + "% model. " + cap + vtxt,
         th([["Factor", "l"], ["Effect", "l"], [""]]), learnBody);
     } else {
-      right += '<section class="board"><div class="board-head"><h2>What the model learned</h2></div><div class="note">' +
+      right += '<section class="board"><div class="board-head"><h2>Model factors</h2></div><div class="note">' +
         "The model starts learning once it has <b>" + REC.min_train + " graded props</b> (" + REC.model_n + " so far, about one slate). " +
         "It checks every factor against real results, including <b>teammates ruled out</b> and <b>placeholder projections</b>, with each player-game counted once. Until then, Learned equals Balanced; after that it stays capped at " + REC.cap_unproven + "% model until it beats Balanced on later slates it wasn't trained on.</div></section>";
     }
     var C = REC.calibration || {};
     if (C.model) {
       var cr = function (name, m) { return m ? '<tr><td class="l">' + name + "</td><td>" + m.brier.toFixed(3) + "</td><td>" + m.logloss.toFixed(3) + "</td></tr>" : ""; };
-      right += board("Probability accuracy", "All graded props (" + C.n + " player-games). Lower is better.", th([["Source", "l"], ["Brier"], ["Log loss"]]),
+      right += board("Accuracy", "All graded props (" + C.n + " player-games). Lower is better.", th([["Source", "l"], ["Brier"], ["Log loss"]]),
         cr("Our model probability", C.model) + cr("Learned probability", C.learned) + cr("FanDuel no-vig", C.market));
     }
     var O = REC.oa_compare || {};
-    right += '<section class="board"><div class="board-head"><h2>Our EV vs. market EV</h2></div><div class="note">' +
+    right += '<section class="board"><div class="board-head"><h2>Our EV vs. market</h2></div><div class="note">' +
       (O.brier_ours != null ? "On " + O.n + " graded picks with both: Brier <b>ours " + O.brier_ours + "</b> vs <b>market fair " + O.brier_oa +
         "</b> (lower is better); log loss " + O.logloss_ours + " vs " + O.logloss_oa + ". Picks the market rated +EV: " + O.oa_pos_n + ", " + units(O.oa_pos_units) + "." +
         Object.keys(O.by_source || {}).map(function (s) { var x = O.by_source[s]; return " " + esc(s) + ": " + x.n + " picks, Brier " + x.brier + " (ours " + x.brier_ours + ")."; }).join("")
         : "Comparison starts at <b>" + (O.min || 50) + "</b> graded picks with both our probability and a market fair probability (" + (O.n || 0) + " so far" + (O.n_by_source ? ": Unabated " + (O.n_by_source.Unabated || 0) + ", OddsAPI " + (O.n_by_source.OddsAPI || 0) : "") + ").") +
       "</div></section>";
     if (REC.insights.length) {
-      right += board("Hit rate by situation", "Recommended side, all graded FanDuel props.", th([["Situation", "l"], ["Hit"], ["Props"]]),
+      right += board("Hit rates", "Recommended side, all graded FanDuel props.", th([["Situation", "l"], ["Hit"], ["Props"]]),
         REC.insights.map(function (i) { return '<tr><td class="l">' + esc(i.label) + "</td><td>" + i.hit + "%</td><td>" + i.n + "</td></tr>"; }).join(""));
     }
     var pHead = th([["", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["Final"], ["Mkt EV"], ["Units"]]);
@@ -1186,7 +1186,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
     '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>' +
     '<button type="button" data-jump="sec-daily-learns" title="Opens the Record tab">Daily learns ↗</button>' +
-    '<button type="button" data-go="footer">Data &amp; disclaimer</button>';
+    '<button type="button" data-go="footer">Disclaimer</button>';
   function updateJump() {                // the sticky nav's "Jump to" row follows the open tab
     var nj = document.getElementById("nav-jump");
     if (!nj) return;
@@ -1195,7 +1195,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       '<button type="button" data-go="tonight" aria-pressed="' + !rec + '">Tonight</button>' +
       '<button type="button" data-go="record" aria-pressed="' + rec + '">Record</button></div>';
     nj.innerHTML = view + '<span class="jump-label jl">Jump to</span>' +
-      (rec ? REC_CHIPS + '<button type="button" data-go="footer">Data &amp; disclaimer</button>' : TONIGHT_CHIPS);
+      (rec ? REC_CHIPS + '<button type="button" data-go="footer">Disclaimer</button>' : TONIGHT_CHIPS);
   }
   var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
   function showTab(which) {

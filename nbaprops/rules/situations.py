@@ -17,13 +17,13 @@ from nbaprops.rules import ledger as L
 
 RECORDS = [  # (record label, strategies) -- the v2 records that carry results
     ("Triple green", {"triple"}),
-    ("2 of 3 (research)", {"two_of_three"}),
+    ("2 of 3", {"two_of_three"}),
     ("Your rule", {"my_rule"}),
-    ("Unabated +EV & BP agrees", {"ua_agree"}),
-    ("BETs (Unabated)", {"bet_agree", "bet_only"}),
-    ("CrazyNinja +EV", {"cno"}),
+    ("Unabated + BP", {"ua_agree"}),
+    ("BETs", {"bet_agree", "bet_only"}),
+    ("CNO +EV", {"cno"}),
     ("CNO screener", {"cno_scr"}),
-    ("Near misses (research)", {"near_miss"}),
+    ("Near misses", {"near_miss"}),
     ("Alt ladder", {"alt_mkt", "alt_proj"}),
     ("HALF BETs", {"half"}),
 ]
