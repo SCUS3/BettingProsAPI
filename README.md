@@ -84,7 +84,7 @@ Only `BP_API_KEY` is required; without the others the market check is skipped or
 
 1. Clone the repository:
 ```bash
-   git clone https://github.com/SCUS3/BettingProsAPI.git
+   git clone https://github.com/SCUS3/scuseBET.git
    cd BettingProsAPI
 ```
 
