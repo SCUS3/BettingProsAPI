@@ -360,6 +360,17 @@ def render_learns():
             + "".join(parts) + "</section>")
 
 
+def render_404(updated):
+    """Not-found page: a wrong-case address (phones capitalise typed URLs, e.g. /Records) goes to the right page."""
+    fix = ('<script>(function(){var p=location.pathname,l=p.toLowerCase().replace(/\\/+$/,"");'
+           'var known={"/records":1,"/records.html":1,"/v1":1,"/v1.html":1,"/index.html":1,"":1};'
+           'if(p!==l&&known[l]!==undefined){location.replace((l||"/")+location.hash);}})();</script>')
+    body = (fix + '<section class="card"><h1>Page not found</h1><p class="lede">That address isn\'t on ScuseBET. '
+            'Addresses are lowercase, for example scusebet.github.io/records.html.</p>'
+            '<p><a href="index.html">Tonight\'s picks</a> · <a href="records.html">Records</a></p></section>')
+    return page("ScuseBET", "", body, updated).replace('href="index.html"', 'href="/index.html"').replace('href="records.html"', 'href="/records.html"')
+
+
 def render_records(v2, days, v1_link, updated, title="Records", note="", learns_html=""):
     dtab = "".join(f'<tr><td class="l">{e(d)}</td><td>{t["n"]}</td><td>{t["w"]}-{t["l"]}-{t["p"]}</td><td>{_u(t["units"])}</td><td>{_pct(t["clv"])}</td></tr>'
                    for d, t in days) or '<tr><td class="l dim" colspan="5">No graded nights yet.</td></tr>'
@@ -398,6 +409,7 @@ def build(date=None) -> list[str]:
         "v1.html": render_records(records("v1"), daily("v1"), "", updated, title="v1 archive",
                                   note="Results under the first rule set, before November 24. Kept public for the full history."),
         "robots.txt": "User-agent: *\nDisallow: /\n",
+        "404.html": render_404(updated),
     }
     paths = []
     for name, text in files.items():
