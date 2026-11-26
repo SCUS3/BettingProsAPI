@@ -85,6 +85,17 @@ h1 .mark-bet {                          /* "BET" as a bet-slip tag: notched tick
 #tonight-bets .board { border-color: var(--brass); box-shadow: inset 4px 0 0 var(--brass); }
 #tonight-bets .board-head { background: var(--brass-soft); }
 #tonight-bets .board-head h2 { color: var(--ink); }
+.info {
+  display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px;
+  border-radius: 50%; border: 1px solid var(--muted); background: transparent; color: var(--muted);
+  font: 600 10px/1 var(--body); cursor: help; vertical-align: 1px; padding: 0; text-transform: none; letter-spacing: 0;
+}
+.info:hover, .info:focus-visible, .info[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); outline: none; }
+#tip {
+  position: fixed; z-index: 60; max-width: min(300px, calc(100vw - 32px)); padding: 9px 11px; border-radius: 7px;
+  background: var(--ink); color: var(--bg); font: 400 12.5px/1.4 var(--body); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.25);
+  pointer-events: none; text-align: left; text-transform: none; letter-spacing: 0;
+}
 footer .brandline { font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
 .sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
 .stats { display: flex; gap: 22px; flex-wrap: wrap; }
@@ -282,6 +293,7 @@ footer b { color: var(--ink); font-weight: 600; }
 </div>
 
 <div class="toast" id="toast" hidden></div>
+<div id="tip" role="tooltip" hidden></div>
 
 <script id="bp-data" type="application/json">__BP_DATA__</script>
 <script>
@@ -652,7 +664,35 @@ footer b { color: var(--ink); font-weight: 600; }
     return '<section class="board"><div class="board-head"><h2>' + title + "</h2>" + (note ? "<p>" + note + "</p>" : "") +
       '</div><div class="scroll"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div></section>";
   }
-  function th(cols) { return cols.map(function (c) { return '<th class="' + (c[1] || "") + '" scope="col">' + c[0] + "</th>"; }).join(""); }
+  var TIPS = {                            // plain-language meaning of each column and Sam score part (ⓘ buttons)
+    "W-L-P": "Wins, losses and pushes for the plays in this row.",
+    "Hit": "Win rate: wins divided by wins plus losses (pushes left out).",
+    "Units": "Profit at 1 unit per play, at the logged price.",
+    "Flat units": "Profit if every play were bet at 1 unit. The fairest way to compare rows.",
+    "ROI": "Profit per unit risked at flat 1u. +20% means 0.20u won per 1u bet.",
+    "¼K units": "Profit at the logged quarter-Kelly stakes: bigger edges got bigger stakes, capped per player, game and night.",
+    "Kelly units": "Profit at the logged quarter-Kelly stakes (research lists have none).",
+    "CLV": "Closing line value: how much better the price you logged was than the market's final price before tip, in % EV. Positive means you beat the close. With few plays it is a steadier guide than wins and losses. (n) = plays with a closing price.",
+    "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
+    "Count": "Number of graded plays in this bucket.",
+    "Entry EV": "Market EV when the play was first logged (frozen), split 0-2%, 2-4%, 4%+.",
+    "Brier ours / mkt": "Accuracy of the win probabilities (lower is better): ours vs. FanDuel's no-vig price.",
+    "Tier": "The full Sam score at logging: A 80+, B 65-79, C 50-64, paper under 50 (never bet). If the score works, higher tiers win more.",
+    "Market edge": "Up to 30 pts: the play's EV against the market's fair price when logged (6%+ = full). High = big edge, low = small.",
+    "Market quality": "Up to 10 pts: 8+ books, an exchange in the price, CrazyNinja's worst case above 0, and Unabated and CrazyNinja agreeing.",
+    "BettingPros": "Up to 20 pts: BettingPros' projection on your side. For 3PM and P+R it scales with how far past the line (1 SD = full); other markets get 8 when the lean agrees.",
+    "DvP": "Up to 10 pts: how much the opponent's defense vs. the position helps your side (soft defense for overs, tough for unders).",
+    "Line movement": "Up to 10 pts: whether the line or price moved toward your side since it was first seen (10), stayed (5) or moved against it (0).",
+    "Role": "Up to 10 pts: projected starter (+5) and, for overs, a rotation teammate ruled out (+5).",
+    "Form": "Up to 5 pts: how often your side hit this line recently (60%+ = full, 50-59% = 3).",
+    "Consensus": "Up to 5 pts: seen in 2+ CrazyNinja pastes (+2) and a proven Reddit poster on the same side (+3).",
+    "high / mid / low": "Each part split by the share of its points a play earned: high = two-thirds or more, mid = one- to two-thirds, low = under one-third. A part that predicts results should go high > mid > low."
+  };
+  function info(key) {
+    var t = TIPS[key];
+    return t ? '<button type="button" class="info" data-tip="' + esc(t) + '" aria-label="What is ' + esc(key) + '?">i</button>' : "";
+  }
+  function th(cols) { return cols.map(function (c) { return '<th class="' + (c[1] || "") + '" scope="col">' + c[0] + info(c[0]) + "</th>"; }).join(""); }
   function projDot(r) {                 // BettingPros projection vs. the play's side (display only)
     var t = r.proj_tag || "";
     if (/agrees$/.test(t) && !/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "agrees") + '" style="color:#1a9a4a">●</span>';
@@ -693,9 +733,14 @@ footer b { color: var(--ink); font-weight: 600; }
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
     }
     var bHead = th([["Group", "l"], ["W-L-P"], ["Hit"], ["Flat units"], ["ROI"], ["¼K units", "hide-sm"], ["CLV", "hide-sm"]]);
+    function samTip(x) {                  // ⓘ on Sam score split rows: the part (or tier) the row is about
+      if (x.group !== "sam") return "";
+      var part = /^Tier /.test(x.label) ? "Tier" : x.label.split(":")[0];
+      return info(part);
+    }
     function bRow(x) {
       var strong = /_all$/.test(x.key);
-      return '<tr><td class="l"><span class="player">' + (strong ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p +
+      return '<tr><td class="l"><span class="player">' + (strong ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span>" + samTip(x) + "</td><td>" + x.w + "-" + x.l + "-" + x.p +
         "</td><td>" + pct(x.hit) + "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm">' + units(x.kelly_units) +
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
     }
@@ -706,7 +751,7 @@ footer b { color: var(--ink); font-weight: 600; }
     if (REC.dropped_after_tip) sNote += " " + REC.dropped_after_tip + " picks were logged after their game started and don't count.";
     var GROUPS = [
       ["tonight", "Tonight's bets (what you bet)", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
-      ["sam", "Sam score splits", "Every staked prop once, by the Sam score frozen when it was logged: first the four tiers, then each part of the score as high (two-thirds of its points or more), mid or low. A part that predicts results wins more at high than at low. Small samples swing a lot; read the counts.", true],
+      ["sam", "Sam score splits", "Every staked prop once, by the Sam score frozen when it was logged: first the four tiers, then each part of the score as high (two-thirds of its points or more), mid or low. A part that predicts results wins more at high than at low. Small samples swing a lot; read the counts. Tap any ⓘ for what a column or part means.", true],
       ["triple", "Triple green: +EV, BP agrees, DvP helps", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND BettingPros on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
       ["two3", "2 of 3: +EV / BP agrees / DvP helps", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, BettingPros on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
       ["rule", "Your rule: CNO +EV + BettingPros agrees", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +200 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
@@ -861,4 +906,28 @@ footer b { color: var(--ink); font-weight: 600; }
 
   render();
 })();
+
+  (function () {                          // ⓘ tooltips: hover or focus on desktop, tap on phones; positioned on screen
+    var tip = document.getElementById("tip"), cur = null;
+    function show(btn) {
+      cur = btn; tip.textContent = btn.getAttribute("data-tip"); tip.hidden = false;
+      var r = btn.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, vw = document.documentElement.clientWidth;
+      var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), vw - w - 8);
+      var top = r.bottom + 8; if (top + h > window.innerHeight - 8) top = r.top - h - 8;
+      tip.style.left = left + "px"; tip.style.top = Math.max(8, top) + "px";
+      btn.setAttribute("aria-expanded", "true");
+    }
+    function hide() { if (cur) cur.removeAttribute("aria-expanded"); cur = null; tip.hidden = true; }
+    document.addEventListener("mouseover", function (e) { var b = e.target.closest && e.target.closest(".info"); if (b) show(b); });
+    document.addEventListener("mouseout", function (e) { if (e.target.closest && e.target.closest(".info")) hide(); });
+    document.addEventListener("focusin", function (e) { if (e.target.classList && e.target.classList.contains("info")) show(e.target); });
+    document.addEventListener("focusout", function (e) { if (e.target.classList && e.target.classList.contains("info")) hide(); });
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest(".info");
+      if (b) { e.preventDefault(); e.stopPropagation(); if (cur === b) hide(); else show(b); return; }
+      hide();
+    }, true);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+    window.addEventListener("scroll", hide, true);
+  })();
 </script>
