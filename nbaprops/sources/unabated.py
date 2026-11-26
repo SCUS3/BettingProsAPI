@@ -352,7 +352,7 @@ def _devig_over(o, u):
     return _odds.devig_over(o, u)
 
 
-def price_board(picks, data, d, now=None):
+def price_board(picks, data, d, now=None, kalshi=None):
     """Fair price and EV for each pick from the board: median of devigged books and exchanges pricing both sides at FanDuel's line (3+ sources)."""
     now = now or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     people = {str(x["id"]): norm(_name(x)) for x in _items((d.get("raw") or {}).get("people")) if x.get("id") is not None}
@@ -408,10 +408,19 @@ def price_board(picks, data, d, now=None):
         for src in at:
             f = _devig_over(two[src]["over"][1], two[src]["under"][1])
             fairs.append(f if p["side"] == "over" else 1 - f)
-        res.update(fair_method="books", books=len(at), sources=sorted(names.get(x, x) for x in at),
-                   exchange=any(x in exch for x in at), other_line_books=len(other),
-                   two_way=[(names.get(x, x), two[x]["over"][1], two[x]["under"][1]) for x in at])
-        if len(at) >= MIN_SOURCES:
+        srcs = sorted(names.get(x, x) for x in at)
+        tw = [(names.get(x, x), two[x]["over"][1], two[x]["under"][1]) for x in at]
+        n_exch = sum(1 for x in at if x in exch)
+        kq = (kalshi or {}).get((norm(p["player"]), p["market"], line)) if line is not None else None
+        if kq and "Kalshi" not in srcs:                 # Kalshi direct fills a gap; never counted twice
+            fairs.append(kq["fair"] if p["side"] == "over" else 1 - kq["fair"])
+            srcs.append("Kalshi (direct)")
+            tw.append(("Kalshi", kq["over"], kq["under"]))
+            n_exch += 1
+        n_src = len(fairs)
+        res.update(fair_method="books", books=n_src, sources=srcs, exchange=n_exch > 0, other_line_books=len(other), two_way=tw,
+                   exch_share=round(n_exch / n_src, 2) if n_src else None, exch_led=bool(n_src) and n_exch / n_src >= 0.5)
+        if n_src >= MIN_SOURCES:
             f = statistics.median(fairs)
             res.update(fair_mult=round(f, 4), ev_mult=None if price is None else round(f * _dec(price) - 1, 4))
         else:

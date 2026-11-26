@@ -105,6 +105,16 @@ slates. The weekly review runs it once there are 500+ graded v2 player-games and
 (`sam_weights.json`) only when they beat both the hand-set score and FanDuel no-vig on held-out log loss.
 `python3 -m nbaprops.pricing.samfit` prints the one-off report on all graded data.
 
+## Exchange sources (Kalshi, Polymarket)
+
+Unabated already carries Kalshi, Polymarket, Polymarket US, Novig and Prophet as exchanges in the fair-price median. Kalshi is also
+read directly (`nbaprops/sources/kalshi.py`, free, no account): two-sided quotes only (live bid and ask, spread ≤ 5¢), fair =
+midpoint, and it is added to a line's median only when Unabated has no Kalshi price there (never counted twice). Each priced
+line records its source names; when exchanges are half or more of them the play is tagged **exchange-led**, and the BET record
+splits exchange-led vs. book-led. Polymarket's public API has no nightly NBA player props (season-long only); Polymarket US
+prices arrive through Unabated. Coverage check on 11/25: Kalshi listed PTS, REB, AST, 3PM and PRA for all 9 games (no P+A, P+R,
+R+A that night), matched 21-35 FanDuel lines per game at the same number, median pre-tip spread 1¢, median volume ~2,500.
+
 ## Re-evaluation
 
 Every CrazyNinja paste, Unabated board run and watch scan re-runs every store-based record from the day's CNO screener

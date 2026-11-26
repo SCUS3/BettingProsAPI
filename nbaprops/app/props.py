@@ -956,6 +956,16 @@ def mark_model_picks(rows, date):
 
 
 
+EXCHANGES = ("Kalshi", "Polymarket", "Novig", "Prophet")
+
+
+def src_label(v):
+    """'Unabated · Kalshi, Novig': the fair source plus the exchanges in its median (for the board's Fair src column)."""
+    base = v.get("fair_src") or ""
+    ex = [s.replace(" (direct)", "") for s in (v.get("sources") or []) if any(s.startswith(e) for e in EXCHANGES)]
+    return f"{base} · {', '.join(dict.fromkeys(ex))}" if ex else base
+
+
 def attach_value(rows, date):
     """The day's market check (bp_value.py) on each row: oa_fair, oa_ev, fair_src, oa_books for the row's side,
     and the BET / watch decision for the line (a BET can be on the other side of the row)."""
@@ -966,7 +976,7 @@ def attach_value(rows, date):
         if e and "sides" in e:
             v = e["sides"].get(r.get("rec_side")) or {}
             r.update(oa_fair=v.get("fair_mult"), oa_ev=v.get("ev_mult"), oa_books=v.get("books"),
-                     fair_src=v.get("fair_src"), decision=e.get("decision"), bet_kelly=e.get("bet_kelly"),
+                     fair_src=src_label(v), exch_led=v.get("exch_led"), decision=e.get("decision"), bet_kelly=e.get("bet_kelly"),
                      bet_side=e.get("bet_side"), bet_tag=e.get("tag"), bet_ev=e.get("bet_ev"),
                      close_mkt_ev=(e.get("close") or {}).get("mkt_ev"), close_clv=(e.get("close") or {}).get("clv_ev"),
                      bet_cap_note=e.get("cap_note") or None)
@@ -975,7 +985,7 @@ def attach_value(rows, date):
         r["oa_fair"] = v.get("fair_mult") if v else None
         r["oa_ev"] = v.get("ev_mult") if v else None
         r["oa_books"] = v.get("books") if v else None
-        r["fair_src"] = v.get("fair_src") if v else None
+        r["fair_src"] = src_label(v) if v else None
         r["decision"] = v.get("decision") if v else None          # BET / watch (2 PM shortlist value check)
         r["bet_kelly"] = v.get("bet_kelly") if v else None        # quarter-Kelly on the market's fair probability
 

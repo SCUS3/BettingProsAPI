@@ -461,7 +461,7 @@ def save_ua_store(date, rows, ua):
                 e.update(first_pos_at=now, first_pos_price=v.get("price_used"), first_pos_ev=v["ev_mult"],
                          first_pos_fair=v.get("fair_mult"), first_pos_books=v.get("books"))
             e.update(price=v.get("price_used"), ev=v["ev_mult"], fair=v.get("fair_mult"), books=v.get("books"),
-                     exchange=bool(v.get("exchange")), at=now)
+                     exchange=bool(v.get("exchange")), sources=v.get("sources"), exch_led=bool(v.get("exch_led")), at=now)
             out[k] = e
             if v["ev_mult"] > 0 and (v.get("books") or 0) >= 3:
                 pos.append({"player": r["player"], "market": r["market"], "side": sd, "line": float(r["line"]),
@@ -601,7 +601,7 @@ def run_board(args):
                 print(f"  {len(extra)} FanDuel lines on Unabated's board that BettingPros doesn't carry: priced too (no projection).")
                 rows += extra
             cands = [sp for r in rows for sp in side_picks(r)]
-            ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}))
+            ua = U.price_board(cands, data, U.load(U.DISCOVERY, {}), kalshi=_kalshi(args.date))
             save_ua_store(args.date, rows, ua)
             ua_logged = log_ua_agree(args.date, rows, ua)
             from nbaprops.rules import reeval as _RE
@@ -818,7 +818,7 @@ def value_row(date, r, strategy, side, v, stake, our_prob, cno="unset"):
             "learned": r.get("learned"), "our_prob": our_prob, "nv_prob": v.get("fair_mult"), "kelly_u": stake,
             "injury": r.get("injury"), "tm_out": r.get("tm_out"), "event_id": r.get("event_id"),
             "oa_fair": v.get("fair_mult"), "oa_ev": v.get("ev_mult"), "fair_src": v.get("fair_src"),
-            "sources": v.get("books"), **_proj_fields(r),
+            "sources": v.get("books"), "src_names": ", ".join(v.get("sources") or []), "exch_led": v.get("exch_led"), **_proj_fields(r),
             **(cno_fields(side, v, cno) if strategy in bp_learn.BET_KEYS | bp_learn.CNO_KEYS else {})}
 
 
@@ -1029,7 +1029,7 @@ def watch_scan(date, state, close_before=None):
         {"player": x["player"], "team": "", "market": x["market"], "line": x["line"], "rec_side": "over",
          "fd_odds_rec": x["over_odds"], "over_odds": x["over_odds"], "under_odds": x["under_odds"], "price_is_fanduel": "True",
          "noproj": "True", "bp_proj": "", "event_id": "", "tip": x["tip"], "pulled_at": bp_learn.utc_now()} for x in slate_lines(data, date, d)]
-    ua = U.price_board([sp for r in rows for sp in side_picks(r)], data, d)
+    ua = U.price_board([sp for r in rows for sp in side_picks(r)], data, d, kalshi=_kalshi(date))
     save_ua_store(date, rows, ua)
     for x in log_ua_agree(date, rows, ua):
         print(f"[{_et_now():%H:%M}] UA+BP {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
@@ -1123,7 +1123,7 @@ def watch_scan(date, state, close_before=None):
     # logged BETs: market EV now, at our line
     picks = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]), "odds": float(r["odds"])}
              for r in logged.values()]
-    now_v = U.price_board(picks, data, d) if picks else {}
+    now_v = U.price_board(picks, data, d, kalshi=_kalshi(date)) if picks else {}
     for k, r in logged.items():
         if k in state["dropped"]:
             continue
@@ -1148,7 +1148,7 @@ def watch_scan(date, state, close_before=None):
     if live_rows:
         cp = [{"player": r["player"], "market": r["market"], "side": r["side"], "line": float(r["line"]),
                "odds": float(r["odds"])} for r in live_rows]
-        res = U.price_board(cp, data, d)
+        res = U.price_board(cp, data, d, kalshi=_kalshi(date))
         record_latest(led, live_rows, res, now)
     t_now = T._t(now)
     final = []
@@ -1292,6 +1292,15 @@ def parse_placed(text):
     side = "over" if j[0][0] == "o" else "under"
     line, odds, stake = float(j[0][1:]), float(j[1]), float(j[2].rstrip("u"))
     return {"name": name, "market": market, "side": side, "line": line, "odds": odds, "stake": stake}
+
+
+def _kalshi(date):
+    """Kalshi's open two-sided player-prop quotes for the date (free; {} if Kalshi is unreachable)."""
+    try:
+        from nbaprops.sources import kalshi as K
+        return K.quotes(date)
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _ssl(row):

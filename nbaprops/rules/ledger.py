@@ -92,7 +92,7 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  # entry snapshot: set once when the row is first written, never changed afterwards
                  "entry_at", "entry_fd_line", "entry_price", "entry_fair", "entry_ev", "entry_sources",
                  # latest pregame observation (watch scans, open games only); copied to close_* when the game is final
-                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev", "score_entry", "score_tier", "score_parts", "score_flags"]
+                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev", "score_entry", "score_tier", "score_parts", "score_flags", "src_names", "exch_led"]
 ENTRY_FROM = {"entry_at": "pulled_at", "entry_fd_line": "line", "entry_price": "odds", "entry_fair": "oa_fair",
               "entry_ev": "oa_ev", "entry_sources": "sources"}
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
@@ -1001,6 +1001,13 @@ def record(version: str = "v2") -> dict:
                  label="All Unabated BETs")
         x["clv_unit"] = "% EV at closing fair"
         strategies.append(x)
+    bx = [(r, v) for r, v in graded if r["strategy"] in BET_KEYS and r.get("exch_led") not in (None, "")]
+    for flag, lab in (("True", "BETs: exchange-led fair (half+ of sources are exchanges)"), ("False", "BETs: book-led fair")):
+        sub = [(r, v) for r, v in bx if str(r.get("exch_led")) == flag]
+        if sub:
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="bets_exch_" + flag.lower(), group="bet", label=lab)
+            x["clv_unit"] = "% EV at closing fair"
+            strategies.append(x)
     if any(r["strategy"] in CNO_KEYS for r in ledger):
         mu = _uniq([(r, v) for r, v in graded if r["strategy"] in BET_KEYS | CNO_KEYS])
         x = dict(_summ([r for r, _ in mu], [v for _, v in mu]), key="market_all", group="cno",

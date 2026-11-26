@@ -319,6 +319,7 @@ ScuseBET builds its boards and models from these sources:
 | **BettingPros** | Player projections, prop lines, matchup (DvP) ranks and bet ratings, through the BettingPros Consumer API and its public Prop Bet Cheat Sheet. The core projection source for every ScuseBET model. |
 | **Unabated** | Market prices from sportsbooks and exchanges, used to devig and compute fair odds and market EV. |
 | **CrazyNinja Odds** | Worst-case devigging (a cautious second check on market EV) and the +EV screener. |
+| **Kalshi** | NBA player-prop prices read directly from Kalshi's free public API (two-sided quotes, spread ≤ 5¢); added to the fair-price median only where Unabated has no Kalshi price at FanDuel's line. |
 | **The Odds API** | Backup market prices. |
 | **ESPN** | Box scores for grading, player game logs for recent form, live stats and schedules. |
 | **RotoWire** | Projected lineups and injury status. |
