@@ -1,3 +1,7 @@
+# ScuseBET
+
+ScuseBET is the platform and model family (Sam score, Triple green, 2 of 3, Your rule, the market records) behind these NBA player-prop boards.
+
 # BettingPros NBA Props
 
 Python tools that price every FanDuel NBA player prop against BettingPros projections and the wider market, pick bets with a market edge, and grade every pick after the games so the model learns what actually wins.
@@ -183,7 +187,7 @@ Each run writes:
 
 - **`bp_props_<date>.csv`**: every prop, one row each (FanDuel line and price, BettingPros projection and line, gap, scores, form, DvP, Rotowire status, teammates out, Kelly, market fair price and source).
 - **`bp_top10_<date>.md`**: the record, BETs and watch list, top 10 by gap, score and balanced score, lines with no projection, lines where FanDuel differs from BettingPros, and top 10 by gap and score per category.
-- **`bp_dashboard.html`**: the NBA Prop Board (below).
+- **`bp_dashboard.html`**: the ScuseBET board (below).
 - **`history/<date>/`**: each pull's snapshot, pagination log and Rotowire snapshot, used for the pre-tip cutoff and CLV.
 - **`value_<date>.json`**: the market check per FanDuel line (both sides, source, decisions, closing check).
 
@@ -217,7 +221,7 @@ Every run logs the top 5 picks from four strategies (balanced, your score, proje
 
 ## Dashboard
 
-`bp_dashboard.html`, the **NBA Prop Board**, built from `dashboard_template.html`:
+`bp_dashboard.html`, the **ScuseBET** board, built from `dashboard_template.html`:
 
 - a category picker with ranking by gap, score, balanced or learned
 - **BET** tags (with the bet side and "+EV only" marker), **watch** tags, and an EV-below-0 flag after the closing check

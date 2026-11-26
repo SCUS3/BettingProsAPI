@@ -123,7 +123,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                 proj_s(r) or "–", odds_s(r["fd_odds_rec"]), mev, dvp_s(r), form_s(r), cell(r.get("s_market")),
                 cell(r["balanced"]), inj(r)]
 
-    lines = [f"# NBA props: {date}", "",
+    lines = [f"# ScuseBET · NBA props: {date}", "",
              "FanDuel-priced NBA player props. **Only Tonight's bets (the first list) are bets**; every other list is a paper "
              "record (no money). 1u = 1% of bankroll; ¼K = quarter-Kelly on the fair probability.", "",
              "**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND BettingPros "

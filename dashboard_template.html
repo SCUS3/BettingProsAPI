@@ -1,18 +1,21 @@
-<title>NBA Prop Board</title>
+<title>ScuseBET</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
-/* Layout: a sportsbook board. Slate summary on top, one control bar, then one ranked table at a time. */
+/* Layout: ScuseBET's sportsbook board. Wordmark and slate summary on top, tonight's bet slip first, then one ranked table at a time.
+   Palette: table-felt green for the brand, brass for the bet slip, green-biased neutrals. */
 :root {
-  --bg: #f2f4f6;
+  --bg: #f1f4f2;
   --surface: #ffffff;
-  --ink: #15212c;
-  --muted: #5b6977;
-  --line: #dce2e8;
-  --accent: #1d5c86;
+  --ink: #12201a;
+  --muted: #56675e;
+  --line: #d8e1dc;
+  --accent: #0f6a4c;
   --accent-ink: #ffffff;
+  --brass: #a87714;
+  --brass-soft: #f6ecd6;
   --good: #1b8456;
   --mid: #a8701a;
   --low: #7f8b97;
@@ -23,13 +26,15 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0d141b;
-    --surface: #141e28;
-    --ink: #e4ebf1;
-    --muted: #92a0ad;
-    --line: #243241;
-    --accent: #6cb0de;
-    --accent-ink: #0d141b;
+    --bg: #0b1511;
+    --surface: #11201a;
+    --ink: #e2ebe6;
+    --muted: #8fa298;
+    --line: #22352c;
+    --accent: #3fb98a;
+    --accent-ink: #0b1511;
+    --brass: #e0b14a;
+    --brass-soft: #2a2412;
     --good: #4bc088;
     --mid: #dfa23b;
     --low: #6f7d8a;
@@ -38,13 +43,15 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d141b;
-  --surface: #141e28;
-  --ink: #e4ebf1;
-  --muted: #92a0ad;
-  --line: #243241;
-  --accent: #6cb0de;
-  --accent-ink: #0d141b;
+  --bg: #0b1511;
+  --surface: #11201a;
+  --ink: #e2ebe6;
+  --muted: #8fa298;
+  --line: #22352c;
+  --accent: #3fb98a;
+  --accent-ink: #0b1511;
+  --brass: #e0b14a;
+  --brass-soft: #2a2412;
   --good: #4bc088;
   --mid: #dfa23b;
   --low: #6f7d8a;
@@ -66,9 +73,19 @@ body {
 
 header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
 h1 {
-  font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1;
-  letter-spacing: 0.01em; margin: 0; text-transform: uppercase; text-wrap: balance;
+  font-family: var(--display); font-weight: 700; font-size: 40px; line-height: 1;
+  letter-spacing: 0.005em; margin: 0; display: flex; align-items: center; gap: 4px;
 }
+h1 .mark-scuse { color: var(--ink); }
+h1 .mark-bet {                          /* "BET" as a bet-slip tag: notched ticket edge on the left */
+  background: var(--accent); color: var(--accent-ink); padding: 3px 10px 3px 12px; border-radius: 4px;
+  letter-spacing: 0.06em; clip-path: polygon(7px 0, 100% 0, 100% 100%, 7px 100%, 0 50%);
+}
+.eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+#tonight-bets .board { border-color: var(--brass); box-shadow: inset 4px 0 0 var(--brass); }
+#tonight-bets .board-head { background: var(--brass-soft); }
+#tonight-bets .board-head h2 { color: var(--ink); }
+footer .brandline { font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
 .sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
 .stats { display: flex; gap: 22px; flex-wrap: wrap; }
 .stat { display: flex; flex-direction: column; }
@@ -189,7 +206,7 @@ footer b { color: var(--ink); font-weight: 600; }
 }
 
 @media (max-width: 640px) {
-  h1 { font-size: 28px; }
+  h1 { font-size: 32px; }
   .hide-sm { display: none; }
   td, th { padding: 8px 7px; }
 }
@@ -201,7 +218,8 @@ footer b { color: var(--ink); font-weight: 600; }
 <div class="wrap">
   <header>
     <div>
-      <h1>NBA Prop Board</h1>
+      <div class="eyebrow">NBA player props · FanDuel</div>
+      <h1 aria-label="ScuseBET"><span class="mark-scuse">Scuse</span><span class="mark-bet">BET</span></h1>
       <div class="sub" id="sub"></div>
     </div>
     <div class="stats" id="stats"></div>
@@ -259,7 +277,7 @@ footer b { color: var(--ink); font-weight: 600; }
   <footer>
     <div><b>Rules v2 (from Nov 24)</b>: <b>Your rule</b> = a CrazyNinja screener prop with any +EV where BettingPros agrees (marked <b>your rule</b>); <b>BET</b> = Unabated market EV +2% or more with CrazyNinja's worst case above 0. Only those market records carry stakes (¼K, exposure caps). The model columns below (Gap, old Score, Balanced, Learned) are research and carry no stake. <b>Gap</b>: projection minus line, as a % of the line. <b>Old score</b> (v1 formula, retired as your score): 40% edge + 35% EV + 25% matchup. <b>Balanced</b>: 40% old score + 25% form + 20% market value + 15% BettingPros rating.</div>
     <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line). It claims no edge, its EV uses FanDuel's no-vig price, and it ranks below every real projection unless the price alone is +EV. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Stake</b>: only BETs and the market records carry one (quarter-Kelly, 1u = 1% of bankroll). DvP and BP dots: 🟢 helps / agrees with the listed side, 🔴 hurts / disagrees. Tap a row for its breakdown.</div>
-    <div>FanDuel-priced props only. Projections, not guarantees.</div>
+    <div><span class="brandline">ScuseBET</span> models: Sam score, Triple green, 2 of 3, Your rule and the market records. FanDuel-priced props only. Projections, not guarantees.</div>
   </footer>
 </div>
 

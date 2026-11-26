@@ -1,4 +1,4 @@
-"""The NBA Prop Board (bp_dashboard.html): fills dashboard_template.html with the day's rows, BETs and records."""
+"""The ScuseBET board (bp_dashboard.html): fills dashboard_template.html with the day's rows, BETs and records."""
 import datetime as dt
 import json
 import os
