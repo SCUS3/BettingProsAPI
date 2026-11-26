@@ -795,8 +795,9 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "Count": "Number of graded plays in this bucket.",
     "EV at paste": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
     "Expected": "What a 1u bet at that price is expected to make on average, from the EV at paste: +0.04u means about 4 cents per dollar over many bets. Compare it with Units, what it actually made.",
-    "Halftime exp.": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. Blank if the game had no halftime snapshot yet.",
-    "Live at paste": "The player's stat for this prop at the moment you pasted (from ESPN's live box score). Blank for pastes logged before this was recorded.",
+    "Halftime exp.": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. For a paste made before halftime, it is what the model expected once the half arrived. Blank if the player had no pregame line to snapshot.",
+    "Live at paste": "The player's stat for this prop at the second you pasted, rebuilt from ESPN's timestamped play-by-play, with the game clock then.",
+    "Units": "Profit at 1 unit per play, at the logged price. For live pastes: what a 1u bet at your pasted price actually made.",
     "Final": "The player's final stat for this prop.",
     "Result": "W = won, L = lost, P = push, · = not graded yet.",
     "Pasted (ET)": "When you pasted the row, Eastern time.",
@@ -986,15 +987,15 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
             "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
             " (" + LPS.clv_n + " rows seen again in a later paste). Newest first; sort any column.",
-            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Expected"], ["Books", "hide-sm"],
-                ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"], ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["Units"], ["CLV"]]),
+            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Units"], ["Books", "hide-sm"],
+                ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"], ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
             LPS.rows.map(function (r) {
               var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
               return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
                 (r.side === "over" ? "o" : "u") + esc(r.line) + "</td><td>" + n2(r.odds) + "</td><td>" + pctx(r.ev) + "</td><td>" +
-                (r.ev === "" || r.ev == null ? '<span class="dim">–</span>' : units(Number(r.ev) / 100)) + '</td><td class="hide-sm">' + n2(r.books) + '</td><td class="hide-sm">' + n2(r.bp_proj) +
-                '</td><td class="hide-sm">' + n2(r.half_exp) + '</td><td class="hide-sm">' + n2(r.live_now) + "</td><td>" + n2(r.actual) + "</td><td>" + res + "</td><td>" +
-                (r.profit_u === "" || r.profit_u == null ? '<span class="dim">–</span>' : units(Number(r.profit_u))) + "</td><td>" + pctx(r.clv_ev) + "</td></tr>";
+                (r.profit_u === "" || r.profit_u == null ? '<span class="dim">–</span>' : units(Number(r.profit_u))) + '</td><td class="hide-sm">' + n2(r.books) + '</td><td class="hide-sm">' + n2(r.bp_proj) +
+                '</td><td class="hide-sm">' + n2(r.half_exp) + '</td><td class="hide-sm">' + n2(r.live_now) + (r.clock ? ' <span class="dim">' + esc(r.clock) + "</span>" : "") +
+                "</td><td>" + n2(r.actual) + "</td><td>" + res + "</td><td>" + pctx(r.clv_ev) + "</td></tr>";
             }).join(""));
         }
         var O = HF.oddsapi;

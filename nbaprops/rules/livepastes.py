@@ -126,6 +126,93 @@ def backfill(date) -> int:
     return len(out)
 
 
+_SUMMARY: dict = {}
+
+
+def _summary(game_id):
+    from nbaprops.sources import espn as BX
+    if game_id not in _SUMMARY:
+        _SUMMARY[game_id] = BX._get(f"{BX.ESPN}/summary?event={game_id}")
+    return _SUMMARY[game_id]
+
+
+def stats_at(game_id, at_iso):
+    """{norm name: {PTS, REB, AST, 3PM}} from ESPN's play-by-play up to a wall-clock time, and the game clock then."""
+    j = _summary(game_id)
+    names = {}
+    for t in (j.get("boxscore") or {}).get("players", []):
+        for st in t.get("statistics", [])[:1]:
+            for a in st.get("athletes", []):
+                names[str(a.get("athlete", {}).get("id"))] = a.get("athlete", {}).get("displayName", "")
+    st: dict = {}
+    clock = ""
+    for p in j.get("plays", []):
+        wc = p.get("wallclock") or ""
+        if not wc or wc > at_iso:
+            break
+        per = (p.get("period") or {}).get("number") or 1
+        clock = f"{(p.get('clock') or {}).get('displayValue', '')} Q{per}" if per <= 4 else f"{(p.get('clock') or {}).get('displayValue', '')} OT"
+        typ = ((p.get("type") or {}).get("text") or "").lower()
+        txt = (p.get("text") or "").lower()
+        parts = [str(x.get("athlete", {}).get("id")) for x in p.get("participants") or []]
+        get = lambda a: st.setdefault(norm(names.get(a, "")), {"PTS": 0, "REB": 0, "AST": 0, "3PM": 0})
+        if p.get("scoringPlay") and parts:
+            v = int(p.get("scoreValue") or 0)
+            get(parts[0])["PTS"] += v
+            if v == 3:
+                get(parts[0])["3PM"] += 1
+            if "assist" in txt and len(parts) >= 2:
+                get(parts[1])["AST"] += 1
+        if "rebound" in typ and parts:
+            get(parts[0])["REB"] += 1
+    return st, clock
+
+
+PARTS = {"PTS": ("PTS",), "REB": ("REB",), "AST": ("AST",), "3PM": ("3PM",), "P+A": ("PTS", "AST"), "P+R": ("PTS", "REB"),
+         "R+A": ("REB", "AST"), "PRA": ("PTS", "REB", "AST")}
+
+
+def enrich(date) -> int:
+    """Fill 'Live at paste' (the stat when you pasted, rebuilt from timestamped play-by-play), the game clock then, and
+    'Halftime exp.' (the halftime snapshot's expected final) where missing. Free ESPN data. -> rows filled."""
+    import json
+    from nbaprops.rules import halftime as H
+    rows = read()
+    mine = [r for r in rows if r["date"] == date and (r.get("live_now") in ("", None) or r.get("half_exp") in ("", None))]
+    if not mine:
+        return 0
+    exp, game_of = {}, {}
+    try:
+        for g in json.load(open(H.snapshot_path(date))).values():
+            for x in g.get("rows", []):
+                exp[(norm(x["player"]), x["market"])] = x.get("exp_final")
+    except (OSError, ValueError):
+        pass
+    try:
+        for g in H.games(date):
+            j = _summary(g["id"])
+            for t in (j.get("boxscore") or {}).get("players", []):
+                for st in t.get("statistics", [])[:1]:
+                    for a in st.get("athletes", []):
+                        game_of[norm(a.get("athlete", {}).get("displayName", ""))] = g["id"]
+    except Exception:  # noqa: BLE001
+        pass
+    n = 0
+    for r in mine:
+        k = norm(r["player"])
+        if r.get("half_exp") in ("", None) and exp.get((k, r["market"])) is not None:
+            r["half_exp"] = exp[(k, r["market"])]
+        gid = game_of.get(k)
+        if r.get("live_now") in ("", None) and gid and r["market"] in PARTS:
+            st, clock = stats_at(gid, r["at"])
+            s = st.get(k) or {"PTS": 0, "REB": 0, "AST": 0, "3PM": 0}
+            r["live_now"] = sum(s[p] for p in PARTS[r["market"]])
+            r["clock"] = r.get("clock") or clock
+        n += 1
+    _write(rows)
+    return n
+
+
 def grade(date) -> tuple[int, int]:
     """Final result and CLV for a date's live rows. -> (graded, still pending)."""
     from nbaprops.grading import grade as G
@@ -183,5 +270,6 @@ if __name__ == "__main__":
         print(f"{d}: {backfill(d)} live rows rebuilt from saved pastes")
     if "--grade" in sys.argv:
         d = sys.argv[sys.argv.index("--grade") + 1]
+        print(f"{d}: {enrich(d)} live rows filled (live stat at paste, halftime expected)")
         g, p = grade(d)
         print(f"{d}: {g} live rows graded, {p} pending")

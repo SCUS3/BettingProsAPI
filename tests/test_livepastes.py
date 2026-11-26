@@ -17,3 +17,20 @@ def test_paste_time_and_clv(monkeypatch, tmp_path):
     first = next(r for r in rows if r["odds"] == "+310")
     assert first["result"] == "L" and float(first["clv_ev"]) < 0       # next paste's fair (+358) says +310 was a worse price
     assert LP.summary()["n"] == 2
+
+
+def test_stats_at_counts_plays_up_to_the_paste_time(monkeypatch):
+    j = {"boxscore": {"players": [{"statistics": [{"athletes": [{"athlete": {"id": "1", "displayName": "Kyrie Irving"}},
+                                                                {"athlete": {"id": "2", "displayName": "Cooper Flagg"}}]}]}]},
+         "plays": [{"wallclock": "2026-11-25T03:05:00Z", "period": {"number": 1}, "clock": {"displayValue": "11:00"},
+                    "scoringPlay": True, "scoreValue": 3, "text": "Kyrie Irving makes 3 (Cooper Flagg assists)",
+                    "participants": [{"athlete": {"id": "1"}}, {"athlete": {"id": "2"}}], "type": {"text": "Jump Shot"}},
+                   {"wallclock": "2026-11-25T03:06:00Z", "period": {"number": 1}, "clock": {"displayValue": "10:20"},
+                    "participants": [{"athlete": {"id": "2"}}], "type": {"text": "Defensive Rebound"}},
+                   {"wallclock": "2026-11-25T03:20:00Z", "period": {"number": 1}, "clock": {"displayValue": "2:00"},
+                    "scoringPlay": True, "scoreValue": 2, "text": "Kyrie Irving makes layup", "participants": [{"athlete": {"id": "1"}}],
+                    "type": {"text": "Layup"}}]}
+    monkeypatch.setattr(LP, "_summary", lambda gid: j)
+    st, clock = LP.stats_at("g", "2026-11-25T03:10:00Z")
+    assert st["kyrie irving"] == {"PTS": 3, "REB": 0, "AST": 0, "3PM": 1} and st["cooper flagg"]["AST"] == 1 and st["cooper flagg"]["REB"] == 1
+    assert clock == "10:20 Q1"
