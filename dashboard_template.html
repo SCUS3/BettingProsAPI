@@ -33,11 +33,11 @@
 body {
   background: var(--bg); color: var(--text); font-family: var(--body); font-size: 15px; line-height: 1.6;
   padding-block: 0 48px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-left: max(16px, 2vw, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, 2vw, env(safe-area-inset-right, 0px));
 }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
-.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+.wrap { max-width: 1800px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 a { color: var(--accent-dim); }
 
 /* nav */
@@ -212,6 +212,15 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 #tip p { margin: 0; }
 #tip .tip-rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; padding: 8px 0 2px; border-top: 1px solid var(--line); }
 #tip .tip-rows b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* wide screens: Record boards flow into side-by-side columns (filled top to bottom, no gaps) */
+@media (min-width: 1280px) {
+  #view-record:not([hidden]) { display: block; column-width: 620px; column-gap: 22px; }
+  #view-record > .board { display: inline-block; width: 100%; break-inside: avoid; margin: 0 0 22px; vertical-align: top; }
+  #view-record > :not(.board) { column-span: all; margin-bottom: 22px; }
+  .rec-grid { grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); }
+  #view-tonight .scroll table { font-size: 14.5px; }
+}
 
 /* sortable headings */
 th button.sort {
