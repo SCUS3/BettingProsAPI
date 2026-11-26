@@ -887,38 +887,39 @@ SAM_PART_LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "Be
 
 
 def sam_rows(graded):
-    """Sam score splits from the score frozen at logging: every staked record by tier (A / B / C / paper), and each score
-    part by its points (all staked plays, each prop once), so the record shows which parts predict results."""
+    """Sam score splits from the score frozen at logging, kept short enough to read: the four tiers (each prop once),
+    then each score part in three levels by its share of the part's full points (high >= 2/3, mid >= 1/3, low)."""
     import json as _json
+    from nbaprops import config as _C
     out = []
-    sc = [(r, v) for r, v in graded if r["strategy"] in SAM_KEYS and r.get("score_entry") not in (None, "")]
+    sc = _uniq([(r, v) for r, v in graded if r["strategy"] in SAM_KEYS and r.get("score_entry") not in (None, "")])
 
     def add(key, label, sub):
         if sub:
             x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=key, group="sam", label=label, n=len(sub))
             x["clv_unit"] = "% EV at closing fair"
             out.append(x)
-    for t in ("A", "B", "C", "paper"):
-        add("sam_all_" + t, f"All staked (each prop once): tier {t}", [(r, v) for r, v in _uniq(sc) if r.get("score_tier") == t])
-    for name, keys in SAM_RECORDS:
-        for t in ("A", "B", "C", "paper"):
-            add(f"sam_{name}_{t}", f"{name}: tier {t}", [(r, v) for r, v in sc if r["strategy"] in keys and r.get("score_tier") == t])
-    uq = _uniq(sc)
+    for t, desc in (("A", "80+"), ("B", "65-79"), ("C", "50-64"), ("paper", "under 50")):
+        add("sam_tier_" + t, f"Tier {t} ({desc})", [(r, v) for r, v in sc if r.get("score_tier") == t])
     for part, lab in SAM_PART_LABELS.items():
-        lv: dict = {}
-        for r, v in uq:
+        full = _C.SAM_WEIGHTS.get(part) or 0
+        if full <= 0:
+            continue
+        lv = {"high": [], "mid": [], "low": []}
+        for r, v in sc:
             try:
                 pts = _json.loads(r.get("score_parts") or "{}").get(part)
             except ValueError:
                 pts = None
-            if pts is not None:
-                lv.setdefault(float(pts), []).append((r, v))
-        if len(lv) < 2:
+            if pts is None:
+                continue
+            f = float(pts) / full
+            lv["high" if f >= 2 / 3 else "mid" if f >= 1 / 3 else "low"].append((r, v))
+        if sum(1 for g in lv.values() if g) < 2:
             continue
-        for pts in sorted(lv, reverse=True):
-            add(f"sam_part_{part}_{pts:g}", f"{lab} {pts:g} pts", lv[pts])
+        for level in ("high", "mid", "low"):
+            add(f"sam_part_{part}_{level}", f"{lab}: {level}", lv[level])
     return out
-
 
 def sim_record_rows(version="v2"):
     """Sims (research, separate): bp_sim.py's own ledger, never mixed with the rows above."""
