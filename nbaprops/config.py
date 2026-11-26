@@ -50,7 +50,12 @@ SAM_EDGE_FULL = 0.06           # entry EV for full edge marks
 SAM_ADAPT_N0 = 500            # nightly adaptation: weight on the fit = n / (n + 500) graded player-games
 SAM_FIT_MIN = 500              # graded v2 player-games before fitted weights may replace the hand-set ones
 SAM_LONG_ODDS = 200
-UNVERIFIED_BEFORE_TIP_MIN = 10  # both-sides conflict still unchecked this close to tip: keep the stronger side at half stake
+UNVERIFIED_BEFORE_TIP_MIN = 10
+# ---------------------------------------------------------------- public site (GitHub Pages)
+SITE_PUBLISH = False           # flip to True only after the data terms are confirmed; then each run pushes site/ to gh-pages
+SITE_PUBLISH_DELAY_MIN = 0     # bets appear on the public page this many minutes after they are logged
+SITE_PLAYABLE_MARGIN = 0.02    # "playable to" = worst FanDuel price still +2% EV at the fair price
+SITE_PUSH_EVERY_MIN = 10       # at most one public push per this many minutes  # both-sides conflict still unchecked this close to tip: keep the stronger side at half stake
 CNO_MIN_EV = 0.02              # CrazyNinja +EV record: median worst-case EV
 BOARD_MARKETS = ["PTS", "REB", "AST", "3PM", "P+A", "P+R", "PRA", "R+A"]
 R_A_FROM = "2026-11-24"        # R+A on from this slate

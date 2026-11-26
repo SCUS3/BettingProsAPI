@@ -36,3 +36,11 @@ halftime_*.log
 .venv/
 cards_v1.txt
 logs/
+
+# data and logs stay local (the repo is public)
+live_pastes.csv
+*.log
+weekly_*.md
+site/
+.site-worktree/
+.site_last_push

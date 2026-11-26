@@ -1328,6 +1328,16 @@ def refresh_note(date):
         print(f"Note -> {os.path.join(HERE, out)}")
     except Exception as e:  # noqa: BLE001
         print(f"Note not rebuilt: {e}")
+    try:                                                # public site: always rebuilt locally; pushed only if SITE_PUBLISH
+        from nbaprops.output import site as _site
+        paths = _site.build(date)
+        hits = _site.scan(paths)
+        if hits:
+            print("Public site NOT published: secret check found " + ", ".join(sorted({k for _, k in hits})))
+        elif C.SITE_PUBLISH:
+            print("Public site: " + _site.publish())
+    except Exception as e:  # noqa: BLE001
+        print(f"Public site not rebuilt: {e}")
 
 
 def run_cno_paste(args):

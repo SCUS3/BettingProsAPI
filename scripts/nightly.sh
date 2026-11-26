@@ -13,5 +13,6 @@ D=${1:-$(TZ=America/New_York date -v-1d +%Y-%m-%d)}
   "$PY" -m nbaprops.pricing.samfit --adapt
   "$PY" bp_props.py --weekly --date "$D" > /dev/null && echo "weekly_$D.md written"
   if [ -f "bp_props_$D.csv" ]; then "$PY" bp_props.py --from-csv --date "$D" | tail -3; fi
+  "$PY" bp_site.py --publish            # public site: build + secret check; pushes only if config.SITE_PUBLISH
   echo "=== done $(date) ==="
 } >> "logs/nightly.log" 2>&1

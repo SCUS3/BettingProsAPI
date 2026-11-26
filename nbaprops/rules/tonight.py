@@ -53,6 +53,8 @@ def candidates(date: str, led: list[dict] | None = None) -> list[dict]:
                     "line": L._num(best["line"]), "price": L._num(best.get("entry_price") or best.get("odds")), "ev": ev,
                     "sources": int(L._num(best.get("entry_sources") or best.get("sources")) or 0), "price_at": last,
                     "entry_at": best.get("entry_at") or best.get("pulled_at"),
+                    "price_now": L._num(best.get("latest_price")), "line_now": L._num(best.get("latest_fd_line")),
+                    "fair_entry": L._num(best.get("entry_fair") or best.get("oa_fair")), "fair_now": L._num(best.get("latest_fair")),
                     "bp_agrees": (best.get("proj_tag") or "") in ("agrees", "lean agrees"), "dvp_tag": best.get("dvp_tag"),
                     "stake_raw": L._num(best["kelly_u"]), "stake": L._num(best["kelly_u"]), "records": recs,
                     "from": SOURCES[best["strategy"]], "tip": best.get("tip"), "event_id": best.get("event_id"),
