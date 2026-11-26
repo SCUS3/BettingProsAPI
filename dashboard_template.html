@@ -1176,14 +1176,16 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       var name = h.textContent.split(" · ")[0].trim(), id = "sec-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       if (used[id]) { used[id]++; id += "-" + used[id]; } else used[id] = 1;
       b.id = id;
-      if (!/^\d{4}-\d{2}-\d{2}/.test(name)) chips.push('<button type="button" data-jump="' + id + '">' + esc(name) + "</button>");
+      if (!/^\d{4}-\d{2}-\d{2}/.test(name) && name !== "Daily learns") chips.push('<button type="button" data-jump="' + id + '">' + esc(name) + "</button>");
     });
+    if (document.getElementById("sec-daily-learns")) chips.push('<button type="button" data-jump="sec-daily-learns">Daily learns</button>');
     REC_CHIPS = chips.join("");
     updateJump();
   }
   var REC_CHIPS = "";
   var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
     '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>' +
+    '<button type="button" data-jump="sec-daily-learns" title="Opens the Record tab">Daily learns ↗</button>' +
     '<button type="button" data-go="footer">Data &amp; disclaimer</button>';
   function updateJump() {                // the sticky nav's "Jump to" row follows the open tab
     var nj = document.getElementById("nav-jump");
@@ -1292,6 +1294,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     if (!b) return;
     var t = document.getElementById(b.getAttribute("data-jump"));
     if (!t) { toast("That section isn't on the page tonight."); return; }
+    var inRec = !!t.closest("#view-record"), recOpen = tabR.getAttribute("aria-selected") === "true";
+    if (inRec !== recOpen) { showTab(inRec ? "record" : "tonight"); toast(inRec ? "Showing Record: every record's results" : "Showing Tonight: tonight's bets and props"); }
     if (t.tagName === "DETAILS") t.open = true;
     t.scrollIntoView({ behavior: "smooth", block: "start" });
   });
