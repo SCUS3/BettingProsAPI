@@ -310,3 +310,22 @@ Create the Reddit app once:
 5. Add to `.env` (never commit it): `REDDIT_CLIENT_ID=...`, `REDDIT_CLIENT_SECRET=...`, `REDDIT_USERNAME=<your username>` (used only in the User-Agent Reddit requires).
 6. Reddit's Data API terms apply (https://support.reddithelp.com/hc/en-us/articles/16160319875092); this is personal, non-commercial, read-only use.
 
+## Data sources & disclaimer
+
+ScuseBET builds its boards and models from these sources:
+
+| Source | What it provides |
+|---|---|
+| **BettingPros** | Player projections, prop lines, matchup (DvP) ranks and bet ratings, through the BettingPros Consumer API and its public Prop Bet Cheat Sheet. The core projection source for every ScuseBET model. |
+| **Unabated** | Market prices from sportsbooks and exchanges, used to devig and compute fair odds and market EV. |
+| **CrazyNinja Odds** | Worst-case devigging (a cautious second check on market EV) and the +EV screener. |
+| **The Odds API** | Backup market prices. |
+| **ESPN** | Box scores for grading, player game logs for recent form, live stats and schedules. |
+| **RotoWire** | Projected lineups and injury status. |
+| **Reddit (r/sportsbook)** | Community picks, tracked as research only. |
+
+FanDuel lines are shown because that is the sportsbook these boards price against. ScuseBET is an independent project and is not
+affiliated with or endorsed by BettingPros, Unabated, CrazyNinja Odds, The Odds API, ESPN, RotoWire, Reddit, FanDuel or the NBA;
+their names, marks and data belong to their owners, and their terms of use apply. Everything ScuseBET publishes is a projection for
+information and entertainment, not betting advice or a guarantee of results, and past results do not predict future ones. Bet only
+what you can afford to lose and follow the laws where you live. If gambling stops being fun, call or text 1-800-GAMBLER.

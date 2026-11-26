@@ -63,12 +63,26 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "tonight_bets": _tonight(date), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
+               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
                "situations": _situations("v2"), "situations_v1": _situations("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
         f.write(tpl.replace("__BP_DATA__", blob))
     return DASH_OUT
+
+
+def _sam_weights():
+    """Current Sam score weights (adapted nightly) vs. the hand-set start, for the dashboard's ⓘ explanations."""
+    import json as _json
+    from nbaprops import config as C
+    from nbaprops.pricing import samscore as SS
+    out = {"now": SS.active_weights(), "hand": C.SAM_WEIGHTS, "penalties": C.SAM_PENALTIES, "n": None, "at": None}
+    try:
+        j = _json.load(open(os.path.join(_ROOT, "sam_weights.json")))
+        out.update(n=j.get("n"), at=(j.get("at") or "")[:10])
+    except (OSError, ValueError):
+        pass
+    return out
 
 
 def _tonight(date):
