@@ -222,9 +222,12 @@ var n=dark?'light':'dark';document.documentElement.setAttribute('data-theme',n);
 </script>"""
 
 FOOTER = """<footer>
-<div><b>ScuseBET is a free, non-commercial hobby project:</b> no ads, no affiliate links, no paid picks, and nothing here is sold.</div>
-<div><b>21+ only. For entertainment only. Not betting advice.</b> Projections, not guarantees; past results don't predict future ones.
-Bet only what you can afford to lose and follow the laws where you live. If gambling stops being fun, call or text <b>1-800-GAMBLER</b>.</div>
+<div><b>ScuseBET is a personal test project for entertainment only.</b> The picks on this site are simulations: a betting model's
+plays tracked on paper to see how the model performs. They are not betting recommendations, advice or tips, and nothing here asks
+you to place a bet.</div>
+<div><b>Free and non-commercial:</b> no ads, no affiliate links, no paid picks, and nothing here is sold.</div>
+<div><b>21+ only.</b> Projections, not guarantees; past results don't predict future ones. If you choose to bet anywhere, bet only
+what you can afford to lose and follow the laws where you live. If gambling stops being fun, call or text <b>1-800-GAMBLER</b>.</div>
 <div>Data: player projections from BettingPros; market prices from Unabated, CrazyNinja Odds and Kalshi; box scores from ESPN; lineups
 from RotoWire. ScuseBET is independent and not affiliated with or endorsed by any of them, FanDuel or the NBA. No affiliate links.</div>
 </footer>"""
@@ -281,14 +284,14 @@ def render_index(date, now, bets, yrows, ytot, run, updated):
                     f'EV <b>{100 * (b["ev"] or 0):+.1f}%</b>' if b.get("ev") is not None else "",
                     f'FanDuel <b>{_odds(b["price_now"])}</b>',
                     ('<span class="skip">Line moved, skip</span>' if b["moved"] else f'Playable to <b>{b["playable"]}</b>') if b.get("playable") else "",
-                    f'Stake <b>{b["stake"]:.2f}u</b>' if b.get("stake") is not None else ""]
+                    f'Model stake <b>{b["stake"]:.2f}u</b>' if b.get("stake") is not None else ""]
             cards.append(f'''<div class="card bet"><div><div class="who">{e(b["player"])}</div>
 <div class="what">{e(b["market"])} {side(b["side"])} {b["line"]:g}</div></div>
 <div class="score">{b["score"]:g} ({e(b["tier"] or "")})<small>Sam score</small></div>
 <div class="meta">{"".join(f"<span>{m}</span>" for m in meta if m)}</div></div>''')
         bets_html = '<div class="bets">' + "".join(cards) + "</div>"
     else:
-        bets_html = ('<div class="card empty"><b>No bets tonight</b>Nothing cleared every ScuseBET check. '
+        bets_html = ('<div class="card empty"><b>No picks tonight</b>Nothing cleared every check in the model. '
                      "Passing is part of the plan; check back after the next update.</div>")
     if yrows:
         trs = "".join(f'<tr><td class="l">{e(r["player"])}</td><td class="l">{e(r["market"])} {"o" if r["side"] == "over" else "u"}{r["line"]:g}</td>'
@@ -299,25 +302,25 @@ def render_index(date, now, bets, yrows, ytot, run, updated):
 <div class="totals"><span>Yesterday <b>{ytot["w"]}-{ytot["l"]}-{ytot["p"]}</b> {_u(ytot["units"])}</span></div>'''
     else:
         ytab = '<p class="dim">No bets yesterday.</p>'
-    ytab += (f'<div class="totals"><span>All bets so far <b>{run["w"]}-{run["l"]}-{run["p"]}</b> ({run["n"]} bets)</span>'
+    ytab += (f'<div class="totals"><span>All simulated picks so far <b>{run["w"]}-{run["l"]}-{run["p"]}</b> ({run["n"]} bets)</span>'
              f'<span>{_u(run["units"])}</span><span>ROI {_pct(run["roi"])}</span><span>Avg CLV {_pct(run["clv"])}</span></div>')
-    body = f'''<section id="tonight"><div class="updated">{e(dt.date.fromisoformat(date).strftime("%A, %B %-d"))}</div><h1>Tonight's bets</h1>
-<p class="lede">NBA player props priced against FanDuel and scored by the ScuseBET models. These are the only plays we put money on.</p></section>
+    body = f'''<section id="tonight"><div class="updated">{e(dt.date.fromisoformat(date).strftime("%A, %B %-d"))}</div><h1>Tonight's picks</h1>
+<p class="lede">The plays the ScuseBET model would make tonight: a simulation for entertainment, tracked on paper. Not betting advice.</p></section>
 <section>{bets_html}</section>
-<section class="card" id="yesterday"><h2>Yesterday's results</h2>{ytab}</section>
-<section class="card" id="how"><h2>How it works</h2><p class="lede">Every night we compare FanDuel's player-prop prices with the rest of the market
-(sportsbooks and exchanges) to find prices that are better than fair. A bet makes this list only when the price is good enough
-<i>and</i> the ScuseBET Sam score (0-100, built from the market edge, matchup, role, recent form and more) is 50 or higher.
-Stakes are a quarter of the Kelly amount with caps per player, game and night. Everything is graded from the box score the next
-morning, and every record stays public, losses included.</p></section>
+<section class="card" id="yesterday"><h2>Yesterday's simulated results</h2>{ytab}</section>
+<section class="card" id="how"><h2>How it works</h2><p class="lede">This is a test of a betting model, run for fun. Every night the model
+compares FanDuel's player-prop prices with the rest of the market to find prices that look better than fair. A play makes this
+list only when the price looks good enough <i>and</i> the Sam score (0-100, built from the market edge, matchup, role, recent form
+and more) is 50 or higher. Model stakes are a quarter of the Kelly amount with caps per player, game and night. No money is placed
+by this site: every pick is graded on paper from the box score the next morning, and every result stays public, losses included.</p></section>
 <section class="card" id="glossary"><h2>Glossary</h2><dl class="gloss">
 <dt>EV</dt><dd>Expected value: how much a bet should return on average at this price compared with its fair odds. +4% means about 4 cents per dollar over many bets.</dd>
 <dt>CLV</dt><dd>Closing line value: how much better our price was than the final market price before tip-off. Beating the close is the clearest sign of real edge, more reliable than a short winning streak.</dd>
-<dt>Units</dt><dd>1u = 1% of your bankroll. If you follow casually, bet a flat 1u on each play instead of the listed stakes.</dd>
+<dt>Units</dt><dd>How the model sizes its simulated plays: 1u = 1% of a bankroll. The model's records use flat 1u and its quarter-Kelly model stakes.</dd>
 <dt>Sam score</dt><dd>ScuseBET's 0-100 rating. A = 80+, B = 65-79, C = 50-64. Below 50 is tracked but never bet.</dd>
 <dt>Playable to</dt><dd>The worst FanDuel price where the bet is still about 2% better than fair. If FanDuel's price is worse than that, we show "line moved, skip".</dd>
 </dl></section>'''
-    return page("ScuseBET", "index", body, updated, chips=(("tonight", "Tonight's bets"), ("yesterday", "Yesterday"),
+    return page("ScuseBET", "index", body, updated, chips=(("tonight", "Tonight's picks"), ("yesterday", "Yesterday"),
                                                              ("how", "How it works"), ("glossary", "Glossary")))
 
 

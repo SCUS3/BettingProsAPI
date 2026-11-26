@@ -325,6 +325,10 @@ ScuseBET builds its boards and models from these sources:
 | **RotoWire** | Projected lineups and injury status. |
 | **Reddit (r/sportsbook)** | Community picks, tracked as research only. |
 
+**ScuseBET is a personal test project for entertainment only.** Its picks are simulations: a betting model's plays tracked on
+paper to see how the model performs. They are not betting recommendations, advice or tips. It is free and non-commercial: no ads,
+no affiliate links, no paid picks, nothing sold.
+
 FanDuel lines are shown because that is the sportsbook these boards price against. ScuseBET is an independent project and is not
 affiliated with or endorsed by BettingPros, Unabated, CrazyNinja Odds, The Odds API, ESPN, RotoWire, Reddit, FanDuel or the NBA;
 their names, marks and data belong to their owners, and their terms of use apply. Everything ScuseBET publishes is a projection for
