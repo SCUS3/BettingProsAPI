@@ -486,7 +486,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     }).join("");
     return '<details class="held" id="held-out"><summary><span class="held-title">Held out · not bet</span><span class="held-count">' + held.length +
       " props</span><span class=\"held-hint\">Qualified for a record but stayed off tonight's bets</span></summary>" +
-      '<div class="held-scroll"><table><thead><tr>' + th([["Player", "l"], ["Prop", "l"], ["FD"], ["Sam score"], ["Why not bet", "l"]]) +
+      '<div class="held-scroll"><table><thead><tr>' + th([["Player", "l"], ["Prop", "l"], ["FD"], ["Sam"], ["Why", "l"]]) +
       "</tr></thead><tbody>" + rows + "</tbody></table></div></details>";
   }
 
@@ -509,7 +509,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var scaled = tb.some(function (x) { return x.stake_capped != null; });
     document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (" + (DATA.date >= "2026-11-24" ? "trimmed lowest Sam score first" : "scaled") + " from " + u(pre) + ")" : "") : ""),
       "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64; under 50 = paper only, held out): display and ranking only, never a stake change. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
-      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam score"]]),
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam"]]),
       body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>') +
       (held.length ? heldSection(held) : "");
   }
@@ -786,28 +786,28 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "W-L-P": "Wins, losses and pushes for the plays in this row.",
     "Hit": "Win rate: wins divided by wins plus losses (pushes left out).",
     "Units": "Profit at 1 unit per play, at the logged price.",
-    "Flat units": "Profit if every play were bet at 1 unit. The fairest way to compare rows.",
+    "Flat u": "Profit if every play were bet at 1 unit. The fairest way to compare rows.",
     "ROI": "Profit per unit risked at flat 1u. +20% means 0.20u won per 1u bet.",
-    "¼K units": "Profit at the logged quarter-Kelly stakes: bigger edges got bigger stakes, capped per player, game and night.",
-    "Kelly units": "Profit at the logged quarter-Kelly stakes (research lists have none).",
+    "¼K u": "Profit at the logged quarter-Kelly stakes: bigger edges got bigger stakes, capped per player, game and night.",
+    "Kelly u": "Profit at the logged quarter-Kelly stakes (research lists have none).",
     "CLV": "Closing line value: how much better the price you logged was than the market's final price before tip, in % EV. Positive means you beat the close. With few plays it is a steadier guide than wins and losses. (n) = plays with a closing price.",
     "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
     "Count": "Number of graded plays in this bucket.",
-    "EV at paste": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
+    "+EV": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
     "Expected": "What a 1u bet at that price is expected to make on average, from the EV at paste: +0.04u means about 4 cents per dollar over many bets. Compare it with Units, what it actually made.",
-    "Halftime exp.": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. For a paste made before halftime, it is what the model expected once the half arrived. Blank if the player had no pregame line to snapshot.",
-    "Live at paste": "The player's stat for this prop at the second you pasted, rebuilt from ESPN's timestamped play-by-play, with the game clock then.",
+    "HT exp": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. For a paste made before halftime, it is what the model expected once the half arrived. Blank if the player had no pregame line to snapshot.",
+    "Live": "The player's stat for this prop at the second you pasted, rebuilt from ESPN's timestamped play-by-play, with the game clock then.",
     "Units": "Profit at 1 unit per play, at the logged price. For live pastes: what a 1u bet at your pasted price actually made.",
     "Final": "The player's final stat for this prop.",
     "Result": "W = won, L = lost, P = push, · = not graded yet.",
-    "Pasted (ET)": "When you pasted the row, Eastern time.",
-    "Why not bet": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
+    "Time": "When you pasted the row, Eastern time.",
+    "Why": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
     "DvP": "How the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
-    "BP proj (gap)": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
+    "BP proj": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "FD": "FanDuel's price for this bet. +150 pays 1.5u profit on 1u; -150 risks 1.5u to win 1u.",
     "Stake": "How much to bet in units (1u = 1% of your bankroll): quarter-Kelly on the market's fair odds, capped at 1.5u per player, 3.5u per game and 8u per night.",
     "Entry EV": "Market EV when the play was first logged (frozen), split 0-2%, 2-4%, 4%+.",
-    "Brier ours / mkt": "Accuracy of the win probabilities (lower is better): ours vs. FanDuel's no-vig price."
+    "Brier": "Accuracy of the win probabilities (lower is better): ours vs. FanDuel's no-vig price."
   };
   var SW = DATA.sam_weights || {now: {}, hand: {}};
   var PART_KEYS = {"Market edge": "edge", "Market quality": "quality", "BettingPros": "bp", "DvP": "dvp", "Line movement": "move",
@@ -841,7 +841,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       "In this table each tier's record shows whether higher scores really win more.";
   }
   function info(key, ctx) {               // ctx "col" = a column heading (plain meaning); otherwise a Sam score split row
-    var t = ctx === "col" && TIPS[key] ? TIPS[key] : PART_KEYS[key] ? partTip(key) : (key === "Tier" || key === "Sam score") ? tierTip() : TIPS[key];
+    var t = ctx === "col" && TIPS[key] ? TIPS[key] : PART_KEYS[key] ? partTip(key) : (key === "Tier" || key === "Sam") ? tierTip() : TIPS[key];
     return t ? '<button type="button" class="info" data-tip="' + esc(t) + '" aria-label="What is ' + esc(key) + '?">i</button>' : "";
   }
   function th(cols) {                    // headings are sort buttons (click to sort the table) plus an ⓘ explanation
@@ -913,15 +913,15 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     }
     function clvTxt(x) { return x.clv == null ? '<span class="dim">–</span>' : units(x.clv).replace("u<", (x.clv_unit ? "% EV<" : " pts<")) + ' <span class="dim">(' + x.clv_n + ")</span>" +
       (x.ev_below_0 ? ' <span class="neg">' + x.ev_below_0 + " fell below 0</span>" : ""); }
-    var sHead = th([["Strategy", "l"], ["W-L-P"], ["Hit"], ["Units"], ["ROI"], ["Kelly units", "hide-sm"],
-      ["Brier ours / mkt", "hide-sm"], ["Log loss ours / mkt", "hide-sm"], ["CLV", "hide-sm"]]);
+    var sHead = th([["Strategy", "l"], ["W-L-P"], ["Hit"], ["Units"], ["ROI"], ["Kelly u", "hide-sm"],
+      ["Brier", "hide-sm"], ["Log loss ours / mkt", "hide-sm"], ["CLV", "hide-sm"]]);
     function sRow(x, strong) {
       return '<tr><td class="l"><span class="player">' + (strong ? "<b>" + esc(x.label) + "</b>" : esc(x.label)) + "</span></td><td>" + x.w + "-" + x.l + "-" + x.p + "</td><td>" + pct(x.hit) +
         "</td><td>" + units(x.units) + "</td><td>" + pct(x.roi) + '</td><td class="hide-sm"><span class="dim" title="Research list: no stake">–</span>' +
         '</td><td class="hide-sm">' + vs(x.brier, x.brier_mkt) + '</td><td class="hide-sm">' + vs(x.logloss, x.logloss_mkt) +
         '</td><td class="hide-sm">' + clvTxt(x) + "</td></tr>";
     }
-    var bHead = th([["Group", "l"], ["W-L-P"], ["Hit"], ["Flat units"], ["ROI"], ["¼K units", "hide-sm"], ["CLV", "hide-sm"]]);
+    var bHead = th([["Group", "l"], ["W-L-P"], ["Hit"], ["Flat u"], ["ROI"], ["¼K u", "hide-sm"], ["CLV", "hide-sm"]]);
     function samTip(x) {                  // ⓘ on Sam score split rows: the part (or tier) the row is about
       if (x.group !== "sam") return "";
       var part = /^Tier /.test(x.label) ? "Tier" : x.label.split(":")[0];
@@ -964,12 +964,12 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         var hh = "";
         var F = HF.flags || {nights: [], by_type: []};
         if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime. Alerts are strong pace flags (≤25% with 12+ minutes, or ≥80% still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player) with no side: the side comes only from the expected final vs. FanDuel's live line in a paste. 11/22's 9 alerts were reversal bets and are kept only as legacy reversal flags.",
-          th([["Night", "l"], ["Games"], ["Player props"], ["Alerts"], ["Legacy reversal flags"]]),
+          th([["Night", "l"], ["Games"], ["Props"], ["Alerts"], ["Legacy"]]),
           F.nights.map(function (n) { return '<tr><td class="l">' + esc(n.date) + "</td><td>" + n.games + "</td><td>" + n.players + "</td><td>" + n.alerts + "</td><td>" + (n.legacy_reversal || "–") + "</td></tr>"; }).join(""));
         var BF = F.backfill || {}, ACC = (F.accuracy || []);
         if (ACC.length) hh += board("Expected final accuracy", "Final stat minus expected final (first half + base-rate 2nd-half share × pregame line), scored out of sample: each night uses shares from the other nights only. Bias > 0 means the expected final runs too low; < 0 too high." +
           (BF.rows ? " Includes " + BF.rows + " backfill rows from " + BF.games + " past games." : ""),
-          th([["Market", "l"], ["1st-half pace", "l"], ["n"], ["Avg miss"], ["Bias"]]),
+          th([["Market", "l"], ["1H pace", "l"], ["n"], ["Miss"], ["Bias"]]),
           ACC.map(function (a) { var s = a.bucket === "all" ? "<b>" : "", e = a.bucket === "all" ? "</b>" : "";
             return '<tr><td class="l">' + s + esc(a.market) + e + '</td><td class="l">' + s + esc(a.bucket) + e + "</td><td>" + a.n + "</td><td>" + a.miss + "</td><td>" + (a.bias > 0 ? "+" : "") + a.bias + "</td></tr>"; }).join(""));
         var Pp = HF.pastes || {};
@@ -987,8 +987,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
             "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
             " (" + LPS.clv_n + " rows seen again in a later paste). Newest first; sort any column.",
-            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Units"], ["Books", "hide-sm"],
-                ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"], ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
+            th([["Time", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["+EV"], ["Units"], ["Books", "hide-sm"],
+                ["BP proj", "hide-sm"], ["HT exp", "hide-sm"], ["Live", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
             LPS.rows.map(function (r) {
               var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
               return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
@@ -1014,7 +1014,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
 
     var PO = REC.posters || [];
     html += board("Reddit posters: leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
-      th([["Poster", "l"], ["Picks"], ["Graded"], ["W-L-P"], ["Units"], ["ROI"], ["CLV"], ["Entry mkt EV", "hide-sm"]]),
+      th([["Poster", "l"], ["Picks"], ["Graded"], ["W-L-P"], ["Units"], ["ROI"], ["CLV"], ["Entry EV", "hide-sm"]]),
       PO.filter(function (p) { return p.n >= 5; }).slice(0, 20).map(function (p) {
         return '<tr><td class="l">' + (p.proven ? "⭐ " : "") + esc(p.poster) + "</td><td>" + p.picks + "</td><td>" + p.n + "</td><td>" + p.w + "-" + p.l + "-" + p.p +
           "</td><td>" + units(p.units) + "</td><td>" + pct(p.roi) + "</td><td>" + (p.clv == null ? '<span class="dim">–</span>' : (p.clv > 0 ? "+" : "") + p.clv) +
@@ -1022,13 +1022,13 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         '<tr><td class="l dim" colspan="8">No poster has 5+ graded picks yet.</td></tr>');
     var EVB = REC.ev_buckets || [];
     html += board("Entry EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
-      th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat units"], ["¼K units"], ["CLV"]]),
+      th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat u"], ["¼K u"], ["CLV"]]),
       EVB.map(function (r) { return r.buckets.map(function (b, i) {
         return '<tr><td class="l">' + (i ? "" : "<b>" + esc(r.record) + "</b>") + '</td><td class="l">' + esc(b.bucket) + "</td><td>" + b.n + "</td><td>" + b.w + "-" + b.l + "-" + b.p +
           "</td><td>" + units(b.units) + "</td><td>" + units(b.kelly_units) + "</td><td>" + (b.clv == null ? '<span class="dim">–</span>' : (b.clv > 0 ? "+" : "") + b.clv + "% EV") + "</td></tr>"; }).join(""); }).join("") ||
         '<tr><td class="l dim" colspan="7">Nothing graded yet.</td></tr>');
     var SIT = (REC_VERSION === "v1" ? DATA.situations_v1 : DATA.situations) || { records: [], candidates: [] };
-    var sitHead = th([["Split", "l"], ["W-L-P"], ["Hit"], ["Flat units"], ["ROI"], ["CLV", "hide-sm"], ["p", "hide-sm"]]);
+    var sitHead = th([["Split", "l"], ["W-L-P"], ["Hit"], ["Flat u"], ["ROI"], ["CLV", "hide-sm"], ["p", "hide-sm"]]);
     function sitRow(s, withRec) {
       return '<tr><td class="l">' + (s.candidate ? "⭐ " : "") + (withRec ? esc(s.record) + ": " : "") + esc(s.dimension) + " = <b>" + esc(s.value) + "</b></td><td>" +
         s.w + "-" + s.l + "-" + s.p + "</td><td>" + pct(s.hit) + "</td><td>" + units(s.units) + "</td><td>" + pct(s.roi) + '</td><td class="hide-sm">' +
@@ -1144,12 +1144,15 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     out.push(cur);
     return out;
   }
-  var TITLE_FULL = {                      // tooltip title line: abbreviations spelled out
+  var TITLE_FULL = {                      // tooltip title line: short headings and abbreviations spelled out
     "DvP": "DvP (Defense vs. Position)", "CLV": "CLV (Closing line value)", "ROI": "ROI (Return on investment)",
-    "FD": "FD (FanDuel price)", "W-L-P": "W-L-P (Wins-Losses-Pushes)", "¼K units": "¼K units (quarter-Kelly stakes)",
-    "Kelly units": "Kelly units (quarter-Kelly stakes)", "BP proj (gap)": "BP proj (BettingPros projection)", "BP proj": "BP proj (BettingPros projection)",
-    "EV at paste": "EV at paste (expected value)", "Entry EV": "Entry EV (expected value when logged)", "p": "p (chance it's luck)",
-    "Expected": "Expected (expected profit per 1u)", "Sam score": "Sam score (ScuseBET's 0-100 rating)", "Tier": "Tier (Sam score band)"
+    "FD": "FD (FanDuel price)", "W-L-P": "W-L-P (Wins-Losses-Pushes)", "¼K u": "¼K u (units at quarter-Kelly stakes)",
+    "Kelly u": "Kelly u (units at quarter-Kelly stakes)", "Flat u": "Flat u (units at 1u per play)", "Units": "Units (profit at 1u per play)",
+    "BP proj": "BP proj (BettingPros projection)", "+EV": "+EV (expected value when pasted)", "Entry EV": "Entry EV (expected value when logged)",
+    "p": "p (chance it's luck)", "Sam": "Sam (Sam score, ScuseBET's 0-100 rating)", "Tier": "Tier (Sam score band)",
+    "HT exp": "HT exp (halftime expected final)", "Live": "Live (stat when you pasted)", "Time": "Time (when you pasted, Eastern)",
+    "Why": "Why (why it wasn't bet)", "Brier": "Brier (probability accuracy)", "Final": "Final (final stat)",
+    "1H pace": "1H pace (first-half pace)", "Miss": "Miss (average miss)", "Legacy": "Legacy (old reversal flags)", "Props": "Props (player props)"
   };
   function tipHTML(text, label) {         // sentences as short paragraphs; every "X = Y" on its own row
     var title = (label || "").replace(/^What is /, "").replace(/\?$/, "");
