@@ -222,6 +222,7 @@ var n=dark?'light':'dark';document.documentElement.setAttribute('data-theme',n);
 </script>"""
 
 FOOTER = """<footer>
+<div><b>ScuseBET is a free, non-commercial hobby project:</b> no ads, no affiliate links, no paid picks, and nothing here is sold.</div>
 <div><b>21+ only. For entertainment only. Not betting advice.</b> Projections, not guarantees; past results don't predict future ones.
 Bet only what you can afford to lose and follow the laws where you live. If gambling stops being fun, call or text <b>1-800-GAMBLER</b>.</div>
 <div>Data: player projections from BettingPros; market prices from Unabated, CrazyNinja Odds and Kalshi; box scores from ESPN; lineups
