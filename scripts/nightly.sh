@@ -10,7 +10,7 @@ D=${1:-$(TZ=America/New_York date -v-1d +%Y-%m-%d)}
   "$PY" bp_props.py --grade "$D" --max-requests 0
   "$PY" bp_halftime.py --grade "$D"
   "$PY" -m nbaprops.rules.livepastes --grade "$D"
-  "$PY" -m nbaprops.pricing.samfit --adapt
+  "$PY" -m nbaprops.pricing.samfit --adapt --date "$D"
   "$PY" bp_props.py --weekly --date "$D" > /dev/null && echo "weekly_$D.md written"
   if [ -f "bp_props_$D.csv" ]; then "$PY" bp_props.py --from-csv --date "$D" | tail -3; fi
   "$PY" bp_site.py --publish            # public site: build + secret check; pushes only if config.SITE_PUBLISH

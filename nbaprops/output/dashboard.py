@@ -63,12 +63,21 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
+               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "learns": _learns(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
                "situations": _situations("v2"), "situations_v1": _situations("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
         f.write(tpl.replace("__BP_DATA__", blob))
     return DASH_OUT
+
+
+def _learns():
+    """Daily learns: per day, the Sam score weight changes, sample, that night's bets and rule notes."""
+    try:
+        from nbaprops.rules import learns as LR
+        return [dict(d, text=LR.lines(d)) for d in LR.daily()]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _live_pastes():

@@ -256,6 +256,12 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 .jump button:hover { border-color: var(--accent-dim); color: var(--ink); }
 .jump button:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; }
 
+/* daily learns */
+.learn-day { padding: 12px 16px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.learn-date { font: 400 20px/1 var(--display); letter-spacing: 0.04em; color: var(--ink); }
+.learn-notes { margin: 0; padding-left: 18px; color: var(--text); font-size: 13.5px; display: flex; flex-direction: column; gap: 4px; }
+.learn-day table { font-size: 13.5px; }
+
 /* sortable headings */
 th button.sort {
   background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
@@ -838,6 +844,10 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "CLV": "Closing line value: how much better the price you logged was than the market's final price before tip, in % EV. Positive means you beat the close. With few plays it is a steadier guide than wins and losses. (n) = plays with a closing price.",
     "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
     "Count": "Number of graded plays in this bucket.",
+    "Was": "The part's weight (its maximum points in the 100-point Sam score) before that night's update.",
+    "Now": "The part's weight after that night's update.",
+    "Change": "How much the weight moved that night. Up = results say this part predicts winners better than its weight gave it credit for; down = less.",
+    "Part": "One of the 8 parts of the Sam score.",
     "+EV": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
     "Expected": "What a 1u bet at that price is expected to make on average, from the EV at paste: +0.04u means about 4 cents per dollar over many bets. Compare it with Units, what it actually made.",
     "HT exp": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. For a paste made before halftime, it is what the model expected once the half arrived. Blank if the player had no pregame line to snapshot.",
@@ -1065,6 +1075,19 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
           "</td><td>" + units(p.units) + "</td><td>" + pct(p.roi) + "</td><td>" + (p.clv == null ? '<span class="dim">–</span>' : (p.clv > 0 ? "+" : "") + p.clv) +
           '</td><td class="hide-sm">' + (p.entry_ev == null ? "–" : (p.entry_ev > 0 ? "+" : "") + p.entry_ev + "%") + "</td></tr>"; }).join("") ||
         '<tr><td class="l dim" colspan="8">No poster has 5+ graded picks yet.</td></tr>');
+    var LRN = DATA.learns || [];
+    if (LRN.length) {
+      html += '<section class="board"><div class="board-head"><h2>Daily learns</h2><p>What the model learned each night and what it changed. The Sam score weights move a little every night toward what has actually been winning; bigger samples move them more. Newest first.</p></div>' +
+        LRN.map(function (d) {
+          var rows = (d.changes || []).map(function (c) {
+            return '<tr><td class="l">' + esc(c.label) + "</td><td>" + c.old + "</td><td><b>" + c.new + '</b></td><td><span class="' + (c.delta > 0 ? "pos" : "neg") + '">' + (c.delta > 0 ? "+" : "") + c.delta.toFixed(1) + "</span></td></tr>";
+          }).join("");
+          var other = (d.text || []).filter(function (t) { return !/^(Sam score weights moved|First Sam score update)/.test(t); });
+          return '<div class="learn-day"><div class="learn-date">' + esc(d.date) + (d.first ? ' <span class="chip">first update</span>' : "") + "</div>" +
+            (rows ? '<div class="scroll"><table><thead><tr>' + th([["Part", "l"], ["Was"], ["Now"], ["Change"]]) + "</tr></thead><tbody>" + rows + "</tbody></table></div>" : "") +
+            (other.length ? '<ul class="learn-notes">' + other.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
+        }).join("") + "</section>";
+    }
     var EVB = REC.ev_buckets || [];
     html += board("Entry EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
       th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat u"], ["¼K u"], ["CLV"]]),

@@ -1,0 +1,38 @@
+[
+ {
+  "date": "2026-11-24",
+  "n": 142.0,
+  "props": 190,
+  "s": 0.221,
+  "weights": {
+   "edge": 23.4,
+   "quality": 12.6,
+   "bp": 16.0,
+   "dvp": 7.8,
+   "move": 14.9,
+   "role": 11.2,
+   "form": 6.7,
+   "consensus": 7.5,
+   "threes": 0.0
+  },
+  "at": null
+ },
+ {
+  "date": "2026-11-25",
+  "n": 222.0,
+  "props": 380,
+  "s": 0.307,
+  "weights": {
+   "edge": 20.8,
+   "quality": 13.9,
+   "bp": 15.9,
+   "dvp": 6.9,
+   "move": 12.8,
+   "role": 11.7,
+   "form": 7.4,
+   "consensus": 10.5,
+   "threes": 0.0
+  },
+  "at": null
+ }
+]

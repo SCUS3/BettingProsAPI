@@ -197,6 +197,9 @@ tbody tr:nth-child(even) td { background:var(--surface-2); }
 dl.gloss { display:grid; grid-template-columns:max-content 1fr; gap:10px 16px; margin:0; }
 dl.gloss dt { font-weight:700; color:var(--ink); }
 dl.gloss dd { margin:0; }
+.learn { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+.learn h3 { font:400 20px/1 var(--display); letter-spacing:.04em; color:var(--ink); margin:0 0 8px; }
+.learn ul { margin:8px 0 0; padding-left:18px; }
 footer { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:8px; }
 footer b { color:var(--text); }
 a { color:var(--accent-dim); }
@@ -321,13 +324,36 @@ def _rec_table(rows):
             f"<tbody>{trs}</tbody></table></div>")
 
 
-def render_records(v2, days, v1_link, updated, title="Records", note=""):
+def render_learns():
+    """Daily learns section: per day, the Sam score weight changes, sample and notes (no third-party data)."""
+    try:
+        from nbaprops.rules import learns as LR
+        days = LR.daily()
+    except Exception:  # noqa: BLE001
+        days = []
+    if not days:
+        return ""
+    parts = []
+    for d in days:
+        rows = "".join(f'<tr><td class="l">{e(c["label"])}</td><td>{c["old"]:g}</td><td><b>{c["new"]:g}</b></td>'
+                       f'<td class="{"pos" if c["delta"] > 0 else "neg"}">{c["delta"]:+.1f}</td></tr>' for c in d["changes"])
+        other = [t for t in LR.lines(d) if not t.startswith(("Sam score weights moved", "First Sam score update"))]
+        parts.append(f'<div class="learn"><h3>{e(d["date"])}{" · first update" if d["first"] else ""}</h3>'
+                     + (f'<div class="scroll"><table><thead><tr><th class="l">Part</th><th>Was</th><th>Now</th><th>Change</th></tr></thead><tbody>{rows}</tbody></table></div>' if rows else "")
+                     + ("<ul>" + "".join(f"<li>{e(t)}</li>" for t in other) + "</ul>" if other else "") + "</div>")
+    return ('<section class="card"><h2>Daily learns</h2><p class="lede">What the model learned each night and what it changed. '
+            "The Sam score's part weights (out of 100) move a little every night toward what has actually been winning.</p>"
+            + "".join(parts) + "</section>")
+
+
+def render_records(v2, days, v1_link, updated, title="Records", note="", learns_html=""):
     dtab = "".join(f'<tr><td class="l">{e(d)}</td><td>{t["n"]}</td><td>{t["w"]}-{t["l"]}-{t["p"]}</td><td>{_u(t["units"])}</td><td>{_pct(t["clv"])}</td></tr>'
                    for d, t in days) or '<tr><td class="l dim" colspan="5">No graded nights yet.</td></tr>'
     body = f'''<section><h1>{e(title)}</h1><p class="lede">{note or "Every ScuseBET record with its full sample, losses included. Small samples swing a lot: read the number of bets before the win rate."}</p></section>
 <section class="card"><h2>Tonight's bets, night by night</h2><div class="scroll"><table><thead><tr><th class="l">Night</th><th>Bets</th><th>W-L-P</th>
 <th>Units</th><th>CLV</th></tr></thead><tbody>{dtab}</tbody></table></div></section>
 <section class="card"><h2>Every record</h2>{_rec_table(v2)}</section>
+{learns_html}
 {v1_link}'''
     return page(f"ScuseBET {title}", "records", body, updated)
 
@@ -352,7 +378,7 @@ def build(date=None) -> list[str]:
         "index.html": render_index(date, now, bets, yrows, totals(yrows), run, updated),
         "records.html": render_records(records("v2"), daily("v2"),
                                        '<section class="card"><h2>Archive</h2><p>Before the current rules (to Nov 23): '
-                                       '<a href="v1.html">v1 archive</a>.</p></section>', updated),
+                                       '<a href="v1.html">v1 archive</a>.</p></section>', updated, learns_html=render_learns()),
         "v1.html": render_records(records("v1"), daily("v1"), "", updated, title="v1 archive",
                                   note="Results under the first rule set, before November 24. Kept public for the full history."),
         "robots.txt": "User-agent: *\nDisallow: /\n",

@@ -186,7 +186,7 @@ def weekly_check() -> list[str]:
     return lines + [""]
 
 
-def adapt(write=True) -> dict:
+def adapt(write=True, date=None) -> dict:
     """Nightly: move the Sam score weights toward what results say, shrunk by sample size.
     Fit the parts on every graded prop (v1 + v2, each once, player-games weighted once, market baseline as offset),
     convert the log-odds effects to points on the hand-set scale, and blend: w = (1 - s) * hand + s * fitted, with
@@ -217,6 +217,13 @@ def adapt(write=True) -> dict:
            "at": L.utc_now()}
     if write:
         json.dump(out, open(os.path.join(L.HERE, "sam_weights.json"), "w"), indent=1)
+        try:                                            # daily learns: snapshot keyed by the last graded slate
+            import datetime as _dt
+            from nbaprops.rules import learns as LR
+            from nbaprops.app import props as P
+            LR.record(date or (_dt.date.fromisoformat(P.eastern_today()) - _dt.timedelta(days=1)).isoformat(), out)
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 
@@ -236,6 +243,7 @@ def adapt_lines(res) -> list[str]:
 if __name__ == "__main__":
     import sys
     if "--adapt" in sys.argv:
-        print("\n".join(adapt_lines(adapt())))
+        d = sys.argv[sys.argv.index("--date") + 1] if "--date" in sys.argv else None
+        print("\n".join(adapt_lines(adapt(date=d))))
     else:
         print("\n".join(table(compare(dataset()))))
