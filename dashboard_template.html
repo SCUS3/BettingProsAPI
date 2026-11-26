@@ -213,6 +213,18 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 #tip .tip-rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; padding: 8px 0 2px; border-top: 1px solid var(--line); }
 #tip .tip-rows b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* sortable headings */
+th button.sort {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+th button.sort::after { content: "↕"; font-size: 10px; opacity: 0.35; letter-spacing: 0; }
+th[aria-sort="descending"] button.sort, th[aria-sort="ascending"] button.sort { color: var(--ink); }
+th[aria-sort="descending"] button.sort::after { content: "▼"; opacity: 1; color: var(--accent-dim); }
+th[aria-sort="ascending"] button.sort::after { content: "▲"; opacity: 1; color: var(--accent-dim); }
+th button.sort:hover { color: var(--ink); }
+th button.sort:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; border-radius: 3px; }
+
 /* held-out props: collapsible, scrollable */
 .held { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .held > summary {
@@ -792,7 +804,44 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var t = ctx === "col" && TIPS[key] ? TIPS[key] : PART_KEYS[key] ? partTip(key) : (key === "Tier" || key === "Sam score") ? tierTip() : TIPS[key];
     return t ? '<button type="button" class="info" data-tip="' + esc(t) + '" aria-label="What is ' + esc(key) + '?">i</button>' : "";
   }
-  function th(cols) { return cols.map(function (c) { return '<th class="' + (c[1] || "") + '" scope="col">' + c[0] + info(c[0], "col") + "</th>"; }).join(""); }
+  function th(cols) {                    // headings are sort buttons (click to sort the table) plus an ⓘ explanation
+    return cols.map(function (c) {
+      return '<th class="' + (c[1] || "") + '" scope="col" aria-sort="none"><button type="button" class="sort" title="Sort by ' + esc(c[0]) + '">' + c[0] +
+        "</button>" + info(c[0], "col") + "</th>";
+    }).join("");
+  }
+  function sortVal(cell) {               // number to sort by; null = blank (always last)
+    var t = (cell.textContent || "").replace(/\u2212/g, "-").trim();
+    var wl = /^(\d+)-(\d+)-(\d+)/.exec(t);
+    if (wl) { var w = +wl[1], l = +wl[2]; return w + l ? w / (w + l) + (w + l) * 1e-6 : -1; }
+    if (!t || t === "–" || t === "-") return null;
+    var m = /[-+]?\d+(?:\.\d+)?/.exec(t.replace(/,/g, ""));
+    return m ? parseFloat(m[0]) : t.toLowerCase();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button.sort");
+    if (!b) return;
+    var cell = b.closest("th"), table = cell.closest("table"), body = table && table.tBodies[0];
+    if (!body || body.querySelector("tr.detail")) return;
+    var col = cell.cellIndex, rows = Array.prototype.slice.call(body.rows).filter(function (r) { return r.cells.length > col; });
+    if (rows.length < 2) return;
+    var first = rows.map(function (r) { return sortVal(r.cells[col]); }).find(function (v) { return v != null; });
+    var textCol = typeof first === "string";
+    var cur = cell.getAttribute("aria-sort");
+    var dir = cur === "none" ? (textCol ? "ascending" : "descending") : cur === "descending" ? "ascending" : "descending";
+    Array.prototype.forEach.call(cell.parentNode.cells, function (h) { h.setAttribute("aria-sort", "none"); });
+    cell.setAttribute("aria-sort", dir);
+    var sign = dir === "ascending" ? 1 : -1;
+    rows.sort(function (a, b2) {
+      var x = sortVal(a.cells[col]), y = sortVal(b2.cells[col]);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      if (typeof x === "string" || typeof y === "string") return sign * String(x).localeCompare(String(y));
+      return sign * (x - y);
+    });
+    rows.forEach(function (r) { body.appendChild(r); });
+  });
   function projDot(r) {                 // BettingPros projection vs. the play's side (display only)
     var t = r.proj_tag || "";
     if (/agrees$/.test(t) && !/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "agrees") + '" style="color:var(--good)">●</span>';
