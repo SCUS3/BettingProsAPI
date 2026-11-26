@@ -225,7 +225,9 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 /* long tables: scroll inside the box, headings stay visible */
 .board.tall .scroll, #props-board .scroll { max-height: 560px; overflow: auto; }
 .board.tall th, #props-board th { position: sticky; top: 0; z-index: 1; }
-.board, .held, #tonight-bets, .best { scroll-margin-top: 84px; }
+.board, .held, #tonight-bets, .best, #props-board { scroll-margin-top: 128px; }
+.nav-jump { grid-column: 1 / -1; padding: 10px 0 0; margin-top: 10px; border-top: 1px solid var(--line); }
+.nav-jump button { padding: 7px 11px; }
 
 /* jump-to bars */
 .jump { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: thin; }
@@ -314,6 +316,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
       </button>
     </div>
+    <div class="jump nav-jump" id="nav-jump" aria-label="Jump to a section" role="navigation"></div>
   </nav>
 
   <header class="hero">
@@ -331,13 +334,6 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   </div>
 
   <div class="view" id="view-tonight" role="tabpanel" aria-labelledby="tab-tonight">
-  <nav class="jump" aria-label="Jump to a section">
-    <span class="jump-label">Jump to</span>
-    <button type="button" data-jump="tonight-bets">Tonight's bets</button>
-    <button type="button" data-jump="held-out">Held out</button>
-    <button type="button" data-jump="best">Strongest tonight</button>
-    <button type="button" data-jump="props-board">Props board</button>
-  </nav>
   <div id="tonight-bets"></div>
   <section class="best" aria-labelledby="best-label">
     <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
@@ -1110,16 +1106,24 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       b.id = id;
       if (!/^\d{4}-\d{2}-\d{2}/.test(name)) chips.push('<button type="button" data-jump="' + id + '">' + esc(name) + "</button>");
     });
-    var bar = document.createElement("nav"); bar.className = "jump"; bar.setAttribute("aria-label", "Jump to a section");
-    bar.innerHTML = '<span class="jump-label">Jump to</span>' + chips.join("");
-    var seg = el.querySelector('.seg[aria-label="Rule version"]');
-    if (seg && seg.nextSibling) el.insertBefore(bar, seg.nextSibling); else el.insertBefore(bar, el.firstChild);
+    REC_CHIPS = chips.join("");
+    updateJump();
+  }
+  var REC_CHIPS = "";
+  var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
+    '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>';
+  function updateJump() {                // the sticky nav's "Jump to" row follows the open tab
+    var nj = document.getElementById("nav-jump");
+    if (!nj) return;
+    var rec = tabR && tabR.getAttribute("aria-selected") === "true";
+    nj.innerHTML = '<span class="jump-label">Jump to</span>' + (rec ? REC_CHIPS : TONIGHT_CHIPS);
   }
   var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
   function showTab(which) {
     var rec = which === "record";
     tabT.setAttribute("aria-selected", String(!rec)); tabR.setAttribute("aria-selected", String(rec));
     document.getElementById("view-tonight").hidden = rec; document.getElementById("view-record").hidden = !rec;
+    updateJump();
     try { localStorage.setItem("bp-tab", which); } catch (e) {}
   }
   tabT.addEventListener("click", function () { showTab("tonight"); });
