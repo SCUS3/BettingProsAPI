@@ -9,6 +9,7 @@ D=${1:-$(TZ=America/New_York date -v-1d +%Y-%m-%d)}
   echo "=== nightly $D ($(date)) ==="
   "$PY" bp_props.py --grade "$D" --max-requests 0
   "$PY" bp_halftime.py --grade "$D"
+  "$PY" -m nbaprops.rules.livepastes --grade "$D"
   "$PY" -m nbaprops.pricing.samfit --adapt
   "$PY" bp_props.py --weekly --date "$D" > /dev/null && echo "weekly_$D.md written"
   if [ -f "bp_props_$D.csv" ]; then "$PY" bp_props.py --from-csv --date "$D" | tail -3; fi

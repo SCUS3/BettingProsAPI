@@ -537,6 +537,9 @@ def live_compare(text, date):
             ht, htag, now = "no halftime snapshot", "none", "-"
         lv = stats.get(norm(names_map(date).get(norm(pl), pl)))
         out.append({"player": pl, "market": mk, "side": side, "line": line, "odds": t.get("odds"), "ev": t.get("ev"),
+                    "fair": t.get("fair"), "game": t.get("event"), "bp_proj": c.get("proj"),
+                    "half_exp": sx[0]["exp_final"] if sx else "", "live_now": (sum(lv[0].get(k) or 0 for k in H.PARTS[mk]) if lv else ""),
+                    "clock": (lv[1].get("detail") if lv else ""),
                     "books": t.get("books"), "bp": c["text"], "bp_tag": c["tag"], "half": ht, "half_tag": htag, "now": now,
                     "live": live_line(lv[0], lv[1], mk, side, line, c.get("proj"), c["tag"], P.dvp_of(date, pl, mk)) if lv else "LIVE: no live box score (not started or name not matched)"})
     return out, skipped

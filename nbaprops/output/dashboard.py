@@ -63,12 +63,21 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
+               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
                "situations": _situations("v2"), "situations_v1": _situations("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
         f.write(tpl.replace("__BP_DATA__", blob))
     return DASH_OUT
+
+
+def _live_pastes():
+    """Every live screener row you pasted (graded, with CLV vs. your next paste), for the Record tab."""
+    try:
+        from nbaprops.rules import livepastes as LP
+        return LP.summary()
+    except Exception:  # noqa: BLE001
+        return {"rows": [], "n": 0}
 
 
 def _sam_weights():

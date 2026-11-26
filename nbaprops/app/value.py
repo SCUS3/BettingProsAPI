@@ -1356,6 +1356,8 @@ def run_cno_paste(args):
     if dropped.get("game already started"):              # live rows: show them with live stats (display only, never logged)
         lrows, _ = S.live_compare(text, args.date)
         lrows = [r for r in lrows if not r["live"].startswith("LIVE: no live")]
+        from nbaprops.rules import livepastes as LP
+        LP.add(args.date, [dict(r, ev=str(r.get("ev") or "").replace("%", "")) for r in lrows], bp_learn.utc_now())
         if lrows:
             print(f"Live rows ({len(lrows)}, games under way; display only):")
             for r in lrows:

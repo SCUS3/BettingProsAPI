@@ -770,6 +770,12 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "CLV": "Closing line value: how much better the price you logged was than the market's final price before tip, in % EV. Positive means you beat the close. With few plays it is a steadier guide than wins and losses. (n) = plays with a closing price.",
     "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
     "Count": "Number of graded plays in this bucket.",
+    "EV at paste": "CrazyNinja's EV for the live price when you pasted it, from the screener.",
+    "Halftime exp.": "ScuseBET's halftime expected final for the stat: first-half output plus the usual second-half share of the line. Blank if the game had no halftime snapshot yet.",
+    "Live at paste": "The player's stat for this prop at the moment you pasted (from ESPN's live box score). Blank for pastes logged before this was recorded.",
+    "Final": "The player's final stat for this prop.",
+    "Result": "W = won, L = lost, P = push, · = not graded yet.",
+    "Pasted (ET)": "When you pasted the row, Eastern time.",
     "Why not bet": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
     "DvP": "DvP stands for Defense vs. Position: how the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
     "BP proj (gap)": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
@@ -928,7 +934,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       var rs = rowsOf(G[0]);
       if (G[0] === "model" && REC.combined) rs = rs.concat([REC.combined]);
       var HF = REC.half || {};
-      if (G[0] === "half" && (rs.length || (HF.flags && HF.flags.n) || HF.oddsapi)) {
+      var LPS = DATA.live_pastes || {rows: [], n: 0};
+      if (G[0] === "half" && (rs.length || (HF.flags && HF.flags.n) || HF.oddsapi || LPS.n)) {
         var hh = "";
         var F = HF.flags || {nights: [], by_type: []};
         if (F.nights.length) hh += board("Halftime snapshots per night", "Every player with a pregame FanDuel line is snapshotted at halftime. Alerts are strong pace flags (≤25% with 12+ minutes, or ≥80% still under; lines PTS 14.5+, REB 6.5+, AST 4.5+, 3PM 2.5+, combos 20.5+; one per player) with no side: the side comes only from the expected final vs. FanDuel's live line in a paste. 11/22's 9 alerts were reversal bets and are kept only as legacy reversal flags.",
@@ -941,8 +948,30 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
           ACC.map(function (a) { var s = a.bucket === "all" ? "<b>" : "", e = a.bucket === "all" ? "</b>" : "";
             return '<tr><td class="l">' + s + esc(a.market) + e + '</td><td class="l">' + s + esc(a.bucket) + e + "</td><td>" + a.n + "</td><td>" + a.miss + "</td><td>" + (a.bias > 0 ? "+" : "") + a.bias + "</td></tr>"; }).join(""));
         var Pp = HF.pastes || {};
-        if (Pp.rows) hh += board("Halftime pastes", "Every pasted live prop: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
+        if (Pp.rows) hh += board("Halftime tool pastes", "Live props sent through the halftime tool: " + Pp.priced + " priced, " + Pp.bets + " HALF BETs. Why not: " +
           (Object.keys(Pp.why_not || {}).map(function (k) { return k + " " + Pp.why_not[k]; }).join(", ") || "–") + ".", "", "");
+        if (LPS.n) {
+          var etTime = function (iso) {
+            try { return new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+            catch (e) { return iso; }
+          };
+          var n2 = function (v) { return v === "" || v == null ? '<span class="dim">–</span>' : esc(String(v)); };
+          var pctx = function (v) { if (v === "" || v == null) return '<span class="dim">–</span>'; var x = Number(v); return '<span class="' + (x > 0 ? "pos" : x < 0 ? "neg" : "") + '">' + (x > 0 ? "+" : "") + x.toFixed(2) + "%</span>"; };
+          hh += board("Live pastes · " + LPS.n + " rows",
+            "Every screener row you pasted while its game was under way, graded from the final box score at the pasted price (flat 1u, never staked). " +
+            "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
+            (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
+            " (" + LPS.clv_n + " rows seen again in a later paste). Newest first; sort any column.",
+            th([["Pasted (ET)", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV at paste"], ["Books", "hide-sm"], ["BP proj", "hide-sm"], ["Halftime exp.", "hide-sm"],
+                ["Live at paste", "hide-sm"], ["Final"], ["Result"], ["Units"], ["CLV"]]),
+            LPS.rows.map(function (r) {
+              var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
+              return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
+                (r.side === "over" ? "o" : "u") + esc(r.line) + "</td><td>" + n2(r.odds) + "</td><td>" + pctx(r.ev) + '</td><td class="hide-sm">' + n2(r.books) + '</td><td class="hide-sm">' + n2(r.bp_proj) +
+                '</td><td class="hide-sm">' + n2(r.half_exp) + '</td><td class="hide-sm">' + n2(r.live_now) + "</td><td>" + n2(r.actual) + "</td><td>" + res + "</td><td>" +
+                (r.profit_u === "" || r.profit_u == null ? '<span class="dim">–</span>' : units(Number(r.profit_u))) + "</td><td>" + pctx(r.clv_ev) + "</td></tr>";
+            }).join(""));
+        }
         var O = HF.oddsapi;
         if (O) hh += board("Odds API live test (failed; no more live calls)", O.event + " " + O.market + " at " + O.at + ": " + (O.pass ? "PASS" : "FAIL") + " — FanDuel " + (O.fanduel ? (O.fanduel_fresh ? "fresh" : "stale") : "missing") +
           ", " + O.other_fresh_books + " other books under 60 s old. Credits: " + O.credits_last + " used, " + O.credits_remaining + " left.",
