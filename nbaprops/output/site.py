@@ -158,7 +158,14 @@ CSS = """
 body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 var(--body);
   padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); padding-block:0 40px; }
 .wrap { max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:22px; }
-header.top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; border-bottom:1px solid var(--line); }
+header.top { position:sticky; top:0; z-index:10; background:var(--bg); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+  gap:10px 12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.chips { flex-basis:100%; display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
+.chips a { flex:none; white-space:nowrap; text-decoration:none; color:var(--text); border:1px solid var(--line); border-radius:999px;
+  font:600 11px/1 var(--body); text-transform:uppercase; letter-spacing:.12em; padding:8px 11px; }
+.chips a:hover { border-color:var(--accent-dim); color:var(--ink); }
+section[id] { scroll-margin-top:118px; }
+.totop { text-align:center; font-size:13px; }
 .logo { font:400 28px/1 var(--display); letter-spacing:.04em; color:var(--ink); text-decoration:none; }
 .logo span { color:var(--accent-dim); }
 nav.pages { display:flex; gap:6px; }
@@ -222,7 +229,7 @@ from RotoWire. ScuseBET is independent and not affiliated with or endorsed by an
 </footer>"""
 
 
-def page(title, active, body, updated):
+def page(title, active, body, updated, chips=()):
     cur = ' aria-current="page"'
     nav = "".join(f'<a href="{href}"{cur if active == key else ""}>{label}</a>'
                   for key, href, label in (("index", "index.html", "Tonight"), ("records", "records.html", "Records")))
@@ -231,11 +238,13 @@ def page(title, active, body, updated):
 <meta name="robots" content="noindex, nofollow"><title>{e(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap">
-<style>{CSS}</style></head><body><div class="wrap">
+<style>{CSS}</style></head><body id="top"><div class="wrap">
 <header class="top"><a class="logo" href="index.html">SCUSE<span>BET</span></a><nav class="pages">{nav}</nav>
-<button class="theme" id="theme" type="button" aria-label="Switch light or dark">Theme</button></header>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">Theme</button>
+{('<nav class="chips" aria-label="Sections">' + "".join(f'<a href="#{a}">{e(t)}</a>' for a, t in chips) + "</nav>") if chips else ""}</header>
 <div class="updated">Last updated {e(updated)}</div>
 {body}
+<p class="totop"><a href="#top">Back to top</a></p>
 {FOOTER}
 </div>{THEME_JS}</body></html>
 """
@@ -291,23 +300,24 @@ def render_index(date, now, bets, yrows, ytot, run, updated):
         ytab = '<p class="dim">No bets yesterday.</p>'
     ytab += (f'<div class="totals"><span>All bets so far <b>{run["w"]}-{run["l"]}-{run["p"]}</b> ({run["n"]} bets)</span>'
              f'<span>{_u(run["units"])}</span><span>ROI {_pct(run["roi"])}</span><span>Avg CLV {_pct(run["clv"])}</span></div>')
-    body = f'''<section><div class="updated">{e(dt.date.fromisoformat(date).strftime("%A, %B %-d"))}</div><h1>Tonight's bets</h1>
+    body = f'''<section id="tonight"><div class="updated">{e(dt.date.fromisoformat(date).strftime("%A, %B %-d"))}</div><h1>Tonight's bets</h1>
 <p class="lede">NBA player props priced against FanDuel and scored by the ScuseBET models. These are the only plays we put money on.</p></section>
 <section>{bets_html}</section>
-<section class="card"><h2>Yesterday's results</h2>{ytab}</section>
-<section class="card"><h2>How it works</h2><p class="lede">Every night we compare FanDuel's player-prop prices with the rest of the market
+<section class="card" id="yesterday"><h2>Yesterday's results</h2>{ytab}</section>
+<section class="card" id="how"><h2>How it works</h2><p class="lede">Every night we compare FanDuel's player-prop prices with the rest of the market
 (sportsbooks and exchanges) to find prices that are better than fair. A bet makes this list only when the price is good enough
 <i>and</i> the ScuseBET Sam score (0-100, built from the market edge, matchup, role, recent form and more) is 50 or higher.
 Stakes are a quarter of the Kelly amount with caps per player, game and night. Everything is graded from the box score the next
 morning, and every record stays public, losses included.</p></section>
-<section class="card"><h2>Glossary</h2><dl class="gloss">
+<section class="card" id="glossary"><h2>Glossary</h2><dl class="gloss">
 <dt>EV</dt><dd>Expected value: how much a bet should return on average at this price compared with its fair odds. +4% means about 4 cents per dollar over many bets.</dd>
 <dt>CLV</dt><dd>Closing line value: how much better our price was than the final market price before tip-off. Beating the close is the clearest sign of real edge, more reliable than a short winning streak.</dd>
 <dt>Units</dt><dd>1u = 1% of your bankroll. If you follow casually, bet a flat 1u on each play instead of the listed stakes.</dd>
 <dt>Sam score</dt><dd>ScuseBET's 0-100 rating. A = 80+, B = 65-79, C = 50-64. Below 50 is tracked but never bet.</dd>
 <dt>Playable to</dt><dd>The worst FanDuel price where the bet is still about 2% better than fair. If FanDuel's price is worse than that, we show "line moved, skip".</dd>
 </dl></section>'''
-    return page("ScuseBET", "index", body, updated)
+    return page("ScuseBET", "index", body, updated, chips=(("tonight", "Tonight's bets"), ("yesterday", "Yesterday"),
+                                                             ("how", "How it works"), ("glossary", "Glossary")))
 
 
 def _clv(r):
@@ -341,7 +351,7 @@ def render_learns():
         parts.append(f'<div class="learn"><h3>{e(d["date"])}{" · first update" if d["first"] else ""}</h3>'
                      + (f'<div class="scroll"><table><thead><tr><th class="l">Part</th><th>Was</th><th>Now</th><th>Change</th></tr></thead><tbody>{rows}</tbody></table></div>' if rows else "")
                      + ("<ul>" + "".join(f"<li>{e(t)}</li>" for t in other) + "</ul>" if other else "") + "</div>")
-    return ('<section class="card"><h2>Daily learns</h2><p class="lede">What the model learned each night and what it changed. '
+    return ('<section class="card" id="learns"><h2>Daily learns</h2><p class="lede">What the model learned each night and what it changed. '
             "The Sam score's part weights (out of 100) move a little every night toward what has actually been winning.</p>"
             + "".join(parts) + "</section>")
 
@@ -350,12 +360,14 @@ def render_records(v2, days, v1_link, updated, title="Records", note="", learns_
     dtab = "".join(f'<tr><td class="l">{e(d)}</td><td>{t["n"]}</td><td>{t["w"]}-{t["l"]}-{t["p"]}</td><td>{_u(t["units"])}</td><td>{_pct(t["clv"])}</td></tr>'
                    for d, t in days) or '<tr><td class="l dim" colspan="5">No graded nights yet.</td></tr>'
     body = f'''<section><h1>{e(title)}</h1><p class="lede">{note or "Every ScuseBET record with its full sample, losses included. Small samples swing a lot: read the number of bets before the win rate."}</p></section>
-<section class="card"><h2>Tonight's bets, night by night</h2><div class="scroll"><table><thead><tr><th class="l">Night</th><th>Bets</th><th>W-L-P</th>
+<section class="card" id="nights"><h2>Tonight's bets, night by night</h2><div class="scroll"><table><thead><tr><th class="l">Night</th><th>Bets</th><th>W-L-P</th>
 <th>Units</th><th>CLV</th></tr></thead><tbody>{dtab}</tbody></table></div></section>
-<section class="card"><h2>Every record</h2>{_rec_table(v2)}</section>
+<section class="card" id="records"><h2>Every record</h2>{_rec_table(v2)}</section>
 {learns_html}
 {v1_link}'''
-    return page(f"ScuseBET {title}", "records", body, updated)
+    chips = (("nights", "Night by night"), ("records", "Every record")) + ((("learns", "Daily learns"),) if learns_html else ()) + \
+        ((("archive", "v1 archive"),) if v1_link else ())
+    return page(f"ScuseBET {title}", "records", body, updated, chips=chips)
 
 
 def build(date=None) -> list[str]:
@@ -377,7 +389,7 @@ def build(date=None) -> list[str]:
     files = {
         "index.html": render_index(date, now, bets, yrows, totals(yrows), run, updated),
         "records.html": render_records(records("v2"), daily("v2"),
-                                       '<section class="card"><h2>Archive</h2><p>Before the current rules (to Nov 23): '
+                                       '<section class="card" id="archive"><h2>Archive</h2><p>Before the current rules (to Nov 23): '
                                        '<a href="v1.html">v1 archive</a>.</p></section>', updated, learns_html=render_learns()),
         "v1.html": render_records(records("v1"), daily("v1"), "", updated, title="v1 archive",
                                   note="Results under the first rule set, before November 24. Kept public for the full history."),
