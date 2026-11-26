@@ -1148,12 +1148,14 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   }
   var REC_CHIPS = "";
   var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
-    '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>';
+    '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>' +
+    '<button type="button" data-go="record">Record</button><button type="button" data-go="footer">Data &amp; disclaimer</button>';
   function updateJump() {                // the sticky nav's "Jump to" row follows the open tab
     var nj = document.getElementById("nav-jump");
     if (!nj) return;
     var rec = tabR && tabR.getAttribute("aria-selected") === "true";
-    nj.innerHTML = '<span class="jump-label">Jump to</span>' + (rec ? REC_CHIPS : TONIGHT_CHIPS);
+    nj.innerHTML = '<span class="jump-label">Jump to</span>' + (rec ? '<button type="button" data-go="tonight">Tonight</button>' + REC_CHIPS +
+      '<button type="button" data-go="footer">Data &amp; disclaimer</button>' : TONIGHT_CHIPS);
   }
   var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
   function showTab(which) {
