@@ -1024,7 +1024,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     html += board("Entry EV buckets", "Each +EV record split by the EV at entry (the frozen snapshot when it first qualified, never a later price). CLV = EV of the entry price at the closing fair.",
       th([["Record", "l"], ["Entry EV", "l"], ["Count"], ["W-L-P"], ["Flat u"], ["¼K u"], ["CLV"]]),
       EVB.map(function (r) { return r.buckets.map(function (b, i) {
-        return '<tr><td class="l">' + (i ? "" : "<b>" + esc(r.record) + "</b>") + '</td><td class="l">' + esc(b.bucket) + "</td><td>" + b.n + "</td><td>" + b.w + "-" + b.l + "-" + b.p +
+        return '<tr><td class="l"><b>' + esc(r.record) + '</b></td><td class="l">' + esc(b.bucket) + "</td><td>" + b.n + "</td><td>" + b.w + "-" + b.l + "-" + b.p +
           "</td><td>" + units(b.units) + "</td><td>" + units(b.kelly_units) + "</td><td>" + (b.clv == null ? '<span class="dim">–</span>' : (b.clv > 0 ? "+" : "") + b.clv + "% EV") + "</td></tr>"; }).join(""); }).join("") ||
         '<tr><td class="l dim" colspan="7">Nothing graded yet.</td></tr>');
     var SIT = (REC_VERSION === "v1" ? DATA.situations_v1 : DATA.situations) || { records: [], candidates: [] };
@@ -1041,8 +1041,9 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       SIT.candidates.length ? SIT.candidates.map(function (s) { return sitRow(s, true); }).join("") :
         '<tr><td class="l dim" colspan="7">No candidate rules yet (needs ' + (SIT.min_n || 100) + "+ graded plays in a split).</td></tr>");
     SIT.records.forEach(function (rec) {
-      html += board("Situations: " + rec.record, rec.n + " graded plays. Best splits first; splits under 5 plays hidden.", sitHead,
-        rec.splits.slice(0, 12).map(function (s) { return sitRow(s, false); }).join("") || '<tr><td class="l dim" colspan="7">Not enough plays to split yet.</td></tr>');
+      html += board("Situations: " + rec.record, rec.n + " graded plays. A split is one slice of them (for example only unders, or only PTS) and shows once that slice has 5+ plays of its own; best splits first.", sitHead,
+        rec.splits.slice(0, 12).map(function (s) { return sitRow(s, false); }).join("") ||
+        '<tr><td class="l dim" colspan="7">No slice has 5 plays yet (' + rec.n + " graded so far). Splits appear as this record grows.</td></tr>");
     });
 
     var left = "", right = "";
