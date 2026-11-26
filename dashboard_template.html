@@ -233,6 +233,18 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 .nav:has(.nav-jump) { padding-bottom: 0; }
 .nav .nav-jump button { padding: 7px 11px; }
 .nav .nav-jump .jump-label { line-height: 1; }
+.nav .nav-jump .jl { padding-left: 6px; border-left: 1px solid var(--line); margin-left: 4px; }
+.viewswitch { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.viewswitch button {
+  flex: none; background: transparent; border: 1px solid var(--accent-dim); color: var(--text); border-radius: var(--radius);
+  font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: 0.14em; padding: 8px 12px; cursor: pointer;
+}
+.viewswitch button + button { margin-left: -7px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.viewswitch button:first-of-type { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.viewswitch button[aria-pressed="true"] { background: rgba(69, 162, 158, 0.18); color: var(--ink); }
+.viewswitch button:hover { color: var(--ink); }
+.viewswitch button:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; }
+.tabs { scroll-margin-top: 128px; }
 
 /* jump-to bars */
 .jump { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: thin; }
@@ -1149,13 +1161,16 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   var REC_CHIPS = "";
   var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
     '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>' +
-    '<button type="button" data-go="record">Record</button><button type="button" data-go="footer">Data &amp; disclaimer</button>';
+    '<button type="button" data-go="footer">Data &amp; disclaimer</button>';
   function updateJump() {                // the sticky nav's "Jump to" row follows the open tab
     var nj = document.getElementById("nav-jump");
     if (!nj) return;
     var rec = tabR && tabR.getAttribute("aria-selected") === "true";
-    nj.innerHTML = '<span class="jump-label">Jump to</span>' + (rec ? '<button type="button" data-go="tonight">Tonight</button>' + REC_CHIPS +
-      '<button type="button" data-go="footer">Data &amp; disclaimer</button>' : TONIGHT_CHIPS);
+    var view = '<div class="viewswitch" role="group" aria-label="View"><span class="jump-label">View</span>' +
+      '<button type="button" data-go="tonight" aria-pressed="' + !rec + '">Tonight</button>' +
+      '<button type="button" data-go="record" aria-pressed="' + rec + '">Record</button></div>';
+    nj.innerHTML = view + '<span class="jump-label jl">Jump to</span>' +
+      (rec ? REC_CHIPS + '<button type="button" data-go="footer">Data &amp; disclaimer</button>' : TONIGHT_CHIPS);
   }
   var tabT = document.getElementById("tab-tonight"), tabR = document.getElementById("tab-record");
   function showTab(which) {
@@ -1267,8 +1282,11 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       closeMenu();
       var where = go.getAttribute("data-go");
       if (where === "footer") { document.getElementById("footer").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
-      showTab(where === "record" ? "record" : "tonight");
-      var el = where === "record" ? document.getElementById("view-record") : document.getElementById("tonight-bets");
+      var target = where === "record" ? "record" : "tonight";
+      var changed = (target === "record") !== (tabR.getAttribute("aria-selected") === "true");
+      showTab(target);
+      if (changed) toast(target === "record" ? "Showing Record: every record's results" : "Showing Tonight: tonight's bets and props");
+      var el = document.querySelector(".tabs");
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
