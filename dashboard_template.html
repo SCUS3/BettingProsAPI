@@ -213,6 +213,22 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 #tip .tip-rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; padding: 8px 0 2px; border-top: 1px solid var(--line); }
 #tip .tip-rows b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* held-out props: collapsible, scrollable */
+.held { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.held > summary {
+  list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 14px 16px;
+}
+.held > summary::-webkit-details-marker { display: none; }
+.held > summary::before { content: "+"; font: 400 20px/1 var(--display); color: var(--accent-dim); width: 12px; }
+.held[open] > summary::before { content: "–"; }
+.held > summary:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; }
+.held-title { font: 400 22px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); }
+.held-count { font: 600 11px/1 var(--body); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-dim); }
+.held-hint { font-size: 13px; color: var(--muted); flex-basis: 100%; padding-left: 26px; }
+.held-scroll { max-height: 340px; overflow: auto; border-top: 1px solid var(--line); }
+.held-scroll th { position: sticky; top: 0; z-index: 1; }
+.held td.why { white-space: normal; min-width: 220px; color: var(--text); }
+
 /* footer */
 footer { font-size: 13px; color: var(--text); display: flex; flex-direction: column; gap: 10px; max-width: 80ch; margin: 0 auto; line-height: 1.65; }
 footer b { color: var(--ink); font-weight: 600; }
@@ -411,6 +427,26 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     });
   }
 
+  function heldWhy(h) {                  // short reason for a held-out prop
+    var m;
+    if ((m = /^paper only: Sam score ([\d.]+)/.exec(h))) return "Sam score under 50 (paper)";
+    if ((m = /^check: outlier EV \(([^)]+)\)/.exec(h))) return "Edge looks too good: " + m[1];
+    if (/^both sides \+EV/.test(h)) return h.replace(/^both sides \+EV: /, "Both sides +EV: ");
+    if (/^trimmed/.test(h)) return "Trimmed by the 8u nightly cap";
+    return h;
+  }
+  function heldSection(held) {           // collapsible, scrollable table of props that qualified but were not bet
+    var rows = held.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); }).map(function (x) {
+      return '<tr><td class="l"><span class="player">' + esc(x.player) + '</span></td><td class="l"><span class="mk">' + esc(x.market) + "</span> " +
+        (x.side === "over" ? "o" : "u") + x.line + "</td><td>" + odds(x.price) + "</td><td>" +
+        (x.score == null ? '<span class="dim">–</span>' : "<b>" + Number(x.score).toFixed(1) + "</b>") + '</td><td class="l why">' + esc(heldWhy(x.held || "")) + "</td></tr>";
+    }).join("");
+    return '<details class="held" id="held-out"><summary><span class="held-title">Held out · not bet</span><span class="held-count">' + held.length +
+      " props</span><span class=\"held-hint\">Qualified for a record but stayed off tonight's bets</span></summary>" +
+      '<div class="held-scroll"><table><thead><tr>' + th([["Player", "l"], ["Prop", "l"], ["FD"], ["Sam score"], ["Why not bet", "l"]]) +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div></details>";
+  }
+
   // Tonight's bets: the only list to bet (union of BETs, alt BETs and Your rule; largest stake; global caps)
   function renderTonightBets() {
     var all = DATA.tonight_bets || [];
@@ -432,7 +468,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64; under 50 = paper only, held out): display and ranking only, never a stake change. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
       th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj (gap)"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam score"]]),
       body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>') +
-      (held.length ? '<p class="dim" style="margin:6px 16px">Held out (not bet): ' + held.map(function (x) { return esc(x.player + " " + x.market + " " + x.side[0] + x.line + ": " + x.held); }).join("; ") + "</p>" : "");
+      (held.length ? heldSection(held) : "");
   }
 
   // Strongest tonight
@@ -713,7 +749,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "CLV": "Closing line value: how much better the price you logged was than the market's final price before tip, in % EV. Positive means you beat the close. With few plays it is a steadier guide than wins and losses. (n) = plays with a closing price.",
     "p": "Chance this hit rate is luck: the probability of doing this well at breakeven odds. Under 0.05 is unlikely to be luck.",
     "Count": "Number of graded plays in this bucket.",
-    "DvP": "Opponent's defense against this player's position, ranked 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
+    "Why not bet": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
+    "DvP": "DvP stands for Defense vs. Position: how the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
     "BP proj (gap)": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "FD": "FanDuel's price for this bet. +150 pays 1.5u profit on 1u; -150 risks 1.5u to win 1u.",
     "Stake": "How much to bet in units (1u = 1% of your bankroll): quarter-Kelly on the market's fair odds, capped at 1.5u per player, 3.5u per game and 8u per night.",
@@ -739,7 +776,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   function partTip(label) {
     var k = PART_KEYS[label], now = (SW.now || {})[k], hand = (SW.hand || {})[k];
     var moved = now != null && hand != null && Math.abs(now - hand) >= 0.05;
-    return label + " is one of the 8 parts of the Sam score. " + samIntro().split(". ")[0] + ". " +
+    return (k === "dvp" ? "DvP stands for Defense vs. Position. " : "") + label + " is one of the 8 parts of the Sam score. " + samIntro().split(". ")[0] + ". " +
       label + " is worth up to " + now + " of those 100 points right now" +
       (moved ? " (it started at " + hand + "; each night the model moves it toward what has actually been winning)" : "") + ". " +
       "It rewards " + PART_WHAT[k] + " In this table: high = the bet earned at least two-thirds of this part's points, mid = one- to two-thirds, low = less. " +

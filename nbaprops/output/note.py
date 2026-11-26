@@ -179,8 +179,16 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     else:
         lines += ["_No bets yet tonight._", ""]
     if held:
-        lines += ["Held out (not bet): " + "; ".join(f"{x['player']} {x['market']} {x['side'][0]}{fmt(x['line'])} "
-                                                     f"{odds_s(x['price'])}: {x['held']}" for x in held), ""]
+        def _why(h):
+            return ("Sam score under 50 (paper)" if h.startswith("paper only") else
+                    "Edge looks too good: " + h.split("(", 1)[1].rstrip(")") if h.startswith("check: outlier") else
+                    "Trimmed by the 8u nightly cap" if h.startswith("trimmed") else h)
+        hb = [[x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), odds_s(x["price"]),
+               "" if x.get("score") is None else f"{x['score']:.1f}", _why(x.get("held") or "")]
+              for x in sorted(held, key=lambda x: -(x.get("score") or 0))]
+        lines += [f"**Held out (not bet): {len(held)} props** that qualified for a record but stayed off tonight's bets.", ""]
+        lines += md_table([("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("Sam score ▼", "r"),
+                           ("Why not bet", "l")], hb) + [""]
     lines += ["## Record", ""]
     played = [x for x in rec["strategies"] + [rec["combined"]] if x["w"] + x["l"] + x["p"]]
     if played:
