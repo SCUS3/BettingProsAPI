@@ -5,12 +5,33 @@ the 1.5u-per-player and 3.5u-per-game caps are applied across the whole list. Ev
 """
 from __future__ import annotations
 
+import os
+
 from nbaprops import config as C
 from nbaprops.rules import ledger as L
 from nbaprops.sources.rotowire import norm
 
 SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_proj": "Alt BET", "my_rule": "Your rule",
            "triple": "Triple green"}
+
+
+def _dec_path(date):
+    return os.path.join(L.HERE, "history", date, f"tonight_scores_{date}.json")
+
+
+def load_decisions(date):
+    """{player|market|side|line: Sam score the list used} -- written while each game is open, frozen at its tip."""
+    import json
+    try:
+        return json.load(open(_dec_path(date)))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_decisions(date, dec):
+    import json
+    os.makedirs(os.path.dirname(_dec_path(date)), exist_ok=True)
+    json.dump(dec, open(_dec_path(date), "w"), indent=1)
 
 
 def candidates(date: str, led: list[dict] | None = None) -> list[dict]:
@@ -105,6 +126,10 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
             ctx = SS.stores(date)
         except Exception:  # noqa: BLE001
             ctx = ({}, {})
+        from nbaprops.app import props as _P
+        past = date < _P.eastern_today()                # later weight changes never re-decide a past night
+        dec = load_decisions(date)
+        dec0 = dict(dec)
         for x in out:
             best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
             try:
@@ -114,8 +139,18 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
             if s:
                 x.update(score=s["score"], tier=s["tier"], score_parts=s["parts"], score_flags=s["flags"],
                          score_entry=L._num(best.get("score_entry")))
-                if s["tier"] == "paper" and not x["held"]:
-                    x["held"] = f"paper only: Sam score {s['score']:g} (under 50)"
+                kd = f"{x['player']}|{x['market']}|{x['side']}|{x['line']:g}"
+                open_now = not x.get("tip") or T.is_open(x["tip"])
+                if open_now and not past:
+                    dec[kd] = s["score"]                        # the score the list uses, updated until this game tips
+                elif kd in dec:                                 # tipped / past: the score it was decided on at tip
+                    x["score"], x["tier"] = dec[kd], SS.tier(dec[kd])
+                elif past and x["score_entry"] is not None:     # no saved decision: the score frozen at logging
+                    x["score"], x["tier"] = x["score_entry"], SS.tier(x["score_entry"])
+                if x["tier"] == "paper" and not x["held"]:
+                    x["held"] = f"paper only: Sam score {x['score']:g} (under 50)"
+    if sam and dec != dec0:
+        save_decisions(date, dec)
     for o, u in contra:
         o["flags"] = ", ".join(f for f in (o["flags"], f"contradicts {u['side'][0]}{u['line']:g}") if f)
         u["flags"] = ", ".join(f for f in (u["flags"], f"contradicts {o['side'][0]}{o['line']:g}") if f)

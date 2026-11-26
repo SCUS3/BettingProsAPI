@@ -4,7 +4,7 @@
 # No paid API calls. Publishing the dashboard to claude.ai happens in the next Claude session.
 cd "$(dirname "$0")/.." || exit 1
 PY=/Library/Frameworks/Python.framework/Versions/3.11/bin/python3
-D=$(TZ=America/New_York date -v-1d +%Y-%m-%d)
+D=${1:-$(TZ=America/New_York date -v-1d +%Y-%m-%d)}
 {
   echo "=== nightly $D ($(date)) ==="
   "$PY" bp_props.py --grade "$D" --max-requests 0

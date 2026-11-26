@@ -105,3 +105,13 @@ def test_score_under_50_is_paper_only(ledger):
     SCORES.update({"Low": 49.9})
     tb = {x["player"]: x for x in TN.build("2026-11-24", now=NOW)}
     assert tb["Low"]["stake"] == 0 and tb["Low"]["held"].startswith("paper only") and tb["Hi"]["stake"] == 1.0
+
+
+def test_past_night_keeps_the_score_it_was_decided_on(ledger, monkeypatch):
+    from nbaprops.app import props as P
+    ledger += [dict(row("bet_only", "W", "over", 6.5, 1.0), date="2026-11-24", score_entry="53")]
+    SCORES.update({"W": 70.0})                                          # today's weights would now call it a B
+    monkeypatch.setattr(P, "eastern_today", lambda: "2026-11-26")
+    TN.save_decisions("2026-11-24", {"W|PTS|over|6.5": 49.0})          # at tip it scored 49: held out
+    tb = TN.build("2026-11-24", now=NOW)
+    assert tb[0]["stake"] == 0 and tb[0]["held"].startswith("paper only: Sam score 49")
