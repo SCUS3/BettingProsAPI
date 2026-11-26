@@ -99,3 +99,8 @@ def test_adapt_shrinks_toward_fit_without_sign_flips(monkeypatch):
     w = res["weights"]
     assert 0 <= w["dvp"] < SS.C.SAM_WEIGHTS["dvp"] and w["move"] > SS.C.SAM_WEIGHTS["move"]
     assert abs(sum(w.values()) - sum(SS.C.SAM_WEIGHTS.values())) < 1 and 0 < res["s"] < 1
+
+
+def test_score_label_format():
+    assert SS.label(51.2, "C") == "51.2 (C)" and SS.label(51, None) == "51 (C)" and SS.label(44.4) == "44.4 (paper)"
+    assert SS.label(None) == "" and SS.label_row({"score_entry": "80", "score_tier": "A"}) == " | Sam 80 (A)"

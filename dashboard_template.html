@@ -226,8 +226,13 @@ tr.detail td { background: #19222b; text-align: left; white-space: normal; }
 .board.tall .scroll, #props-board .scroll { max-height: 560px; overflow: auto; }
 .board.tall th, #props-board th { position: sticky; top: 0; z-index: 1; }
 .board, .held, #tonight-bets, .best, #props-board { scroll-margin-top: 128px; }
-.nav-jump { grid-column: 1 / -1; padding: 10px 0 0; margin-top: 10px; border-top: 1px solid var(--line); }
-.nav-jump button { padding: 7px 11px; }
+.nav .nav-jump {                        /* chip row centred between the logo row's line and the nav's bottom line */
+  grid-column: 1 / -1; display: flex; align-items: center; min-height: 48px; padding: 8px 0; margin: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+.nav:has(.nav-jump) { padding-bottom: 0; }
+.nav .nav-jump button { padding: 7px 11px; }
+.nav .nav-jump .jump-label { line-height: 1; }
 
 /* jump-to bars */
 .jump { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: thin; }
@@ -498,7 +503,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         '</td><td title="' + esc(x.bp_note || "") + '">' + (x.bp_proj == null ? '<span class="dim">–</span>' : bp + x.bp_proj.toFixed(1) + ' <span class="dim">(' + (x.bp_gap > 0 ? "+" : "") + x.bp_gap.toFixed(1) + ")</span>") +
         "</td><td>" + odds(x.price) + "</td><td>" + (x.ev == null ? "–" : (x.ev > 0 ? "+" : "") + Math.round(x.ev * 1000) / 10 + "%") + "</td><td>" + dv +
         "</td><td><b>" + u(x.stake) + "</b>" + ([x.case, x.flags].concat(x.score_flags || []).filter(Boolean).length ? '<div class="dim">' + esc([x.case, x.flags].concat(x.score_flags || []).filter(Boolean).join(", ")) + "</div>" : "") +
-        "</td><td>" + (x.score == null ? '<span class="dim">–</span>' : "<b>" + x.score.toFixed(0) + "</b> " + esc(x.tier || "") + (x.score_entry != null && x.score_entry !== x.score ? ' <span class="dim">(entry ' + x.score_entry.toFixed(0) + ")</span>" : "")) + "</td></tr>";
+        "</td><td>" + (x.score == null ? '<span class="dim">–</span>' : "<b>" + x.score.toFixed(0) + "</b> (" + esc(x.tier || "") + ")" + (x.score_entry != null && x.score_entry !== x.score ? ' <span class="dim">· entry ' + x.score_entry.toFixed(0) + "</span>" : "")) + "</td></tr>";
     }).join("");
     var total = tb.reduce(function (s, x) { return s + x.stake; }, 0);
     var pre = tb.reduce(function (s, x) { return s + (x.stake_capped != null ? x.stake_capped : x.stake); }, 0);
@@ -891,7 +896,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var isBet = r.strategy === "bet_agree" || r.strategy === "bet_only";
     var evCell = ev == null ? '<span class="dim">–</span>' : '<span class="' + (ev > 0 ? "pos" : ev < 0 ? "neg" : "") + '">' + (ev > 0 ? "+" : "") + Math.round(ev * 1000) / 10 + "%</span>";
     return "<tr" + (!isBet && ev != null && ev < 0 ? ' class="dimrow"' : "") + "><td class=\"l\">" + res + "</td><td class=\"l\"><span class=\"player\">" + esc(r.player) + "</span>" + projDot(r) +
-      (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + (r.score_entry ? ' <span class="chip" title="Sam score at logging">' + esc(Number(r.score_entry).toFixed(0) + " " + (r.score_tier || "")) + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
+      (r.injury ? '<span class="chip">' + esc(r.injury) + "</span>" : "") + (r.score_entry ? ' <span class="chip" title="Sam score at logging">' + esc(Number(r.score_entry).toFixed(0) + " (" + (r.score_tier || "") + ")") + "</span>" : "") + '</td><td class="l"><span class="mk">' + esc(r.market) + "</span> " + side +
       "</td><td>" + odds(Number(r.odds)) + "</td><td>" + (r.actual === "" || r.actual == null ? '<span class="dim">–</span>' : esc(r.actual)) +
       "</td><td>" + evCell + "</td><td>" + (r.profit_u === "" || r.profit_u == null ? "" : units(Number(r.profit_u))) + "</td></tr>";
   }

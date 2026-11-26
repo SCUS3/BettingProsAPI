@@ -609,7 +609,7 @@ def run_board(args):
             print("  Re-evaluated every record from today's stores: " + _RE.summary(_re) + ".")
             for x in _re.get("Triple green", []):
                 print(f"  TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
-                      f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K")
+                      f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K{_ssl(x)}")
             n_lines = sum(1 for r in rows if any((ua.get((r["player"], r["market"], sd)) or {}).get("fair_mult") is not None
                                                   for sd in ("over", "under")))
             print(f"  Unabated priced {n_lines} of {len(rows)} FanDuel lines ({U.MIN_SOURCES}+ sources at FanDuel's line).")
@@ -1033,14 +1033,14 @@ def watch_scan(date, state, close_before=None):
     save_ua_store(date, rows, ua)
     for x in log_ua_agree(date, rows, ua):
         print(f"[{_et_now():%H:%M}] UA+BP {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
-              f"mkt EV {100 * float(x['oa_ev']):+.1f}% ({x['sources']} sources), {x['kelly_u']}u ¼K | {x.get('proj_note')}", flush=True)
+              f"mkt EV {100 * float(x['oa_ev']):+.1f}% ({x['sources']} sources), {x['kelly_u']}u ¼K | {x.get('proj_note')}{_ssl(x)}", flush=True)
     from nbaprops.rules import reeval as _RE
     _re = _RE.run(date)
     if _re:
         print(f"[{_et_now():%H:%M}] re-evaluated: {_RE.summary(_re)}", flush=True)
     for x in _re.get("Triple green", []):
         print(f"[{_et_now():%H:%M}] TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
-              f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K", flush=True)
+              f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K{_ssl(x)}", flush=True)
     now = bp_learn.utc_now()
     led = bp_learn._read(bp_learn.LEDGER)
     logged = {f"{r['player']}|{r['market']}|{r['side']}|{float(r['line']):g}": r for r in led
@@ -1091,11 +1091,13 @@ def watch_scan(date, state, close_before=None):
                         None if mp is None or ps is None else (mp if ps == sd else 1 - mp), cno)
         row["line"] = r["line"]
         row["cap_note"] = c["cap"]
+        from nbaprops.pricing import samscore as _SSb
+        _SSb.freeze(row)                               # same score the record keeps, shown in the alert
         new_rows.append(row)
         notify(f"NEW BET [{tag}] {r['player']} {r['market']} {sd} {float(r['line']):g} {v['price_used']:+g}: mkt EV "
                f"{100 * v['ev_mult']:+.1f}% ({v.get('books')} sources{', exch' if v.get('exchange') else ''}); "
                f"form {'-' if form is None else str(round(100 * form)) + '%'}, DvP {fmtn(dvp)}; stake {stake}u ¼K{cap_text(c['cap'])}; "
-               f"tip {str(r.get('tip'))[11:16]}Z" + cno_note(row))
+               f"tip {str(r.get('tip'))[11:16]}Z" + cno_note(row) + _ssl(row))
     new_rows += cno_rows(date, [(dict(r, pulled_at=now), sd, v, c) for r, sd, v, c in cno_cands], led, gkey, cap)
     try:                                              # alt ladder: new qualifying rungs, logged and alerted
         from nbaprops.pricing import alts as bp_alts
@@ -1107,7 +1109,7 @@ def watch_scan(date, state, close_before=None):
             notify(f"NEW ALT [{bp_alts.KEYS[r['strategy']]}] {r['player']} {r['market']} {r['side']} {float(r['line']):g} "
                    f"{float(r['odds']):+g}: mkt EV {100 * float(r['oa_ev']):+.1f}% ({r['sources']} sources), CNO "
                    f"{100 * float(r['cno_ev']):+.1f}%; {r['kelly_u']}u ¼K; DvP {bp_projctx.dvp_dot(r['side'], r.get('dvp')) or '–'} "
-                   f"({r.get('dvp_tag')})")
+                   f"({r.get('dvp_tag')})" + _ssl(r))
         from nbaprops.rules import conflicts as _CF
         for k, case in _CF.reprice(date, data, d, now):
             notify(f"BOTH SIDES +EV {k}: re-priced from one snapshot -> {case} ({_CF.load(date)[k]['cause']})")
@@ -1292,6 +1294,12 @@ def parse_placed(text):
     return {"name": name, "market": market, "side": side, "line": line, "odds": odds, "stake": stake}
 
 
+def _ssl(row):
+    """' | Sam 51 (C)' for alert lines (the score frozen when the play was logged)."""
+    from nbaprops.pricing import samscore as _SS
+    return _SS.label_row(row)
+
+
 def refresh_note(date):
     """Rewrite today's note from saved data (the day's pull if there is one, plus the stores and ledger). No API calls."""
     try:
@@ -1345,7 +1353,7 @@ def run_cno_paste(args):
         print("Re-evaluated every record from today's stores (CNO pastes + Unabated): " + _RE.summary(_re) + ".")
         for x in _re.get("Triple green", []):
             print(f"  TRIPLE GREEN {x['player']} {x['market']} {x['side']} {float(x['line']):g} {float(x['odds']):+g}: "
-                  f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K")
+                  f"EV {100 * float(x['oa_ev']):+.1f}% ({x['fair_src']}), DvP {x['dvp']}, {x['kelly_u']}u ¼K{_ssl(x)}")
     if st:
         inherited = [k for k in st["assumed"] if st.get(k) is not None]
         print("Screener settings: " + S.settings_text(st) + (f" (same as last paste: {', '.join(inherited)})" if inherited else ""))

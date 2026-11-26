@@ -160,8 +160,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             return "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else "–"
         chk = lambda x: ", ".join(c for c in (x.get("case"), x.get("flags"), ", ".join(x.get("score_flags") or [])) if c)
         show_sc = any(x.get("score") is not None for x in tb)
-        _scs = lambda x: "" if x.get("score") is None else f"{x['score']:g} {x.get('tier', '')}" + (
-            f" (entry {x['score_entry']:g})" if x.get("score_entry") is not None and x["score_entry"] != x["score"] else "")
+        from nbaprops.pricing import samscore as _SSt
+        _scs = lambda x: "" if x.get("score") is None else _SSt.label(x["score"], x.get("tier") or None) + (
+            f" · entry {x['score_entry']:g}" if x.get("score_entry") is not None and x["score_entry"] != x["score"] else "")
         show_chk = any(chk(x) for x in tb)
         body = [[str(i), x["player"], x["market"], side_s(x["side"]), fmt(x["line"]), _bp(x),
                  "" if x.get("bp_proj") is None else f"{x['bp_proj']:.1f}", "" if x.get("bp_gap") is None else f"{x['bp_gap']:+.1f}",
@@ -228,7 +229,8 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     from nbaprops.rules import tipoff as _T
     status = lambda tip, names=None: "open" if not tip or _T.is_open(tip, names) else "started"
     _led = bp_learn._read(bp_learn.LEDGER)
-    _scmap = {(x["player"], x["market"], x["side"], float(x["line"]), x["strategy"]): f"{float(x['score_entry']):g} {x.get('score_tier') or ''}".strip()
+    from nbaprops.pricing import samscore as _SSl
+    _scmap = {(x["player"], x["market"], x["side"], float(x["line"]), x["strategy"]): _SSl.label(x["score_entry"], x.get("score_tier") or None)
               for x in _led if x["date"] == date and x.get("score_entry") not in (None, "")}
     sc_of = lambda e, strat: _scmap.get((e["player"], e["market"], e["side"], float(e["line"]), strat), "")
     _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
@@ -246,7 +248,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             s = _SS.score({"date": date, "player": e["player"], "market": e["market"], "side": e["side"], "line": e["line"],
                            "entry_price": e.get("odds"), "entry_ev": e.get("ev"), "entry_sources": e.get("books"),
                            "injury": (by_inj.get((_norm(e["player"]), e["market"])) or "")}, latest=True)
-            return f"{s['score']:g}/100 {s['tier']}"
+            return f"{s['score']:g}/100 ({s['tier']})"
         except Exception:  # noqa: BLE001
             return ""
     from nbaprops.sources.rotowire import norm as _norm
@@ -391,7 +393,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                          "" if pr is None else f"{pr - ln:+.1f}", odds_s(r.get("entry_price") or r["odds"]),
                          f"{100 * (_num(r.get('entry_ev') or r.get('oa_ev')) or 0):+.2f}%", r.get("fair_src") or "",
                          bp_projctx.dvp_dot(r["side"], r.get("dvp")), f"{float(r['kelly_u']):g}u",
-                         "" if r.get("score_entry") in (None, "") else f"{float(r['score_entry']):g} {r.get('score_tier') or ''}".strip(),
+                         _SSl.label(r.get("score_entry"), r.get("score_tier") or None),
                          status(r.get("tip"), r.get("team"))])
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
                            ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]

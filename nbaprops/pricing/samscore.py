@@ -29,6 +29,21 @@ REAL = {"3PM", "P+R"}
 _CSV: dict = {}
 
 
+def label(score, tier_=None) -> str:
+    """Display form of a Sam score: '51 (C)', '44.4 (paper)'. '' if no score."""
+    try:
+        sc = float(score)
+    except (TypeError, ValueError):
+        return ""
+    return f"{sc:g} ({tier_ or tier(sc)})"
+
+
+def label_row(row) -> str:
+    """' | Sam 51 (C)' for an alert line, from a row's frozen score; '' if none."""
+    lab = label(row.get("score_entry"), row.get("score_tier") or None)
+    return f" | Sam {lab}" if lab else ""
+
+
 def tier(score):
     if score is None:
         return ""
