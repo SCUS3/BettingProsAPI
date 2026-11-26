@@ -44,3 +44,4 @@ weekly_*.md
 site/
 .site-worktree/
 .site_last_push
+.site-repo/

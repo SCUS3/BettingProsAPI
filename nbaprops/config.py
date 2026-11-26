@@ -52,7 +52,9 @@ SAM_FIT_MIN = 500              # graded v2 player-games before fitted weights ma
 SAM_LONG_ODDS = 200
 UNVERIFIED_BEFORE_TIP_MIN = 10
 # ---------------------------------------------------------------- public site (GitHub Pages)
-SITE_PUBLISH = False           # flip to True only after the data terms are confirmed; then each run pushes site/ to gh-pages
+SITE_PUBLISH = True            # each run pushes site/ to the public site repo (confirmed by the owner 2026-11-26)
+SITE_REPO = "https://github.com/SCUS3/scusebet.git"   # public repo holding only the built site (GitHub Pages from main)
+SITE_URL = "https://scus3.github.io/scusebet/"
 SITE_PUBLISH_DELAY_MIN = 0     # bets appear on the public page this many minutes after they are logged
 SITE_PLAYABLE_MARGIN = 0.02    # "playable to" = worst FanDuel price still +2% EV at the fair price
 SITE_PUSH_EVERY_MIN = 10       # at most one public push per this many minutes  # both-sides conflict still unchecked this close to tip: keep the stronger side at half stake

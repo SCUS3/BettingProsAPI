@@ -466,7 +466,8 @@ def repo_files():
 
 # ------------------------------------------------------------------ publish (gh-pages)
 def publish(force=False) -> str:
-    """Push site/ to the gh-pages branch (only when config.SITE_PUBLISH is True). -> status text."""
+    """Push site/ to the public site repo (config.SITE_REPO, branch main; GitHub Pages serves it at config.SITE_URL).
+    Runs only when config.SITE_PUBLISH is True, at most once per SITE_PUSH_EVERY_MIN, and never after a failed secret check."""
     if not C.SITE_PUBLISH and not force:
         return "not published (config.SITE_PUBLISH is False)"
     stamp = os.path.join(ROOT, ".site_last_push")
@@ -475,31 +476,34 @@ def publish(force=False) -> str:
             return "not published (pushed less than SITE_PUSH_EVERY_MIN ago)"
     except OSError:
         pass
-    wt = os.path.join(ROOT, ".site-worktree")
-    run = lambda *a, **k: subprocess.run(list(a), cwd=k.get("cwd", ROOT), capture_output=True, text=True)
-    if not os.path.isdir(wt):
-        if run("git", "rev-parse", "--verify", "gh-pages").returncode != 0 and \
-                run("git", "ls-remote", "--exit-code", "--heads", "origin", "gh-pages").returncode != 0:
-            run("git", "worktree", "add", "--detach", wt)
-            run("git", "checkout", "--orphan", "gh-pages", cwd=wt)
-            run("git", "rm", "-rf", "-q", ".", cwd=wt)
-        else:
-            run("git", "fetch", "-q", "origin", "gh-pages")
-            run("git", "worktree", "add", wt, "gh-pages")
+    hits = scan([os.path.join(SITE, f) for f in os.listdir(SITE)])
+    if hits:
+        return "not published: secret check found " + ", ".join(sorted({k for _, k in hits}))
+    repo = os.path.join(ROOT, ".site-repo")
+    run = lambda *a, **k: subprocess.run(list(a), cwd=k.get("cwd", repo), capture_output=True, text=True)
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        os.makedirs(repo, exist_ok=True)
+        run("git", "init", "-q", "-b", "main")
+        run("git", "remote", "add", "origin", C.SITE_REPO)
+        if run("git", "fetch", "-q", "origin", "main").returncode == 0:
+            run("git", "reset", "-q", "--hard", "origin/main")
     for name in os.listdir(SITE):
-        with open(os.path.join(SITE, name), "rb") as src, open(os.path.join(wt, name), "wb") as dst:
+        with open(os.path.join(SITE, name), "rb") as src, open(os.path.join(repo, name), "wb") as dst:
             dst.write(src.read())
-    open(os.path.join(wt, ".nojekyll"), "w").close()
-    run("git", "add", "-A", cwd=wt)
-    if run("git", "diff", "--cached", "--quiet", cwd=wt).returncode == 0:
+    open(os.path.join(repo, ".nojekyll"), "w").close()
+    with open(os.path.join(repo, "README.md"), "w") as f:
+        f.write("# ScuseBET\n\nThe public ScuseBET page: " + C.SITE_URL + "\n\nA personal test of an NBA player-prop betting model. "
+                "Picks are simulations tracked on paper for entertainment only; not betting recommendations or advice. "
+                "21+. 1-800-GAMBLER.\n\nThis repo only holds the built pages; it is updated automatically.\n")
+    run("git", "add", "-A")
+    if run("git", "diff", "--cached", "--quiet").returncode == 0:
         return "no changes to publish"
-    run("git", "commit", "-q", "-m", "ScuseBET site update", cwd=wt)
-    r = run("git", "push", "-q", "origin", "gh-pages", cwd=wt)
+    run("git", "-c", "user.name=ScuseBET", "-c", "user.email=noreply@scusebet.invalid", "commit", "-q", "-m", "Site update")
+    r = run("git", "push", "-q", "-u", "origin", "main")
     if r.returncode != 0:
         return "push failed: " + r.stderr.strip()[:200]
     open(stamp, "w").close()
-    return "published to gh-pages"
-
+    return "published: " + C.SITE_URL
 
 def main():
     date = sys.argv[sys.argv.index("--date") + 1] if "--date" in sys.argv else None

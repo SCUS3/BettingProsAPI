@@ -1,5 +1,7 @@
 # ScuseBET
 
+**Public page: https://scus3.github.io/scusebet/** (simulated picks for entertainment, updated after each run).
+
 ScuseBET is the platform and model family (Sam score, Triple green, 2 of 3, Your rule, the market records) behind these NBA player-prop boards.
 
 # BettingPros NBA Props
