@@ -30,7 +30,7 @@ def record(date, res):
     """Save tonight's adaptation as the snapshot for `date` (the last graded slate); replaces a same-date entry."""
     h = [x for x in history() if x["date"] != date]
     h.append({"date": date, "n": res.get("n"), "props": res.get("props"), "s": res.get("s"), "weights": res.get("weights"),
-              "at": res.get("at")})
+              "at": res.get("at"), "rescore": res.get("rescore")})
     h.sort(key=lambda x: x["date"])
     json.dump(h, open(HIST, "w"), indent=1)
 
@@ -90,7 +90,8 @@ def daily(min_change=0.05):
         lo = sum(r["result"] == "L" for r in day)
         u = round(sum(L._num(r.get("profit_kelly")) or 0 for r in day), 2)
         out.append({"date": x["date"], "n": x.get("n"), "changes": ch, "first": prev is base,
-                    "bets": {"w": w, "l": lo, "units": u, "n": len(day)}, "notes": nt.get(x["date"], [])})
+                    "bets": {"w": w, "l": lo, "units": u, "n": len(day)}, "notes": nt.get(x["date"], []),
+                    "rescore": x.get("rescore")})
         prev = x
     for d, txt in nt.items():                           # note-only days (no weight snapshot)
         if not any(o["date"] == d for o in out):
@@ -108,6 +109,11 @@ def lines(entry) -> list[str]:
         out.append("No weight moved by 0.1 or more.")
     if entry.get("n"):
         out.append(f"Learned from {entry['n']:.0f} graded player-games.")
+    rs = entry.get("rescore") or {}
+    if rs.get("n"):
+        out.append(f"Re-scored all {rs['n']} logged props with the new weights: {rs['changed']} changed tier"
+                   + (f" ({rs['up']} rose to 50+, {rs['down']} fell under 50)" if rs.get("crossed") else "")
+                   + f", average change {rs['avg']:+.1f}.")
     b = entry.get("bets") or {}
     if b.get("n"):
         out.append(f"Tonight's bets that night: {b['w']}-{b['l']}, {b['units']:+.2f}u.")

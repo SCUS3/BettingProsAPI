@@ -248,4 +248,52 @@ def freeze(row) -> None:
     except Exception:  # noqa: BLE001
         return
     row.update(score_entry=s["score"], score_tier=s["tier"], score_parts=json.dumps(s["parts"], separators=(",", ":")),
-               score_flags=", ".join(s["flags"]))
+               score_flags=", ".join(s["flags"]),
+               score_fracs=json.dumps({k: round(v, 4) for k, v in s["fractions"].items()}, separators=(",", ":")))
+
+
+def weights_on(date):
+    """Sam weights in force when a row dated `date` was scored: the last nightly snapshot before that date, else hand-set."""
+    from nbaprops.rules import learns as LR
+    ws = [h for h in LR.history() if h["date"] < date and h.get("weights")]
+    return dict(C.SAM_WEIGHTS, **ws[-1]["weights"]) if ws else dict(C.SAM_WEIGHTS)
+
+
+def learned(row, weights=None):
+    """The row's Sam score re-computed with the current learned weights (same frozen inputs, same penalties):
+    fractions from score_fracs, or from score_parts / the weights in force on its date. None if never scored."""
+    w = weights or active_weights()
+    try:
+        fr = json.loads(row.get("score_fracs") or "null")
+        if fr is None:
+            parts, then = json.loads(row.get("score_parts") or "null"), weights_on(row["date"])
+            if parts is None:
+                return None
+            fr = {k: (float(parts.get(k, 0)) / then[k] if then.get(k) else 0.0) for k in then}
+    except (ValueError, TypeError):
+        return None
+    fl = row.get("score_flags") or ""
+    s = sum(w[k] * float(fr.get(k, 0)) for k in w) + sum(v for p, v in C.SAM_PENALTIES.items() if p in fl)
+    return round(max(0.0, min(100.0, s)), 1)
+
+
+def rescore_summary(rows=None):
+    """Every scored prop (each prop once, its best entry score) re-scored with the current weights:
+    {n, changed (tier), crossed (the 50 line), up, down, avg}."""
+    from nbaprops.rules import ledger as L
+    if rows is None:
+        rows = L._read(L.LEDGER)
+    best = {}
+    for r in rows:
+        if r.get("strategy") not in L.SAM_KEYS or r.get("score_entry") in (None, ""):
+            continue
+        k = (r["date"], r["player"], r["market"], r["side"], r["line"])
+        if k not in best or float(r["score_entry"]) > float(best[k]["score_entry"]):
+            best[k] = r
+    pairs = [(float(r["score_entry"]), learned(r)) for r in best.values()]
+    pairs = [(a, b) for a, b in pairs if b is not None]
+    if not pairs:
+        return {"n": 0}
+    return {"n": len(pairs), "changed": sum(tier(a) != tier(b) for a, b in pairs),
+            "crossed": sum((a >= 50) != (b >= 50) for a, b in pairs), "up": sum((a < 50) and (b >= 50) for a, b in pairs),
+            "down": sum((a >= 50) and (b < 50) for a, b in pairs), "avg": round(sum(b - a for a, b in pairs) / len(pairs), 1)}

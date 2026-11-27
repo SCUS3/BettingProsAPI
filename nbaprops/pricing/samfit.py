@@ -221,6 +221,7 @@ def adapt(write=True, date=None) -> dict:
             import datetime as _dt
             from nbaprops.rules import learns as LR
             from nbaprops.app import props as P
+            out["rescore"] = SS.rescore_summary()        # every logged prop re-graded with the new weights
             LR.record(date or (_dt.date.fromisoformat(P.eastern_today()) - _dt.timedelta(days=1)).isoformat(), out)
         except Exception:  # noqa: BLE001
             pass

@@ -92,7 +92,7 @@ LEDGER_FIELDS = ["date", "pulled_at", "tip", "strategy", "rank", "player", "team
                  # entry snapshot: set once when the row is first written, never changed afterwards
                  "entry_at", "entry_fd_line", "entry_price", "entry_fair", "entry_ev", "entry_sources",
                  # latest pregame observation (watch scans, open games only); copied to close_* when the game is final
-                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev", "score_entry", "score_tier", "score_parts", "score_flags", "src_names", "exch_led"]
+                 "latest_at", "latest_fd_line", "latest_price", "latest_fair", "latest_ev", "latest_mkt_ev", "score_entry", "score_tier", "score_parts", "score_flags", "score_fracs", "src_names", "exch_led"]
 ENTRY_FROM = {"entry_at": "pulled_at", "entry_fd_line": "line", "entry_price": "odds", "entry_fair": "oa_fair",
               "entry_ev": "oa_ev", "entry_sources": "sources"}
 OA_COMPARE_MIN = 50       # graded picks with both our probability and The Odds API fair probability
@@ -901,6 +901,11 @@ def sam_rows(graded):
             out.append(x)
     for t, desc in (("A", "80+"), ("B", "65-79"), ("C", "50-64"), ("paper", "under 50")):
         add("sam_tier_" + t, f"Tier {t} ({desc})", [(r, v) for r, v in sc if r.get("score_tier") == t])
+    from nbaprops.pricing import samscore as _ss            # the same props graded by today's learned score
+    lw = _ss.active_weights()
+    lsc = [(r, v, _ss.learned(r, lw)) for r, v in sc]
+    for t, desc in (("A", "80+"), ("B", "65-79"), ("C", "50-64"), ("paper", "under 50")):
+        add("sam_ltier_" + t, f"Learned {t} ({desc})", [(r, v) for r, v, s in lsc if s is not None and _ss.tier(s) == t])
     for part, lab in SAM_PART_LABELS.items():
         full = _C.SAM_WEIGHTS.get(part) or 0
         if full <= 0:

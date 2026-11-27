@@ -104,3 +104,17 @@ def test_adapt_shrinks_toward_fit_without_sign_flips(monkeypatch):
 def test_score_label_format():
     assert SS.label(51.2, "C") == "51.2 (C)" and SS.label(51, None) == "51 (C)" and SS.label(44.4) == "44.4 (paper)"
     assert SS.label(None) == "" and SS.label_row({"score_entry": "80", "score_tier": "A"}) == " | Sam 80 (A)"
+
+
+def test_learned_rescores_frozen_fractions_with_current_weights():
+    import json
+    from nbaprops import config as C
+    from nbaprops.pricing import samscore as SS
+    fr = {k: 0.0 for k in C.SAM_WEIGHTS}
+    fr.update(edge=1.0, bp=0.5)
+    row = {"date": "2026-11-27", "score_fracs": json.dumps(fr), "score_flags": "long_odds"}
+    w = dict(C.SAM_WEIGHTS, edge=20.0, bp=16.0)
+    assert SS.learned(row, w) == 20.0 + 8.0 - 10          # edge full + half of BP, minus the long-odds penalty
+    old = {"date": "2026-11-20", "score_parts": json.dumps({"edge": 15.0, "bp": 20.0}), "score_flags": ""}
+    assert SS.learned(old, dict(C.SAM_WEIGHTS, edge=20.0, bp=10.0)) == 10.0 + 10.0   # parts / hand weights x new weights
+    assert SS.learned({"date": "2026-11-27"}) is None

@@ -33,6 +33,14 @@
    "consensus": 10.5,
    "threes": 0.0
   },
-  "at": null
+  "at": null,
+  "rescore": {
+   "n": 50,
+   "changed": 2,
+   "crossed": 2,
+   "up": 0,
+   "down": 2,
+   "avg": -2.1
+  }
  }
 ]
