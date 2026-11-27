@@ -230,6 +230,14 @@ you to place a bet.</div>
 what you can afford to lose and follow the laws where you live. If gambling stops being fun, call or text <b>1-800-GAMBLER</b>.</div>
 <div>Data: player projections from BettingPros; market prices from Unabated, CrazyNinja Odds and Kalshi; box scores from ESPN; lineups
 from RotoWire. ScuseBET is independent and not affiliated with or endorsed by any of them, FanDuel or the NBA. No affiliate links.</div>
+<div><b>Know your local laws.</b> Sports betting is legal in some places and not others; it's on you to know and follow the rules
+where you are.</div>
+<div><b>No league or team affiliation.</b> ScuseBET isn't affiliated with, authorized or endorsed by the NBA, any other league,
+or any team. Player, team and league names belong to their owners and are used here only to describe games.</div>
+<div><b>Your privacy:</b> ScuseBET has no accounts, sign-ups, ads or analytics, and it doesn't collect, sell or share your
+personal information. Your light/dark choice is saved only in your own browser. The pages are hosted on GitHub Pages and load fonts
+from Google Fonts, which may log visits under their own privacy policies.</div>
+<div><b>Gambling problem?</b> If you or someone you know has one, call or text <b>1-800-GAMBLER</b> (free, confidential, 24/7).</div>
 </footer>"""
 
 
