@@ -31,18 +31,20 @@ def parse(text: str) -> list[dict]:
     out, i = [], 0
     while i < len(lines):
         m = HEAD.match(lines[i])
-        if not m or i + 7 >= len(lines) or not lines[i + 3].startswith("- ") or " @ " not in lines[i + 3]:
+        g = next((k for k in (i + 3, i + 4) if k < len(lines) and lines[k].startswith("- ") and " @ " in lines[k]), None)
+        if not m or g is None or g + 4 >= len(lines):        # a "DTD ..." injury line can sit before the position
             i += 1
             continue
-        name, team, game = lines[i + 1] or m.group(1), m.group(2), lines[i + 3][2:].strip()
+        dtd = any(lines[k].upper().startswith("DTD") for k in range(i + 2, g))
+        name, team, game = lines[i + 1] or m.group(1), m.group(2), lines[g][2:].strip()
         try:
-            line, proj = float(lines[i + 4]), float(lines[i + 6])
+            line, proj = float(lines[g + 1]), float(lines[g + 3])
         except ValueError:
             i += 1
             continue
-        mk, side = _market(lines[i + 5]), lines[i + 7].lower()
+        mk, side = _market(lines[g + 2]), lines[g + 4].lower()
         rank, pick_price, book = None, None, ""
-        j = i + 8
+        j = g + 5
         while j < len(lines) and not HEAD.match(lines[j]):
             if rank is None and re.fullmatch(r"\d{1,2}(st|nd|rd|th)", lines[j]):
                 rank = int(re.match(r"\d+", lines[j]).group())
@@ -55,7 +57,7 @@ def parse(text: str) -> list[dict]:
         if mk and side in ("over", "under"):
             out.append({"player": name, "team": team, "game": game, "market": mk, "line": line, "bp_proj": proj,
                         "bp_rec_side": side, "opp_rank_raw": rank, "dvp_softness": (31 - rank) if rank else None,
-                        "price_book": book, "page_price": pick_price})
+                        "price_book": book, "page_price": pick_price, "page_dtd": dtd})
         i = j
     return out
 

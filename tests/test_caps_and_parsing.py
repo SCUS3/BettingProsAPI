@@ -96,3 +96,15 @@ def test_espn_form_fields():
     f = EF.form_fields(games, "PTS", "over", 15.5)
     assert f == {"form_l5": "3-5", "form_l10": "5-10", "form_l20": "6-11", "form_season": "6-11"}
     assert EF.form_fields(games, "P+A", "under", 17.5)["form_l5"] == "2-5"                # 22,14,27,11,20 -> 14 and 11 under
+
+
+def test_cheat_sheet_page_keeps_day_to_day_players():
+    from nbaprops.sources import bp_page as BPP
+    text = "\n".join(["Giannis AntetokounmpoLogo for MIA", "Giannis Antetokounmpo", "DTDInjury status: Day-to-day", "F",
+                      "- MIA @ NYK", "11.5", "Reb", "11.0", "Under", "3rd", "U 11.5", "(-117)", "Logo for Polymarket US",
+                      "Jalen BrunsonLogo for NYK", "Jalen Brunson", "G", "- MIA @ NYK", "28.5", "Pts", "27.0", "Under",
+                      "26th", "U 28.5", "(-141)", "Logo for Novig"])
+    rows = BPP.parse(text)
+    assert [(r["player"], r["market"], r["bp_proj"], r["page_dtd"]) for r in rows] == [
+        ("Giannis Antetokounmpo", "REB", 11.0, True), ("Jalen Brunson", "PTS", 27.0, False)]
+    assert rows[0]["opp_rank_raw"] == 3 and rows[0]["price_book"] == "Polymarket US"
