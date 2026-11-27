@@ -30,13 +30,13 @@ def test_headerless_screener_paste_applies_fixed_settings(monkeypatch):
     from nbaprops.rules import tipoff as T
     monkeypatch.setattr(T, "is_open", lambda tip, names=None, now=None: True)
     text = """Books
-5.34%    Today at 8:00 PM    Basketball    NBA    Boston Celtics @ Washington Wizards    Player Points + Assists    Trae Young Over 29.5    +440    FanDuel    +413    6
+5.34%    Today at 8:00 PM    Basketball    NBA    Boston Celtics @ Washington Wizards    Player Points + Assists    Trae Young Over 29.5    +540    FanDuel    +513    6
 4.14%    Today at 7:00 PM    Basketball    NBA    Detroit Pistons @ Orlando Magic    Player Assists    Ausar Thompson Under 5.5    -128    FanDuel    -141    6
 2.10%    Today at 7:00 PM    Basketball    NBA    Detroit Pistons @ Orlando Magic    Player Rebounds    Ausar Thompson Under 7.5    -110    FanDuel    -120    3
 0.94%    Today at 10:00 PM    Basketball    NBA    Dallas Mavericks @ Denver Nuggets    Player Assists    Cooper Flagg Under 6.5    -115    FanDuel    -117    14"""
     plays, dropped = S.parse(text, "2026-11-24", -0.01)
     assert [(p["player"], p["market"], p["books"]) for p in plays] == [("Ausar Thompson", "AST", 6), ("Cooper Flagg", "AST", 14)]
-    assert dropped == {"not FanDuel": 1, "odds over +200": 1, "under 4 books": 1}   # "Books" header line = not FanDuel
+    assert dropped == {"not FanDuel": 1, "odds over +500": 1, "under 4 books": 1}   # "Books" header line = not FanDuel
     assert plays[0]["tip"] == "2026-11-25T00:00:00Z" and plays[0]["event"] == "Detroit Pistons @ Orlando Magic"
     assert [p["player"] for p in S.parse(text, "2026-11-24")[0]] == ["Ausar Thompson"]        # +2% floor for the screener record
 

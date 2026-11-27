@@ -82,7 +82,7 @@ CNO_MIN_INTERVAL = 1.0         # seconds between CrazyNinja calls
 
 # ---------------------------------------------------------------- CrazyNinja screener paste / your rule
 SCREENER_MIN_EV = 0.02         # screener record bar
-SCREENER_FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 200.0, "book": "FanDuel", "league": "NBA"}
+SCREENER_FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 500.0, "book": "FanDuel", "league": "NBA"}
 SCREENER_ALT_GAP = 2.0         # a line this far from the pull's FanDuel main line is an alternate (dropped)
 NEAR_MISS_LOW_EV = -0.01       # "EV short" near misses: CNO EV in [-1%, 0] with BettingPros agreeing
 

@@ -235,7 +235,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     sc_of = lambda e, strat: _scmap.get((e["player"], e["market"], e["side"], float(e["line"]), strat), "")
     _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
     lines += ["## 2. Top 10 by your score", "",
-              "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +200 or shorter, "
+              "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +500 or shorter, "
               "main line) AND BettingPros' projection or lean agrees with the side. Built from today's pastes; EV and price "
               "are from the latest paste that listed the prop. Ranked by CrazyNinja EV. ¼K = the logged stake.", ""]
     if _rr and _rr[0]["w"] + _rr[0]["l"] + _rr[0]["p"]:
