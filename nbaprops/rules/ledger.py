@@ -62,6 +62,7 @@ TWO3_KEYS = {"two_of_three"}  # 2 of 3 (+EV, BP agrees, DvP helps): research, fl
 REDDIT_KEYS = {"reddit_pick", "proven_ev"}
 SAM_KEYS = {"bet_agree", "bet_only", "alt_mkt", "alt_proj", "my_rule", "triple", "ua_agree", "cno", "cno_scr", "cno_scr_sub",
             "proven_ev", "half"}       # staked records: Sam score frozen at logging   # Reddit picks (research, per poster) and the staked proven + market +EV record      # every +EV prop from any source, once per day (deduped), ¼K on its entry fair (research log)
+EV10_MIN = C.EV10_MIN  # "10%+ EV" record: any +EV sighting at or above this EV (rare; usually right as lines post)
 EV_BUCKETS = [(0.0, 0.02, "0-2%"), (0.02, 0.04, "2-4%"), (0.04, 99, "4%+")]
 EV_RECORDS = [("Your rule", {"my_rule"}), ("Unabated +EV & BP agrees", {"ua_agree"}), ("BETs (Unabated)", {"bet_agree", "bet_only"}),
               ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
@@ -995,6 +996,20 @@ def record(version: str = "v2") -> dict:
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
                       "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "two3" if strat in TWO3_KEYS else "model")
         strategies.append(x)
+    # 10%+ EV: every prop seen at 10%+ EV by any source, once per day (highest-EV sighting first), flat 1u | ¼K
+    hot = sorted([(r, v) for r, v in graded if r["strategy"] in VALUE_KEYS and (_num(r.get("entry_ev")) or -1) >= EV10_MIN],
+                 key=lambda p: -(_num(p[0].get("entry_ev")) or 0))
+    hot = _uniq(hot)
+    x = dict(_summ([r for r, _ in hot], [v for _, v in hot]), key="ev10", group="ev10", label=f"{100 * EV10_MIN:.0f}%+ EV (any source, each prop once)")
+    x["clv_unit"] = "% EV at closing fair"
+    strategies.append(x)
+    for tag, lab, keys in (("cno", "from CrazyNinja pastes", CNO_KEYS | SCREENER_KEYS | RULE_KEYS | TRIPLE_KEYS),
+                           ("ua", "from Unabated", BET_KEYS | UA_KEYS | ALT_KEYS)):
+        sub = [(r, v) for r, v in hot if r["strategy"] in keys]
+        if sub:
+            y = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="ev10_" + tag, group="ev10", label=f"10%+ EV {lab}")
+            y["clv_unit"] = "% EV at closing fair"
+            strategies.append(y)
     model_keys = {k for k, _ in STRATEGIES}
     uniq_all = _uniq(graded)
     uniq = _uniq([(r, v) for r, v in graded if r["strategy"] in model_keys])

@@ -1394,7 +1394,8 @@ def run_cno_paste(args):
     for p in plays:
         print(f"  {p['player']} {p['market']} {p['side']} {p['line']:g} {p['odds']:+g}: CNO EV {100 * p['ev']:+.1f}%, "
               f"fair {p['fair']:.3f}" + (f", {p['books']} books" if p["books"] else "") + f"  |  {p.get('proj_note', '–')}"
-              + (f"  [{p['line_note']}]" if p.get("line_note") else ""))
+              + (f"  [{p['line_note']}]" if p.get("line_note") else "")
+              + (f"  🔥 {100 * C.EV10_MIN:.0f}%+ EV" if p["ev"] >= C.EV10_MIN else ""))
     if args.dry or not plays:
         if not args.dry:
             refresh_note(args.date)

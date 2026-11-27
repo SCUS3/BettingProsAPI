@@ -705,7 +705,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ev10", "10%+ EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       var hasHalf = G[0] === "half" && R.half && ((R.half.flags || {}).n || R.half.oddsapi);
@@ -720,7 +720,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       }
       rs.forEach(function (x) {
         out.push("  " + x.label + ": " + x.w + "-" + x.l + "-" + x.p + " | " + signed(x.units, "u") +
-          (["tonight", "bet", "cno", "screener", "half", "alt", "rule", "ua", "allev", "reddit", "triple", "sam"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
+          (["tonight", "bet", "cno", "screener", "half", "alt", "rule", "ua", "allev", "ev10", "reddit", "triple", "sam"].indexOf(G[0]) >= 0 ? " | ¼K " + signed(x.kelly_units, "u") : "") + " | ROI " + signed(x.roi, "%") +
           (x.brier != null ? " | Brier " + x.brier + " vs mkt " + x.brier_mkt : "") + (x.clv != null ? " | CLV " + signed(x.clv, x.clv_unit ? "% EV" : " pts") : "") );
       });
     });
@@ -1003,6 +1003,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       ["bet", "BETs", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
       ["cno", "CNO +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
+      ["ev10", "10%+ EV", "Every prop any source priced at 10%+ EV, once per day (its highest-EV sighting). These are rare and usually show up right as lines post, before the book corrects. Graded flat 1u and ¼K on the entry fair. Closing line value is the tell: if the price moves toward the fair, the edge was real; if the fair moves toward the price, the fair was off.", true],
       ["allev", "All +EV", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
       ["reddit", "Reddit picks", "Picks from r/sportsbook's daily NBA thread, per poster (research, flat 1u); 'Proven poster + market +EV' is the only staked Reddit record (¼K, BET caps).", true],
       ["ext", "Outside cards", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
