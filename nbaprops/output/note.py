@@ -234,6 +234,11 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
               "real projection unless the price alone is +EV.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
+    _man = [r for r in rows if r.get("source") == "manual FanDuel price"]
+    if _man:                                        # FanDuel prices you typed in (until the pull replaces them)
+        lines += ["**FanDuel prices entered by hand:** " + "; ".join(
+            f"{r['player']} {r['market']} {side_s(r['rec_side'])} {cell(r['line'])} {odds_s(r['fd_odds_rec'])} (proj {proj_s(r)})"
+            for r in sorted(_man, key=lambda r: (r["player"], r["market"], float(r["line"])))) + ".", ""]
     if preview:
         lines += ["_Preview: projections only (from the pasted cheat sheet). FanDuel prices, market EV and scores fill in after the "
                   "pull and the Unabated board run; the line shown is the cheat sheet's._", ""]
