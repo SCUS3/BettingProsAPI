@@ -35,8 +35,8 @@ def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
 
 # Numbered note sections, most tailored (fewest, strictest) first down to the broadest research list.
 # Matched by the heading text after "## N. "; each is renumbered 1..n in this order.
-SECTION_ORDER = ["Triple green", "2 of 3", "Top 10 by your score", "Unabated +EV & the Projection Model agrees", "All +EV tonight",
-                 "Near misses to your rule", "Ladder candidates", "Proven posters today", "Top 10 by projection gap"]
+SECTION_ORDER = ["Triple green", "Top 10 by your score", "CNO screener", "Unabated +EV & the Projection Model agrees", "2 of 3",
+                 "Steam", "All +EV tonight", "Near misses to your rule", "Ladder candidates", "Proven posters today", "Top 10 by projection gap"]
 SECTION_TITLES = {"Top 10 by your score": "Your rule: CNO +EV + Projection Model agrees"}
 
 
@@ -53,8 +53,8 @@ def order_sections(lines: list[str]) -> list[str]:
             i += 1
             continue
         j = i + 1
-        while j < len(lines) and not lines[j].startswith("## "):
-            j += 1
+        while j < len(lines) and not lines[j].startswith(("## ", "# ")) and lines[j] != "---":
+            j += 1                                      # a '---' / '# ' divider ends the section (it stays in place)
         title = m.group(1).strip()
         key = next((t for t in SECTION_ORDER if title.startswith(t)), title)
         chunks[key] = (title, lines[i + 1:j])
@@ -102,6 +102,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     def dvp_s(r, side=None):                        # side-aware: 🟢 matchup helps the listed side, 🔴 hurts, 11-20 plain
         return bp_projctx.dvp_dot(side or r.get("rec_side"), r.get("dvp_softness"))
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
+    preview = not fd                                # no FanDuel prices yet (cheat sheet only): show projections as a preview
+    if preview:
+        fd = [r for r in rows if r.get("pct_gap") not in (None, "") and not r.get("noproj")]
     def table(group, bold):
         ranked_col = {"gap": "Gap %", "score": "Score", "balanced": "Bal"}[bold]
         cols = [("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("Proj", "r"),
@@ -126,13 +129,20 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines = [f"# ScuseBET · NBA props: {date}", "",
              "FanDuel-priced NBA player props. **Only Tonight's bets (the first list) are bets**; every other list is a paper "
              "record (no money). 1u = 1% of bankroll; ¼K = quarter-Kelly on the fair probability.", "",
-             "**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND the Projection Model "
+             *(["**Rules v2.2 (from 2026-11-28):** Your rule = CrazyNinja screener +EV AND the Projection Model agrees (the DvP dot "
+                "shows whether the matchup also helps; Triple green is retired into it). CNO screener = your screener rows at +2% EV "
+                "or more. BET = Unabated EV +2% at FanDuel's line (3+ sources) AND CrazyNinja worst case > 0. Alt BET = FanDuel alt "
+                "rung, market EV +4%, 3+ two-sided sources, CrazyNinja > 0. **Tonight's bets = BETs + alt BETs + Your rule + CNO "
+                "screener**, each prop once at its largest ¼K stake; caps 1.5u per player, 3.5u per game, 8u per night (lowest Sam "
+                "score trimmed first). The Sam score ranks only: under 50 is held out once 200 graded props have a score. Research "
+                "(never bet): 2 of 3 (+EV pairs only), Steam, All +EV, 10%+ EV, Live +EV.", ""] if date >= "2026-11-28" else []),
+             *([] if date >= "2026-11-28" else ["**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND the Projection Model "
              "agrees AND DvP helps the side (section 1). Your rule = CrazyNinja screener +EV AND the Projection Model agrees (section 2). "
              "BET = Unabated EV +2% at FanDuel's line (3+ sources) AND CrazyNinja worst case > 0. Alt BET = FanDuel alt rung, "
              "market EV +4%, 3+ two-sided sources, CrazyNinja > 0. Tonight's bets = BETs + alt BETs + your rule + Triple green, "
              "each prop once at its largest ¼K stake; held out: entry EV over 10% without 5+ sources and a price under 10 min "
              "old, and props +EV on both sides until re-priced from one snapshot; caps 1.5u per player, 3.5u per game, "
-             "8u per night (scaled proportionally).", "",
+             "8u per night (scaled proportionally).", ""]),
              "Columns: BP 🟢 = the Projection Model's projection or lean is on the listed side, 🔴 = the other side, – = no projection. "
              "BP proj = the Projection Model's raw projection; Gap = projection - line. DvP 🟢 = the matchup helps the listed side "
              "(1-10 for an over, 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Entry EV = EV at the price when the play "
@@ -145,9 +155,10 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     _tr = next((x for x in rec["strategies"] if x.get("key") == "tonight"), None)
     lines += ["## Tonight's bets", "",
               "The only list to bet. The union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule "
-              "and Triple green props; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per "
+              + ("and CNO screener props (from 11/28)" if date >= "2026-11-28" else "and Triple green props") + "; each prop once at its largest qualifying ¼K stake (not summed), then capped at 1.5u per "
               "player and 3.5u per game across this whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first). "
-              "Sam score (0-100, latest; entry = frozen at logging): A 80+, B 65-79, C 50-64, under 50 = paper only (held out); "
+              "Sam score (0-100, latest; entry = frozen at logging): A 80+, B 65-79, C 50-64, under 50 = paper only (held out"
+              + ("; from 11/28 only once 200 graded props have a score" if date >= "2026-11-28" else "") + "); "
               "display and ranking only, it never changes a stake or qualifies a -EV play. Check = re-checked / unverified "
               "(both sides were +EV), a contradicting rung, partial data or a score penalty. Everything else in this note is a paper record.", ""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
@@ -223,6 +234,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines += ["Placeholder projections (Proj*) claim no edge, use FanDuel's no-vig price for EV, and rank below every "
               "real projection unless the price alone is +EV.", ""]
     lines += ["## 1. Top 10 by projection gap", "", "Biggest |projection - line| as a % of the line, nothing else.", ""]
+    if preview:
+        lines += ["_Preview: projections only (from the pasted cheat sheet). FanDuel prices, market EV and scores fill in after the "
+                  "pull and the Unabated board run; the line shown is the cheat sheet's._", ""]
     lines += table(ranked(fd, lambda r: abs(r["pct_gap"] or 0)), "gap")
     from nbaprops.rules import screener as bp_cno_screener
     mine = bp_cno_screener.rule_rows(date, include_started=True)
@@ -404,13 +418,14 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     from nbaprops import config as _C
     if getattr(_C, "REDDIT_ACTIVE", True):
         lines += _rl
-    lines += ["## 8. Triple green", "",
+    _tg_lines: list = []
+    _tg_lines += ["## 8. Triple green", "",
               "All three at the same sighting: +EV (CrazyNinja screener EV > 0, or Unabated market EV > 0 with 3+ sources), "
               "The Projection Model agrees (🟢) and DvP helps the side (🟢: 1-10 for an over, 21-30 for an under). No DvP or no "
               "projection = no. ¼K on the fair of the source that qualified it (higher EV if both), BET caps. Logged once at "
               "its first qualifying sighting; part of Tonight's bets.", ""]
     if _tgr and _tgr["w"] + _tgr["l"] + _tgr["p"]:
-        lines += [f"Triple green record: {_tgr['w']}-{_tgr['l']}-{_tgr['p']} | flat 1u {_tgr['units']:+.2f}u | ¼K {_tgr['kelly_units']:+.2f}u"
+        _tg_lines += [f"Triple green record: {_tgr['w']}-{_tgr['l']}-{_tgr['p']} | flat 1u {_tgr['units']:+.2f}u | ¼K {_tgr['kelly_units']:+.2f}u"
                   + (f" | CLV {_tgr['clv']:+}% EV" if _tgr.get("clv") is not None else ""), ""]
     if _tg:
         body = []
@@ -422,18 +437,18 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                          bp_projctx.dvp_dot(r["side"], r.get("dvp")), f"{float(r['kelly_u']):g}u",
                          _SSl.label(r.get("score_entry"), r.get("score_tier") or None),
                          status(r.get("tip"), r.get("team"))])
-        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
+        _tg_lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("BP proj", "r"),
                            ("Gap", "r"), ("FD", "r"), ("Entry EV ▼", "r"), ("Source", "l"), ("DvP", "r"), ("¼K", "r"), ("Score", "r"), ("Game", "l")], body) + [""]
     else:
-        lines += ["_None yet (the record starts with the 11/24 slate; checked on every CrazyNinja paste, board run and watch scan)._", ""]
+        _tg_lines += ["_None yet (the record starts with the 11/24 slate; checked on every CrazyNinja paste, board run and watch scan)._", ""]
     _t23 = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date and r["strategy"] == "two_of_three"]
+    if date < "2026-11-28":                         # Triple green retired from v2.2 (merged into Your rule as a DvP flag)
+        lines += _tg_lines
     _o = {"all 3": 0, "EV+BP": 1, "EV+DvP": 2, "BP+DvP": 3}
     _t23.sort(key=lambda r: (_o.get(r.get("fair_src"), 9), -(_num(r.get("entry_ev") or r.get("oa_ev")) or -9)))
     _t23r = next((x for x in rec["strategies"] if x.get("key") == "two3_all"), None)
     lines += ["## 9. 2 of 3: +EV / Projection Model / DvP", "",
-              "Any FanDuel side where at least two of the three Triple green checks hold: +EV (CrazyNinja screener, or Unabated "
-              "with 3+ sources), the Projection Model agrees, DvP helps the side. Research only (flat 1u, never bet: a BP + DvP pair "
-              "can be -EV). Logged once at its first qualifying sighting; ranked all 3 > EV+BP > EV+DvP > BP+DvP, then EV.", ""]
+              "+EV (CrazyNinja screener, or Unabated with 3+ sources) plus at least one of: the Projection Model agrees, DvP helps the side. Research only (flat 1u, never bet). From 11/28 a Projection Model + DvP pair without +EV no longer counts. Logged once at its first qualifying sighting.", ""]
     if _t23:
         body = []
         for i, r in enumerate(_t23, 1):
@@ -448,6 +463,24 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         lines += ([f"_{len(_t23) - 15} more in the ledger (strategy two_of_three)._"] if len(_t23) > 15 else []) + [""]
     else:
         lines += ["_None yet (checked on every CrazyNinja paste, board run and watch scan from 11/24)._", ""]
+    def _rec_section(title, desc, strat, extra=None):
+        rr = sorted([r for r in _led if r["date"] == date and r["strategy"] == strat], key=lambda r: -(_num(r.get("entry_ev") or r.get("oa_ev")) or 0))
+        out = [f"## 99. {title}", "", desc, ""]
+        if not rr:
+            return out + ["_None yet (checked on every CrazyNinja paste, board run and watch scan)._", ""]
+        body = [[str(i), r["player"], r["market"], side_s(r["side"]), f"{float(r['line']):g}",
+                 bp_dot({"player": r["player"], "market": r["market"], "rec_side": r["side"], "line": _num(r["line"])}),
+                 odds_s(r.get("entry_price") or r["odds"]), f"{100 * (_num(r.get('entry_ev') or r.get('oa_ev')) or 0):+.2f}%",
+                 bp_projctx.dvp_dot(r["side"], bp_projctx.dvp_of(date, r["player"], r["market"])) or "–",
+                 (extra(r) if extra else str(r.get("sources") or r.get("books") or ""))] for i, r in enumerate(rr, 1)]
+        return out + md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("BP", "c"), ("FD", "r"),
+                               ("EV ▼", "r"), ("DvP", "r"), ("Note" if extra else "Books", "l")], body) + [""]
+    if date >= "2026-11-28":
+        lines += _rec_section("CNO screener", "Your pasted CrazyNinja screener rows at +2% EV or more (fixed settings: 4+ books, +500 or "
+                              "shorter, main line), whatever the Projection Model says. Part of Tonight's bets from 11/28 (¼K on CNO's fair).", "cno_scr")
+        lines += _rec_section("Steam", "Research (flat 1u, never bet): +EV now AND the fair probability has moved 1+ point toward the "
+                              "side since the prop was first seen today. The market moving your way before tip.", "steam",
+                              extra=lambda r: r.get("cap_note") or "")
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
         lines += ["## FanDuel line differs from the Projection Model's line", "",
@@ -461,14 +494,14 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             continue
         lines += [f"## {name} ({tag})", ""]
         if tag not in REAL_PROJ_MARKETS:
-            lean = [r for r in rows if r["price_is_fanduel"] and r["market"] == tag and r.get("lean_only") is True
-                    and r.get("balanced") is not None]
+            lean = [r for r in rows if (r["price_is_fanduel"] or preview) and r["market"] == tag and r.get("lean_only") is True
+                    and (r.get("balanced") is not None or preview)]
             if not lean:
                 lines += ["_No FanDuel-priced props found._", ""]
                 continue
             lines += [f"The Projection Model publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
                       f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", ""]
-            lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1)])
+            lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(lean, lambda r: r["balanced"] if r.get("balanced") is not None else abs(r.get("pct_gap") or 0))[:n], 1)])
             lines.append("")
             continue
         group = [r for r in fd if r["market"] == tag and r["pct_gap"] is not None]
