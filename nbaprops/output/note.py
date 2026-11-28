@@ -85,9 +85,16 @@ def records_to_bottom(lines):
     lines = list(lines)
     periods = cut(lambda ln: ln.startswith("### Records: last night"), lambda ln: ln.startswith(("Tonight's bets record", "## ", "**Total", "_No bets")))
     record = cut(lambda ln: ln == "## Record", lambda ln: ln.startswith("## ") or ln == "---")
+    rules = [ln for ln in lines if ln.startswith(("**Rules v2", "Columns: "))]   # one-line paragraphs at the top
+    lines = [ln for ln in lines if ln not in rules]
+    while len(lines) > 2 and lines[1] == "" and lines[2] == "":
+        del lines[1]
+    tail = []
+    if rules:
+        tail += ["", "---", "", "# Rules and columns", ""] + [x for r in rules for x in (r, "")]
     if not (periods or record):
-        return lines
-    tail = ["", "---", "", "# Records", ""]
+        return lines + tail
+    tail += ["", "---", "", "# Records", ""]
     if periods:
         tail += ["## Records: last night, last 7 nights, all-time"] + periods[1:]
     if record:
@@ -557,6 +564,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
 
     lines = order_sections(lines)
     lines = records_to_bottom(lines)
+    lines = [ln for k, ln in enumerate(lines) if not (ln == "" and k and lines[k - 1] == "")]   # one blank line max
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
