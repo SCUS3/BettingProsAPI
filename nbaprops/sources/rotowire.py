@@ -17,12 +17,20 @@ URL = "https://www.rotowire.com/basketball/nba-lineups.php"
 UA = "Mozilla/5.0 (compatible; bp-props/1.0; personal use, one request per run)"
 
 
+ALIASES = {"alexandre sarr": "alex sarr", "nicolas claxton": "nic claxton", "cameron johnson": "cam johnson",
+           "herbert jones": "herb jones", "kenyon martin": "kj martin", "moe wagner": "moritz wagner"}   # one name per player
+
+
 def norm(name):
-    """Normalize a player name for matching across sites: accents, punctuation, suffixes, case."""
+    """Normalize a player name for matching across sites: accents, punctuation, suffixes, case, known name variants."""
     n = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
     n = re.sub(r"[.'`,-]", " ", n.lower())
     n = re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", " ", n)
-    return " ".join(n.split())
+    n = " ".join(n.split())
+    for k, v in ALIASES.items():                       # also inside longer text ("alexandre sarr over 1 5")
+        if k in n:
+            n = re.sub(rf"\b{k}\b", v, n)
+    return n
 
 
 def fetch(timeout=20):

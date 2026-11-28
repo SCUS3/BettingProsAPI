@@ -108,3 +108,9 @@ def test_cheat_sheet_page_keeps_day_to_day_players():
     assert [(r["player"], r["market"], r["bp_proj"], r["page_dtd"]) for r in rows] == [
         ("Giannis Antetokounmpo", "REB", 11.0, True), ("Jalen Brunson", "PTS", 27.0, False)]
     assert rows[0]["opp_rank_raw"] == 3 and rows[0]["price_book"] == "Polymarket US"
+
+
+def test_name_aliases_match_inside_bet_text():
+    from nbaprops.sources.rotowire import norm
+    assert norm("Alexandre Sarr") == norm("Alex Sarr") == "alex sarr"
+    assert norm("Alexandre Sarr Over 1.5").startswith("alex sarr over")
