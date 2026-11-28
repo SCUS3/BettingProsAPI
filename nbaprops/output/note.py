@@ -71,6 +71,30 @@ def order_sections(lines: list[str]) -> list[str]:
     return out[:first] + block + out[first:]
 
 
+def records_to_bottom(lines):
+    """Move the record blocks (the last night / 7 nights / all-time table and the full '## Record' section) to the end of the
+    note, so the slip opens with Tonight's bets and the algorithm lists."""
+    def cut(start_pred, stop_pred):
+        i = next((k for k, ln in enumerate(lines) if start_pred(ln)), None)
+        if i is None:
+            return []
+        j = next((k for k in range(i + 1, len(lines)) if stop_pred(lines[k])), len(lines))
+        block = lines[i:j]
+        del lines[i:j]
+        return block
+    lines = list(lines)
+    periods = cut(lambda ln: ln.startswith("### Records: last night"), lambda ln: ln.startswith(("Tonight's bets record", "## ", "**Total", "_No bets")))
+    record = cut(lambda ln: ln == "## Record", lambda ln: ln.startswith("## ") or ln == "---")
+    if not (periods or record):
+        return lines
+    tail = ["", "---", "", "# Records", ""]
+    if periods:
+        tail += ["## Records: last night, last 7 nights, all-time"] + periods[1:]
+    if record:
+        tail += record
+    return lines + tail
+
+
 def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: str = "") -> str:
     """Write the Markdown note: three overall top-10 lists, then top 10 by gap and by score in each category."""
     from nbaprops.app.props import _num, fmt, ranked, REAL_PROJ_MARKETS, DISABLED  # scoring helpers (imported here: props imports this module)
@@ -532,6 +556,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         lines += table(ranked(group, lambda r: abs(r["pct_gap"])), "gap")
 
     lines = order_sections(lines)
+    lines = records_to_bottom(lines)
     with open(out, "w") as f:
         f.write("\n".join(lines))
     return out
