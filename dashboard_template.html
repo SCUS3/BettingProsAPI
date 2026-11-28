@@ -288,6 +288,7 @@ th button.sort:focus-visible { outline: 2px solid var(--accent-dim); outline-off
 .held-hint { font-size: 13px; color: var(--muted); flex-basis: 100%; padding-left: 26px; }
 .held-scroll { max-height: 340px; overflow: auto; border-top: 1px solid var(--line); }
 .tl-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 12px; }
+.tl-label { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: .12em; color: var(--muted, var(--text)); opacity: .75; align-self: center; margin-right: 4px; }
 .tl-tabs button { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: .1em; padding: 8px 11px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
 .tl-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -537,7 +538,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var scaled = tb.some(function (x) { return x.stake_capped != null; });
     document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (" + (DATA.date >= "2026-11-24" ? "trimmed lowest Sam score first" : "scaled") + " from " + u(pre) + ")" : "") : ""),
       "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64; under 50 = paper only, held out): display and ranking only, never a stake change. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
-      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["BP proj"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam"]]),
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["Proj Model"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam"]]),
       body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>') +
       (held.length ? heldSection(held) : "");
   }
@@ -565,7 +566,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     if (!by[tlKey] || (!tlPicked && !by[tlKey].rows.length)) tlKey = keys.filter(function (k) { return by[k].rows.length; })[0] || keys[0];
     var dot = function (c) { return c === "g" ? '<span style="color:var(--good)">●</span> ' : c === "r" ? '<span style="color:var(--bad)">●</span> ' : ""; };
     var l = by[tlKey], live = !!l.live;
-    var tabs = '<div class="tl-tabs" role="group" aria-label="Tonight\'s lists">' + keys.map(function (k) {
+    var tabs = '<div class="tl-tabs" role="group" aria-label="Tonight\'s lists"><span class="tl-label">Algorithms:</span>' + keys.map(function (k) {
       return '<button type="button" data-tl="' + k + '" aria-pressed="' + (k === tlKey) + '">' + esc(by[k].label) + '<span class="n">' + by[k].rows.length + "</span></button>";
     }).join("") + "</div>";
     var rows = l.rows.map(function (x, i) {
@@ -579,7 +580,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         '</td><td class="hide-sm">' + esc(String(x.books || "")) + "</td></tr>";
     }).join("");
     document.getElementById("today-lists").innerHTML = board("Tonight's lists", TL_DESC[tlKey] || "",
-      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV"], ["BP proj"], ["DvP"], [live ? "Live" : "Sam"], ["Books", "hide-sm"]]),
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV"], ["Proj Model"], ["DvP"], [live ? "Live" : "Sam"], ["Books", "hide-sm"]]),
       rows || '<tr><td class="l dim" colspan="9">Nothing in this list tonight.</td></tr>').replace('<div class="board-head">', tabs + '<div class="board-head">');
     var el = document.getElementById("today-lists");
     var tbl = el.querySelector("table"); if (tbl) { var w = document.createElement("div"); w.className = "tl-body"; tbl.parentNode.insertBefore(w, tbl); w.appendChild(tbl); }
@@ -910,6 +911,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "Time": "When you pasted the row, Eastern time.",
     "Why": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
     "DvP": "How the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
+    "Proj Model": "The projection model's number for the player before the game (BettingPros' projection), and how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "BP proj": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "FD": "FanDuel's price for this bet. +150 pays 1.5u profit on 1u; -150 risks 1.5u to win 1u.",
     "Stake": "How much to bet in units (1u = 1% of your bankroll): quarter-Kelly on the market's fair odds, capped at 1.5u per player, 3.5u per game and 8u per night.",
@@ -1096,7 +1098,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
             " (" + LPS.clv_n + " rows seen again in a later paste). Highest +EV first; sort any column.",
             th([["Time", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["+EV"], ["Units"], ["Books", "hide-sm"],
-                ["BP proj", "hide-sm"], ["DvP", "hide-sm"], ["HT exp", "hide-sm"], ["Live", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
+                ["Proj Model", "hide-sm"], ["DvP", "hide-sm"], ["HT exp", "hide-sm"], ["Live", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
             LPS.rows.slice().sort(function (a, b) { return (Number(b.ev) || -1e9) - (Number(a.ev) || -1e9); }).map(function (r) {
               var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
               return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
@@ -1286,7 +1288,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "DvP": "DvP (Defense vs. Position)", "CLV": "CLV (Closing line value)", "ROI": "ROI (Return on investment)",
     "FD": "FD (FanDuel price)", "W-L-P": "W-L-P (Wins-Losses-Pushes)", "¼K u": "¼K u (units at quarter-Kelly stakes)",
     "Kelly u": "Kelly u (units at quarter-Kelly stakes)", "Flat u": "Flat u (units at 1u per play)", "Units": "Units (profit at 1u per play)",
-    "BP proj": "BP proj (BettingPros projection)", "+EV": "+EV (expected value when pasted)", "Entry EV": "Entry EV (expected value when logged)",
+    "BP proj": "BP proj (BettingPros projection)", "Proj Model": "Proj Model (projection model, from BettingPros)", "+EV": "+EV (expected value when pasted)", "Entry EV": "Entry EV (expected value when logged)",
     "p": "p (chance it's luck)", "Sam": "Sam (Sam score, ScuseBET's 0-100 rating)", "Tier": "Tier (Sam score band)",
     "HT exp": "HT exp (halftime expected final)", "Live": "Live (stat when you pasted)", "Time": "Time (when you pasted, Eastern)",
     "Why": "Why (why it wasn't bet)", "Brier": "Brier (probability accuracy)", "Final": "Final (final stat)",

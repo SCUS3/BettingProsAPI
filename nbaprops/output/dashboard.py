@@ -81,7 +81,7 @@ def _learns():
 
 
 TODAY_LISTS = [("triple", "Triple green", {"triple"}), ("two3", "2 of 3", {"two_of_three"}), ("rule", "Your rule", {"my_rule"}),
-               ("ua", "Unabated + BP", {"ua_agree"}), ("bets", "BETs", {"bet_agree", "bet_only"}), ("scr", "CNO screener", {"cno_scr"}),
+               ("ua", "Unabated + Proj Model", {"ua_agree"}), ("bets", "BETs", {"bet_agree", "bet_only"}), ("scr", "CNO screener", {"cno_scr"}),
                ("allev", "All +EV", {"all_ev"}), ("near", "Near misses", {"near_miss"})]
 
 
