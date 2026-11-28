@@ -42,5 +42,31 @@
    "down": 2,
    "avg": -2.1
   }
+ },
+ {
+  "date": "2026-11-26",
+  "n": 222.0,
+  "props": 380,
+  "s": 0.307,
+  "weights": {
+   "edge": 20.8,
+   "quality": 13.9,
+   "bp": 15.9,
+   "dvp": 6.9,
+   "move": 12.9,
+   "role": 11.7,
+   "form": 7.4,
+   "consensus": 10.5,
+   "threes": 0.0
+  },
+  "at": "2026-11-27T10:11:34Z",
+  "rescore": {
+   "n": 50,
+   "changed": 2,
+   "crossed": 2,
+   "up": 0,
+   "down": 2,
+   "avg": -2.1
+  }
  }
 ]

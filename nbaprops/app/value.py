@@ -588,7 +588,7 @@ def run_board(args):
     if not args.go:
         print("Plan only: no call made. Re-run with --go (and --max-credits N for the fallback) once approved.")
         return
-    ua, ua_logged = {}, []
+    ua, ua_logged, data = {}, [], None
     if ua_ok:
         try:
             if args.board_file:                    # a saved board (no call): price it as it was when fetched
@@ -693,6 +693,8 @@ def run_board(args):
     if args.date >= bp_learn.V2_START:
         lines_out.append(f"  Unabated +EV & BP agrees (v2 record): {len(ua_logged)} new.")
     try:                                              # alt ladder (FanDuel alt rungs vs. other sources at that rung)
+        if data is None:
+            raise RuntimeError("no Unabated board this run")
         from nbaprops.pricing import alts as bp_alts
         arows = bp_alts.log(args.date, bp_alts.scan(data, U.load(U.DISCOVERY, {}), args.date, bp_learn.utc_now()), bp_learn.utc_now())
         for r in arows:
