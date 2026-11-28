@@ -102,7 +102,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     def dvp_s(r, side=None):                        # side-aware: 🟢 matchup helps the listed side, 🔴 hurts, 11-20 plain
         return bp_projctx.dvp_dot(side or r.get("rec_side"), r.get("dvp_softness"))
     fd = [r for r in rows if r["price_is_fanduel"] and r.get("score") is not None and not r.get("noproj")]
-    preview = not fd                                # no FanDuel prices yet (cheat sheet only): show projections as a preview
+    preview = not any(r.get("source") != "manual FanDuel price" for r in fd)   # nothing pulled yet: cheat sheet (+ hand-entered FD prices)
     if preview:
         fd = [r for r in rows if r.get("pct_gap") not in (None, "") and not r.get("noproj")]
     def table(group, bold):
