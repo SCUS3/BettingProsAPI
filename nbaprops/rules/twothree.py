@@ -32,8 +32,8 @@ def candidates(date: str, cno: list[dict], ua: list[dict]) -> list[dict]:
             dvp_cache[(player, market)] = P.dvp_of(date, player, market)
         dvp = dvp_cache[(player, market)]
         dvp_ok = P.dvp_effect(side, dvp) == "helps"
-        if ev_ok + bp_ok + dvp_ok < 2:
-            continue
+        if ev_ok + bp_ok + dvp_ok < 2 or (date >= "2026-11-28" and not ev_ok):
+            continue                                   # v2.2: a BP + DvP pair without +EV no longer counts
         which = "all 3" if ev_ok and bp_ok and dvp_ok else "+".join(n for n, ok in (("EV", ev_ok), ("BP", bp_ok), ("DvP", dvp_ok)) if ok)
         evs = [(cn["ev"], cn["odds"], cn.get("fair"), cn.get("books"), "CNO")] if cn else []
         evs += [(un["ev"], un["price"], un.get("fair"), un.get("books"), "Unabated")] if un else []

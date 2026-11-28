@@ -148,3 +148,14 @@ is a new rule version here and in `RULE_VERSIONS`.
 
 All rows dated before 2026-11-24 (227 ledger rows, 20 sim rows at the cutover), including the retired "Top 5 your
 score" strategy, the 11/22 legacy halftime reversal flags, and every v1 BET. Shown under the Record tab's v1 toggle.
+
+## Rules v2.2 (from the 11/28 slate)
+
+- **Tonight's bets** = BETs + alt BETs + Your rule + **CNO screener** (each prop once at its largest ¼K stake, same caps).
+- **Triple green retired**: merged into Your rule as a DvP flag (the 🟢/🔴 DvP dot). Its record keeps its history.
+- **Sam score gate**: under 50 is held out only once 200 graded props have a Sam score (`SAM_GATE_MIN_N`); until then the
+  score only ranks the list and decides what the 8u nightly cap trims first. Each night's gate state is frozen at tip.
+- **2 of 3** counts only pairs that include +EV; Projection Model + DvP pairs (no EV) are kept as a retired split.
+- **Steam** (research, flat 1u): +EV now and the fair probability moved 1+ point toward the side since first seen that day.
+- **Live +EV** (research, flat 1u): every in-game +EV paste row, each prop once at its first +EV paste.
+- **10%+ EV** stays research, never staked. **Reddit** picks paused (no app).

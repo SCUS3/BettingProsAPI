@@ -8,6 +8,10 @@ ScuseBET is the platform and model family (Sam score, Triple green, 2 of 3, Your
 
 Python tools that price every FanDuel NBA player prop against BettingPros projections and the wider market, pick bets with a market edge, and grade every pick after the games so the model learns what actually wins.
 
+## Rules v2.2 (from 11/28)
+
+Tonight's bets = BETs + alt BETs + Your rule + CNO screener; Triple green retired into Your rule's DvP flag; the Sam score only ranks until 200 graded props; new research records Steam and Live +EV; 2 of 3 counts only +EV pairs; Reddit paused. Details in RECORDS.md.
+
 ## Description
 
 Each day the tools:

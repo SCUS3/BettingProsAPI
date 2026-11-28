@@ -46,8 +46,9 @@ def candidates(date: str, cno: list[dict], ua: list[dict]) -> list[dict]:
 
 
 def log(date: str, cno: list[dict], ua: list[dict]) -> list[dict]:
-    """Log newly qualifying Triple green props (once per day per player|market|side|line). -> rows logged."""
-    if date < L.V2_START:
+    """Log newly qualifying Triple green props (once per day per player|market|side|line). -> rows logged.
+    Retired from v2.2 (11/28): merged into Your rule as a DvP flag; the record keeps its history."""
+    if date < L.V2_START or date >= "2026-11-28":
         return []
     from nbaprops.app import value as V
     led = L._read(L.LEDGER)

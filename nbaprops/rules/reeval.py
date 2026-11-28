@@ -55,6 +55,8 @@ def run(date: str) -> dict:
     out["Triple green"] = TG.log(date, cno, ua)
     from nbaprops.rules import twothree as T23
     out["2 of 3"] = T23.log(date, cno, ua)
+    from nbaprops.rules import steam as ST
+    out["Steam"] = ST.log(date, cno, ua)
     return {k: v for k, v in out.items() if v}
 
 

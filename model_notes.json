@@ -8,5 +8,8 @@
  ],
  "2026-11-26": [
   "Screener max odds raised from +200 to +500 (value is value): longer prices like +450 now count for the CNO screener record and your rule. The Sam score still takes 10 points off prices longer than +200."
+ ],
+ "2026-11-28": [
+  "Rules v2.2: CNO screener joins Tonight's bets; Triple green retired (now the DvP dot on Your rule); the Sam score stops holding props out until 200 graded props have a score (it still ranks and trims); 2 of 3 counts only pairs with +EV (Proj Model + DvP pairs were 91-84, -13.3u); new research records Steam (+EV with the fair moving your way) and Live +EV (each live prop once); 10%+ EV stays research; Reddit paused."
  ]
 }

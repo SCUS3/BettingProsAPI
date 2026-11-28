@@ -256,7 +256,15 @@ def summary(version=None):
     clv = [_num(r["clv_ev"]) for r in rows if _num(r.get("clv_ev")) is not None]
     evs = [_num(r["ev"]) for r in rows if _num(r.get("ev")) is not None]
     units = sum(_num(r.get("profit_u")) or 0 for r in graded)
-    return {"rows": sorted(rows, key=lambda r: r["at"], reverse=True), "n": len(rows),
+    first = {}                                         # Live +EV record (v2.2): each prop once, at its first +EV live paste
+    for r in sorted(rows, key=lambda r: r["at"]):
+        if (_num(r.get("ev")) or 0) > 0:
+            first.setdefault((r["date"], norm(r["player"]), r["market"], r["side"], str(_num(r["line"]))), r)
+    eg = [r for r in first.values() if r.get("result") in ("W", "L", "P")]
+    ev_rec = {"n": len(first), "graded": len(eg), "w": sum(r["result"] == "W" for r in eg), "l": sum(r["result"] == "L" for r in eg),
+              "p": sum(r["result"] == "P" for r in eg), "units": round(sum(_num(r.get("profit_u")) or 0 for r in eg), 2),
+              "avg_ev": round(sum(_num(r["ev"]) for r in first.values()) / len(first), 2) if first else None}
+    return {"ev_record": ev_rec, "rows": sorted(rows, key=lambda r: r["at"], reverse=True), "n": len(rows),
             "w": sum(r["result"] == "W" for r in graded), "l": sum(r["result"] == "L" for r in graded),
             "p": sum(r["result"] == "P" for r in graded), "units": round(units, 2),
             "avg_ev": round(sum(evs) / len(evs), 2) if evs else None, "avg_clv": round(sum(clv) / len(clv), 2) if clv else None,

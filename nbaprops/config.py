@@ -5,12 +5,15 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ---------------------------------------------------------------- rule versions (see RECORDS.md)
-RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24"), ("v2.1", "2026-11-24")]   # v2.x rows count in the v2 views   # a rule change adds a line here and in RECORDS.md
+RULE_VERSIONS = [("v1", "0000-00-00"), ("v2", "2026-11-24"), ("v2.1", "2026-11-24"), ("v2.2", "2026-11-28")]   # v2.x rows count in the v2 views   # a rule change adds a line here and in RECORDS.md
 RULE_NOTES = {                  # what each version's staked rules are (RECORDS.md has the full text)
     "v1": "Unabated BETs, CrazyNinja +EV, CNO screener, alt ladder, halftime; old 'your score' model lists",
     "v2": "Your rule (CNO +EV + BP agrees); Unabated +EV & BP agrees; Triple green (+EV + BP agrees + DvP helps, added "
           "before the first v2 slate); BETs with CNO > 0; alt ladder by DvP; Tonight's bets = BETs + alt BETs + your rule + "
           "Triple green, largest stake per prop, caps across the list",
+    "v2.2": "Tonight's bets = BETs + alt BETs + Your rule + CNO screener (Triple green retired: merged into Your rule as a "
+            "DvP flag); the Sam score ranks and trims but holds nothing out until SAM_GATE_MIN_N graded props; 2 of 3 counts "
+            "only pairs with +EV; new research records Steam and Live +EV; Reddit paused",
     "v2.1": "Sam score (0-100, display and ranking only): Tonight's bets sorted by score, under 50 = paper only, the 8u "
             "nightly cap trims the lowest scores first; score frozen at logging for the record splits",
 }
@@ -82,6 +85,9 @@ CNO_MIN_INTERVAL = 1.0         # seconds between CrazyNinja calls
 
 # ---------------------------------------------------------------- CrazyNinja screener paste / your rule
 SCREENER_MIN_EV = 0.02         # screener record bar
+SAM_GATE_MIN_N = 200           # v2.2: under-50 Sam scores are held out only once this many graded scored props exist
+STEAM_MIN = 0.01               # Steam: fair probability moved toward the side by 1+ point since its first sighting
+REDDIT_ACTIVE = False          # Reddit picks paused (no app; paste-only) -- hidden from the note and the Record tab
 EV10_MIN = 0.10                # "10%+ EV" record (any source, each prop once): rare, usually right as lines post
 SCREENER_FIXED = {"devig": "LW-M", "min_books": 4, "max_odds": 500.0, "book": "FanDuel", "league": "NBA"}
 SCREENER_ALT_GAP = 2.0         # a line this far from the pull's FanDuel main line is an alternate (dropped)

@@ -49,8 +49,9 @@ VALUE_STRATEGIES = [("bet_agree", "BET: +EV + proj agrees"), ("bet_only", "BET: 
                     ("my_rule", "Your rule: CNO +EV + BP agrees"), ("ua_agree", "Unabated +EV & BP agrees"), ("ext_pick", "Outside picks (cards)"), ("all_ev", "All +EV (any source, deduped)"), ("near_miss", "Near misses to your rule (not taken, flat 1u)"),
                     ("half", "HALF BET (halftime live)"), ("reddit_pick", "Reddit picks (research, per poster)"),
                     ("proven_ev", "Proven poster + market +EV"), ("alt_mkt", "Alt, market only"),
-                    ("alt_proj", "Alt, market + projection"), ("triple", "Triple green (+EV, BP agrees, DvP helps)"),
-                    ("two_of_three", "2 of 3: +EV / BP agrees / DvP helps (research, flat 1u)")]
+                    ("alt_proj", "Alt, market + projection"), ("triple", "Triple green (retired 11/28: now a DvP flag on Your rule)"),
+                    ("two_of_three", "2 of 3: +EV plus Proj Model or DvP (research, flat 1u)"),
+                    ("steam", "Steam: +EV and the fair price moving your way (research, flat 1u)")]
 BET_KEYS = {"bet_agree", "bet_only"}
 SCREENER_KEYS = {"cno_scr", "cno_scr_sub"}
 RULE_KEYS = {"my_rule", "near_miss"}
@@ -58,6 +59,7 @@ UA_KEYS = {"ua_agree"}
 EXT_KEYS = {"ext_pick"}
 ALL_EV_KEYS = {"all_ev"}
 TRIPLE_KEYS = {"triple"}
+STEAM_KEYS = {"steam"}         # v2.2 research: +EV props whose fair price moved toward the side since first seen
 TWO3_KEYS = {"two_of_three"}  # 2 of 3 (+EV, BP agrees, DvP helps): research, flat 1u      # Triple green: +EV (CNO or Unabated) + BettingPros agrees + DvP helps the side; staked
 REDDIT_KEYS = {"reddit_pick", "proven_ev"}
 SAM_KEYS = {"bet_agree", "bet_only", "alt_mkt", "alt_proj", "my_rule", "triple", "ua_agree", "cno", "cno_scr", "cno_scr_sub",
@@ -612,7 +614,7 @@ def log_value_decisions(date, rows):
     old = _read(LEDGER)
     cls = lambda st: "bet" if st in BET_KEYS else st
     key = lambda r: (cls(r.get("strategy")), r["player"], r["market"], r["side"], str(_num(r.get("line"))))
-    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS
+    keep = BET_KEYS | CNO_KEYS | SCREENER_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS | STEAM_KEYS
     have = {key(r) for r in old if r["date"] == date and r.get("strategy") in keep}
     ledger = [r for r in old if not (r["date"] == date and r.get("strategy") == "watch" and r.get("pulled_at") in pulled)]
     new = [r for r in rows if not (r.get("strategy") in keep and key(r) in have)]
@@ -984,23 +986,27 @@ def record(version: str = "v2") -> dict:
         if version != "v1" and strat in LOG_SKIP:
             continue                                       # retired in v2 (the old score formula); kept in the v1 archive
         sub = [(r, v) for r, v in graded if r["strategy"] == strat]
+        if strat in TWO3_KEYS:                             # v2.2: 2 of 3 counts only pairs with +EV (BP + DvP kept as a split)
+            sub = [(r, v) for r, v in sub if r.get("fair_src") != "BP+DvP"]
+        if strat in REDDIT_KEYS and not C.REDDIT_ACTIVE:
+            continue                                       # Reddit paused (no app); its history stays in the ledger
         if strat in VALUE_KEYS and version == "v1" and not any(r["strategy"] == strat for r in ledger):
             continue                                       # no value-check decisions logged yet
         x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key=strat, label=label)
-        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS:
+        if strat in BET_KEYS | CNO_KEYS | SCREENER_KEYS | HALF_KEYS | ALT_KEYS | RULE_KEYS | UA_KEYS | ALL_EV_KEYS | REDDIT_KEYS | TRIPLE_KEYS | TWO3_KEYS | STEAM_KEYS:
             x["clv_unit"] = "% EV at closing fair"
             x["ev_below_0"] = sum(1 for r, _ in live if r["strategy"] == strat and _num(r.get("close_mkt_ev")) is not None
                                   and _num(r["close_mkt_ev"]) < 0)
         x["group"] = ("rule" if strat in RULE_KEYS else "ua" if strat in UA_KEYS else "bet" if strat in BET_KEYS else
                       "cno" if strat in CNO_KEYS else
                       "screener" if strat in SCREENER_KEYS else "half" if strat in HALF_KEYS else
-                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "two3" if strat in TWO3_KEYS else "model")
+                      "alt" if strat in ALT_KEYS else "ext" if strat in EXT_KEYS else "allev" if strat in ALL_EV_KEYS else "reddit" if strat in REDDIT_KEYS else "triple" if strat in TRIPLE_KEYS else "two3" if strat in TWO3_KEYS else "steam" if strat in STEAM_KEYS else "model")
         strategies.append(x)
     # 10%+ EV: every prop seen at 10%+ EV by any source, once per day (highest-EV sighting first), flat 1u | ¼K
     hot = sorted([(r, v) for r, v in graded if r["strategy"] in VALUE_KEYS and (_num(r.get("entry_ev")) or -1) >= EV10_MIN],
                  key=lambda p: -(_num(p[0].get("entry_ev")) or 0))
     hot = _uniq(hot)
-    x = dict(_summ([r for r, _ in hot], [v for _, v in hot]), key="ev10", group="ev10", label=f"{100 * EV10_MIN:.0f}%+ EV (any source, each prop once)")
+    x = dict(_summ([r for r, _ in hot], [v for _, v in hot]), key="ev10", group="ev10", label=f"{100 * EV10_MIN:.0f}%+ EV (any source, each prop once; research, never staked)")
     x["clv_unit"] = "% EV at closing fair"
     strategies.append(x)
     for tag, lab, keys in (("cno", "from CrazyNinja pastes", CNO_KEYS | SCREENER_KEYS | RULE_KEYS | TRIPLE_KEYS),
@@ -1069,7 +1075,8 @@ def record(version: str = "v2") -> dict:
     for w in ("all 3", "EV+BP", "EV+DvP", "BP+DvP"):
         sub = [(r, v) for r, v in t23 if r.get("fair_src") == w]
         if sub:
-            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="two3_" + w, group="two3", label=f"2 of 3: {w}", n=len(sub))
+            x = dict(_summ([r for r, _ in sub], [v for _, v in sub]), key="two3_" + w, group="two3",
+                     label=f"2 of 3: {w}" + (" (retired 11/28: no +EV)" if w == "BP+DvP" else ""), n=len(sub))
             x["clv_unit"] = "% EV at closing fair"
             strategies.append(x)
     ext = [(r, v) for r, v in graded if r["strategy"] in EXT_KEYS]

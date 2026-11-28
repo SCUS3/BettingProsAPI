@@ -277,6 +277,14 @@ def learned(row, weights=None):
     return round(max(0.0, min(100.0, s)), 1)
 
 
+def graded_n(rows=None) -> int:
+    """Graded props with a frozen Sam score (each prop once) -- the sample the v2.2 'under 50' gate waits for."""
+    from nbaprops.rules import ledger as L
+    rows = L._read(L.LEDGER) if rows is None else rows
+    return len({(r["date"], r["player"], r["market"], r["side"], r["line"]) for r in rows
+                if r.get("strategy") in L.SAM_KEYS and r.get("score_entry") not in (None, "") and r.get("result") in ("W", "L", "P")})
+
+
 def rescore_summary(rows=None):
     """Every scored prop (each prop once, its best entry score) re-scored with the current weights:
     {n, changed (tier), crossed (the 50 line), up, down, avg}."""

@@ -537,24 +537,25 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var pre = tb.reduce(function (s, x) { return s + (x.stake_capped != null ? x.stake_capped : x.stake); }, 0);
     var scaled = tb.some(function (x) { return x.stake_capped != null; });
     document.getElementById("tonight-bets").innerHTML = board("Tonight's bets" + (tb.length ? " · " + tb.length + " props, " + u(total) + (scaled ? " (" + (DATA.date >= "2026-11-24" ? "trimmed lowest Sam score first" : "scaled") + " from " + u(pre) + ")" : "") : ""),
-      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and Triple green props. Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64; under 50 = paper only, held out): display and ranking only, never a stake change. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
+      "The only list to bet: the union of BETs (Unabated EV +2% and CrazyNinja worst case > 0), alt BETs, Your-rule and CNO screener props (Triple green before 11/28). Each prop appears once at its largest qualifying ¼K stake (not summed), then 1.5u per player and 3.5u per game across the whole list and 8u per night (from 11/24 the lowest Sam scores are trimmed first; before that, scaled). Sorted by Sam score (0-100, latest; A 80+, B 65-79, C 50-64): display and ranking only, never a stake change. Under 50 is held out (paper) only once 200 graded props have a Sam score (from 11/28); until then it only ranks and decides what the 8u cap trims first. Held out: entry EV over 10% without 5+ sources and a fresh price, and props +EV on both sides until re-priced from one snapshot. Everything else is a paper record.",
       th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["Proj Model"], ["FD"], ["Entry EV"], ["DvP"], ["Stake"], ["Sam"]]),
       body || '<tr><td class="l dim" colspan="9">No bets yet tonight.</td></tr>') +
       (held.length ? heldSection(held) : "");
   }
 
   // Tonight's lists: every record's props tonight (EV high to low), live +EV and 10%+ EV, one tab at a time
-  var TL_ORDER = ["triple", "two3", "rule", "ua", "bets", "scr", "allev", "ev10", "live", "near"];
+  var TL_ORDER = ["rule", "scr", "bets", "ua", "triple", "two3", "steam", "allev", "ev10", "live", "near"];
   var TL_DESC = {
-    triple: "+EV (CrazyNinja or Unabated), the Projection Model agrees and DvP helps the side, all at once. Part of Tonight's bets (Sam 50+).",
-    two3: "Any two of the three Triple green checks. Research only (flat 1u, never bet).",
-    rule: "Your rule: a CrazyNinja screener prop with any +EV (4+ books, +500 or shorter, main line) where the Projection Model agrees. Part of Tonight's bets (Sam 50+).",
+    triple: "Retired 11/28 (now the DvP dot on Your rule): +EV (CrazyNinja or Unabated), the Projection Model agrees and DvP helps the side, all at once.",
+    two3: "+EV plus the Projection Model agreeing or DvP helping the side. Research only (flat 1u, never bet).",
+    steam: "+EV now and the fair price has moved 1+ point toward the side since first seen today: the market moving your way. Research only (flat 1u).",
+    rule: "Your rule: a CrazyNinja screener prop with any +EV (4+ books, +500 or shorter, main line) where the Projection Model agrees; the DvP dot shows whether the matchup also helps. Part of Tonight's bets.",
     ua: "Unabated market EV above 0 (3+ sources) where the Projection Model agrees.",
     bets: "BETs: Unabated EV +2% or more and CrazyNinja's worst case above 0. Part of Tonight's bets.",
-    scr: "CNO screener record: your pasted screener rows at +2% EV or more (fixed settings).",
+    scr: "CNO screener: your pasted screener rows at +2% EV or more (fixed settings), whatever the Projection Model says. Part of Tonight's bets from 11/28.",
     allev: "Every pregame +EV prop from any source, once at its first sighting (research log).",
     ev10: "Every prop seen at 10%+ EV tonight, pregame or live. Rare; usually stale or thin markets, so watch the closing line.",
-    live: "Every +EV row from your in-game pastes (latest paste of each prop). Display only, never staked.",
+    live: "Every +EV row from your in-game pastes (latest paste of each prop). Graded as the Live +EV record (each prop once at its first +EV paste, flat 1u); never staked.",
     near: "Near misses to your rule: +EV but the Projection Model disagrees or has no projection (flat 1u, research)."
   };
   var tlKey = "triple", tlPicked = false;
@@ -758,7 +759,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ev10", "10%+ EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["steam", "Steam (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ev10", "10%+ EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       var hasHalf = G[0] === "half" && R.half && ((R.half.flags || {}).n || R.half.oddsapi);
@@ -1050,8 +1051,9 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var GROUPS = [
       ["tonight", "Tonight's bets", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
       ["sam", "Sam score splits", "Every staked prop once, by the Sam score frozen when it was logged: first the four tiers, then each part of the score as high (two-thirds of its points or more), mid or low. A part that predicts results wins more at high than at low. Small samples swing a lot; read the counts. Tap any ⓘ for a plain explanation of the Sam score, each part and how much it is worth right now.", true],
-      ["triple", "Triple green", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND the Projection Model on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
-      ["two3", "2 of 3", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, the Projection Model on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
+      ["triple", "Triple green (retired 11/28)", "Retired from the 11/28 slate: merged into Your rule as a DvP flag (Your rule rows show the DvP dot). The record keeps its history: +EV (CrazyNinja or Unabated) AND the Projection Model agrees AND DvP helps the side, all at the same sighting.", true],
+      ["two3", "2 of 3", "Research, flat 1u, never bet: +EV (CrazyNinja screener or Unabated 3+ sources) plus at least one of the Projection Model agreeing or DvP helping the side. From 11/28 a Projection Model + DvP pair without +EV no longer counts (its history is the retired BP+DvP split).", true],
+      ["steam", "Steam", "Research, flat 1u, never bet (from 11/28): a pregame prop that is +EV now and whose fair probability has moved 1+ point toward its side since it was first seen that day (CrazyNinja pastes or Unabated). The market moving your way before tip; logged once at the sighting where it first qualifies.", true],
       ["rule", "Your rule", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +500 or shorter, main line) where the Projection Model's projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
       ["ua", "Unabated + BP", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where the Projection Model agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
       ["bet", "BETs", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
@@ -1059,7 +1061,6 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
       ["ev10", "10%+ EV", "Every prop any source priced at 10%+ EV, once per day (its highest-EV sighting). These are rare and usually show up right as lines post, before the book corrects. Graded flat 1u and ¼K on the entry fair. Closing line value is the tell: if the price moves toward the fair, the edge was real; if the fair moves toward the price, the fair was off.", true],
       ["allev", "All +EV", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
-      ["reddit", "Reddit picks", "Picks from r/sportsbook's daily NBA thread, per poster (research, flat 1u); 'Proven poster + market +EV' is the only staked Reddit record (¼K, BET caps).", true],
       ["ext", "Outside cards", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
       ["alt", "Alt ladder", "FanDuel alternate rungs vs. other sources at the same rung (3+ two-sided), market EV +4% or more, FanDuel price +300 or shorter, CrazyNinja worst case above 0, one rung per player, ¼K capped 0.5u. 'Market only' for PTS/REB/AST/P+A/PRA/R+A; 'market + projection' for 3PM/P+R (The Projection Model projection must agree at the rung). CLV at the rung's closing fair price.", true],
       ["half", "Halftime", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
@@ -1092,7 +1093,9 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
           };
           var n2 = function (v) { return v === "" || v == null ? '<span class="dim">–</span>' : esc(String(v)); };
           var pctx = function (v) { if (v === "" || v == null) return '<span class="dim">–</span>'; var x = Number(v); return '<span class="' + (x > 0 ? "pos" : x < 0 ? "neg" : "") + '">' + (x > 0 ? "+" : "") + x.toFixed(2) + "%</span>"; };
+          var ER = LPS.ev_record || {};
           hh += board("Live pastes · " + LPS.n + " rows",
+            (ER.n ? "<b>Live +EV record</b> (each +EV prop once, at its first live paste, flat 1u): " + ER.w + "-" + ER.l + "-" + ER.p + ", " + (ER.units > 0 ? "+" : "") + ER.units + "u from " + ER.graded + " graded of " + ER.n + " props; average EV at paste " + (ER.avg_ev == null ? "–" : (ER.avg_ev > 0 ? "+" : "") + ER.avg_ev + "%") + ". " : "") +
             "Every screener row you pasted while its game was under way, graded from the final box score at the pasted price (flat 1u, never staked). " +
             "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
@@ -1124,7 +1127,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     });
 
     var PO = REC.posters || [];
-    html += board("Reddit leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
+    if (PO.length && DATA.reddit_active) html += board("Reddit leaderboard", "r/sportsbook posters' player-prop picks, logged per poster (research, flat 1u) with the FanDuel price and market EV when posted. ⭐ proven = 30+ graded picks, positive average CLV and positive units; only proven posters' picks with market +EV are staked ('Proven poster + market +EV').",
       th([["Poster", "l"], ["Picks"], ["Graded"], ["W-L-P"], ["Units"], ["ROI"], ["CLV"], ["Entry EV", "hide-sm"]]),
       PO.filter(function (p) { return p.n >= 5; }).slice(0, 20).map(function (p) {
         return '<tr><td class="l">' + (p.proven ? "⭐ " : "") + esc(p.poster) + "</td><td>" + p.picks + "</td><td>" + p.n + "</td><td>" + p.w + "-" + p.l + "-" + p.p +

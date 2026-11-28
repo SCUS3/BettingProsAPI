@@ -63,7 +63,7 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "tonight_bets": _tonight(date), "today_lists": _today_lists(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "learns": _learns(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
+               "tonight_bets": _tonight(date), "today_lists": _today_lists(date), "reddit_active": _reddit_active(), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "learns": _learns(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
                "situations": _situations("v2"), "situations_v1": _situations("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
@@ -80,9 +80,14 @@ def _learns():
         return []
 
 
-TODAY_LISTS = [("triple", "Triple green", {"triple"}), ("two3", "2 of 3", {"two_of_three"}), ("rule", "Your rule", {"my_rule"}),
+TODAY_LISTS = [("triple", "Triple green", {"triple"}), ("two3", "2 of 3", {"two_of_three"}), ("steam", "Steam", {"steam"}), ("rule", "Your rule", {"my_rule"}),
                ("ua", "Unabated + Proj Model", {"ua_agree"}), ("bets", "BETs", {"bet_agree", "bet_only"}), ("scr", "CNO screener", {"cno_scr"}),
                ("allev", "All +EV", {"all_ev"}), ("near", "Near misses", {"near_miss"})]
+
+
+def _reddit_active():
+    from nbaprops import config as C
+    return bool(getattr(C, "REDDIT_ACTIVE", True))
 
 
 def _today_lists(date):
@@ -117,6 +122,8 @@ def _today_lists(date):
                              books=r.get("books") or r.get("sources") or "", stake=bp_learn._num(r.get("kelly_u")),
                              score=bp_learn._num(r.get("score_entry")), tier=r.get("score_tier") or "", why=r.get("cap_note") or "",
                              result=r.get("result") or ""))
+        if key == "triple" and date >= "2026-11-28" and not rows:
+            continue                                   # retired 11/28 (merged into Your rule as a DvP flag)
         out.append({"key": key, "label": label, "rows": rows})
     hot = [x for l in out if l["key"] != "near" for x in l["rows"] if (x["ev"] or 0) >= 0.10]
     live = {}

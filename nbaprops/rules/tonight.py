@@ -12,7 +12,23 @@ from nbaprops.rules import ledger as L
 from nbaprops.sources.rotowire import norm
 
 SOURCES = {"bet_agree": "BET", "bet_only": "BET", "alt_mkt": "Alt BET", "alt_proj": "Alt BET", "my_rule": "Your rule",
-           "triple": "Triple green"}
+           "triple": "Triple green", "cno_scr": "CNO screener"}
+V22 = "2026-11-28"                                      # v2.2: CNO screener in, Triple green out (merged into Your rule)
+
+
+def sources_for(date: str) -> dict:
+    """The records that feed Tonight's bets on a slate date (rule versions never re-decide a past night)."""
+    if date >= V22:
+        return {k: v for k, v in SOURCES.items() if k != "triple"}
+    return {k: v for k, v in SOURCES.items() if k != "cno_scr"}
+
+
+def sam_gate_on(date: str) -> bool:
+    """Is 'under 50 = paper only' in force? Always before v2.2; from v2.2 only once SAM_GATE_MIN_N graded scored props exist."""
+    if date < V22:
+        return True
+    from nbaprops.pricing import samscore as SS
+    return SS.graded_n() >= C.SAM_GATE_MIN_N
 
 
 def _dec_path(date):
@@ -37,7 +53,8 @@ def save_decisions(date, dec):
 def candidates(date: str, led: list[dict] | None = None) -> list[dict]:
     """One item per prop (player, market, side, line) from the betting records, at its largest qualifying ¼K stake."""
     from nbaprops.app import value as V
-    rows = [r for r in (L._read(L.LEDGER) if led is None else led) if r["date"] == date and r["strategy"] in SOURCES
+    src = sources_for(date)
+    rows = [r for r in (L._read(L.LEDGER) if led is None else led) if r["date"] == date and r["strategy"] in src
             and (L._num(r.get("kelly_u")) or 0) > 0]
     groups: dict = {}
     for r in rows:
@@ -46,7 +63,7 @@ def candidates(date: str, led: list[dict] | None = None) -> list[dict]:
     out = []
     for g in groups.values():
         best = max(g, key=lambda r: L._num(r["kelly_u"]))
-        recs = sorted({SOURCES[r["strategy"]] for r in g}, key=["BET", "Alt BET", "Your rule", "Triple green"].index)
+        recs = sorted({SOURCES[r["strategy"]] for r in g}, key=["BET", "Alt BET", "Your rule", "CNO screener", "Triple green"].index)
         ev = L._num(best.get("entry_ev") or best.get("oa_ev"))
         last = max([t for t in (best.get("entry_at") or best.get("pulled_at"), best.get("latest_at")) if t] or [""])
         out.append({"player": best["player"], "team": best.get("team"), "market": best["market"], "side": best["side"],
@@ -132,6 +149,9 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
         past = date < _P.eastern_today()                # later weight changes never re-decide a past night
         dec = load_decisions(date)
         dec0 = dict(dec)
+        if not past:
+            dec["_gate"] = sam_gate_on(date)                # frozen with the night's decisions (past nights keep theirs)
+        gate = bool(dec.get("_gate", date < V22 or sam_gate_on(date)))
         for x in out:
             best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
             try:
@@ -149,7 +169,7 @@ def build(date: str, led: list[dict] | None = None, now=None) -> list[dict]:
                     x["score"], x["tier"] = dec[kd], SS.tier(dec[kd])
                 elif past and x["score_entry"] is not None:     # no saved decision: the score frozen at logging
                     x["score"], x["tier"] = x["score_entry"], SS.tier(x["score_entry"])
-                if x["tier"] == "paper" and not x["held"]:
+                if x["tier"] == "paper" and not x["held"] and gate:
                     x["held"] = f"paper only: Sam score {x['score']:g} (under 50)"
     if sam and dec != dec0:
         save_decisions(date, dec)
@@ -203,7 +223,7 @@ def record_rows(version: str | None = None) -> tuple[list[dict], list]:
     counted, clv = L.counted_flags(led)
     ok = {id(r): (c, v) for r, c, v in zip(led, counted, clv)}
     out, clvs = [], []
-    for date in sorted({r["date"] for r in led if r["strategy"] in SOURCES}):
+    for date in sorted({r["date"] for r in led if r["strategy"] in sources_for(r["date"])}):
         for x in build(date, led):
             best = max(x["rows"], key=lambda r: L._num(r["kelly_u"]))
             c, v = ok.get(id(best), (False, None))
