@@ -1148,3 +1148,49 @@ def record(version: str = "v2") -> dict:
             "cap_unproven": round(100 * CAP_UNPROVEN), "validation": model.get("validation"),
             "calibration": model.get("calibration", {}), "weights": weights,
             "insights": model.get("insights", []), "min_train": MIN_TRAIN, "oa_compare": oa}
+
+
+PERIOD_RECORDS = [("Tonight's bets (what you bet)", None), ("Your rule", {"my_rule"}), ("CNO screener", {"cno_scr"}),
+                  ("BETs (Unabated)", {"bet_agree", "bet_only"}), ("Alt ladder", {"alt_mkt", "alt_proj"}),
+                  ("Unabated + Proj Model", {"ua_agree"}), ("Steam", {"steam"}), ("2 of 3", {"two_of_three"}),
+                  ("All +EV", {"all_ev"}), ("10%+ EV", "ev10"), ("Live +EV", "live")]
+
+
+def period_records(date: str) -> list[dict]:
+    """For the slip on `date`: each record's last night (date - 1), last 7 nights and all-time (v2, from 11/24).
+    Same counting as the Record tab: only plays logged before tip, each prop once per record."""
+    import datetime as _dt
+    d = _dt.date.fromisoformat(date)
+    last, wk = (d - _dt.timedelta(days=1)).isoformat(), (d - _dt.timedelta(days=7)).isoformat()
+    led = [r for r in _read(LEDGER) if in_version(r, "v2") and r["date"] < date]
+    counted, clv = counted_flags(led)
+    graded = [(r, v) for r, ok, v in zip(led, counted, clv) if ok and r.get("result") in ("W", "L", "P")]
+    from nbaprops.rules import tonight as _TN
+    from nbaprops.rules import livepastes as _LP
+    tb = [(r, v) for r, v in zip(*_TN.record_rows("v2")) if not r.get("tn_held") and r["date"] < date]
+    first = {}
+    for r in sorted(_LP.read(), key=lambda r: r["at"]):
+        if r["date"] < date and r["date"] >= V2_START and (_num(r.get("ev")) or 0) > 0:
+            first.setdefault((r["date"], r["player"], r["market"], r["side"], r["line"]), r)
+    live = [(r, None) for r in first.values() if r.get("result") in ("W", "L", "P")]
+    out = []
+    for label, keys in PERIOD_RECORDS:
+        if keys is None:
+            pairs = tb
+        elif keys == "live":
+            pairs = live
+        elif keys == "ev10":
+            pairs = _uniq(sorted([(r, v) for r, v in graded if r["strategy"] in VALUE_KEYS and (_num(r.get("entry_ev")) or -1) >= EV10_MIN],
+                                 key=lambda p: -(_num(p[0].get("entry_ev")) or 0)))
+        else:
+            pairs = [(r, v) for r, v in graded if r["strategy"] in keys]
+            if keys == {"two_of_three"}:
+                pairs = [(r, v) for r, v in pairs if r.get("fair_src") != "BP+DvP"]
+            pairs = _uniq(pairs)
+        row = {"label": label}
+        for name, lo in (("last", last), ("week", wk), ("all", "0000")):
+            sub = [(r, v) for r, v in pairs if lo <= r["date"] and (name != "last" or r["date"] == last)]
+            row[name] = dict(_summ([r for r, _ in sub], [v for _, v in sub]), n=len(sub))
+        if row["all"]["n"]:
+            out.append(row)
+    return out

@@ -161,6 +161,21 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
               + ("; from 11/28 only once 200 graded props have a score" if date >= "2026-11-28" else "") + "); "
               "display and ranking only, it never changes a stake or qualifies a -EV play. Check = re-checked / unverified "
               "(both sides were +EV), a contradicting rung, partial data or a score penalty. Everything else in this note is a paper record.", ""]
+    try:                                               # last night / last 7 / all-time per record (graded nightly at 4 AM ET)
+        _pr = bp_learn.period_records(date)
+    except Exception:  # noqa: BLE001
+        _pr = []
+    if _pr:
+        def _cell(x, kelly=False):
+            if not x["n"]:
+                return "–"
+            return (f"{x['w']}-{x['l']}-{x['p']} · {x['units']:+.2f}u" + (f" · ¼K {x['kelly_units']:+.2f}u" if kelly and x.get("kelly_units") else ""))
+        _yd = (__import__("datetime").date.fromisoformat(date) - __import__("datetime").timedelta(days=1)).strftime("%a %-m/%-d")
+        lines += ["### Records: last night, last 7 nights, all-time", "",
+                  f"Graded every night at 4 AM ET from the final box scores (all games over). Last night = {_yd}. W-L-P · flat 1u"
+                  " (· ¼K for Tonight's bets); only plays logged before tip count, each prop once per record; all-time = rules v2 (from 11/24).", ""]
+        lines += md_table([("Record", "l"), (f"Last night ({_yd})", "r"), ("Last 7 nights", "r"), ("All-time", "r")],
+                          [[x["label"], _cell(x["last"], i == 0), _cell(x["week"], i == 0), _cell(x["all"], i == 0)] for i, x in enumerate(_pr)]) + [""]
     if _tr and _tr["w"] + _tr["l"] + _tr["p"]:
         lines += [f"Tonight's bets record (v2): {_tr['w']}-{_tr['l']}-{_tr['p']} | ¼K at the capped stakes {_tr['kelly_units']:+.2f}u"
                   + (f" ({_tr['kelly_roi']:+}% ROI)" if _tr.get("kelly_roi") is not None else "") + f" | flat 1u {_tr['units']:+.2f}u"
