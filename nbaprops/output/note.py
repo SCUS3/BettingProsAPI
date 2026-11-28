@@ -329,12 +329,32 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         body = [[str(i), r["player"], r["market"], side_s(r["side"]), f"{float(r['line']):g}", odds_s(r.get("entry_price") or r["odds"]),
                  f"{100 * (_num(r.get('entry_ev')) or 0):+.2f}%", r.get("fair_src") or "", (r.get("cap_note") or "").replace("also ", ""),
                  bp_dot({"player": r["player"], "market": r["market"], "rec_side": r["side"], "line": _num(r["line"])}),
-                 status(r.get("tip"), r.get("team"))] for i, r in enumerate(allev[:25], 1)]
+                 status(r.get("tip"), r.get("team"))] for i, r in enumerate(allev, 1)]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("Entry EV ▼", "r"),
                            ("First source", "l"), ("Also", "l"), ("BP", "c"), ("Game", "l")], body)
-        lines += ([f"_{len(allev) - 25} more in the ledger (strategy all_ev)._"] if len(allev) > 25 else []) + [""]
+        lines += [""]
     else:
         lines += ["_None logged for this date yet (the log starts with the 11/24 slate)._", ""]
+    try:                                               # live +EV: every in-game paste row, latest sighting per prop
+        from nbaprops.rules import livepastes as _LP
+        live = {}
+        for r in sorted(_LP.read(date), key=lambda r: r["at"]):
+            if (_num(r.get("ev")) or 0) > 0:
+                live[(r["player"], r["market"], r["side"], r["line"])] = r
+        live = sorted(live.values(), key=lambda r: -(_num(r.get("ev")) or 0))
+    except Exception:  # noqa: BLE001
+        live = []
+    if live:
+        lines += ["### Live +EV tonight (in-game pastes)", "",
+                  f"Every +EV row from your screener pastes while its game was under way: {len(live)} props, latest paste of each, "
+                  "EV high to low. Display only (never staked); graded from the final box score in the Live pastes log.", ""]
+        body = [[str(i), r["player"], r["market"], side_s(r["side"]), f"{float(r['line']):g}", odds_s(r.get("odds")),
+                 f"{_num(r.get('ev')):+.2f}%", str(r.get("books") or ""), str(r.get("bp_proj") or "–"),
+                 (str(r.get("live_now")) if r.get("live_now") not in (None, "") else "–") + (f" ({r['clock']})" if r.get("clock") else ""),
+                 _LP.dt.datetime.fromisoformat(r["at"].replace("Z", "+00:00")).astimezone(_LP.dt.timezone(_LP.dt.timedelta(hours=-5))).strftime("%-I:%M %p")]
+                for i, r in enumerate(live, 1)]
+        lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("EV ▼", "r"),
+                           ("Books", "r"), ("BP proj", "r"), ("Live at paste", "l"), ("Pasted (ET)", "r")], body) + [""]
     try:
         from nbaprops.pricing import alts as _alts
         cand = sorted(json.load(open(_alts.candidates_path(date))).values(), key=lambda e: -e["ev"])
@@ -409,7 +429,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
               "can be -EV). Logged once at its first qualifying sighting; ranked all 3 > EV+BP > EV+DvP > BP+DvP, then EV.", ""]
     if _t23:
         body = []
-        for i, r in enumerate(_t23[:15], 1):
+        for i, r in enumerate(_t23, 1):
             pr, ln = _num(r.get("bp_proj_raw")), float(r["line"])
             ev = _num(r.get("entry_ev") or r.get("oa_ev"))
             bpd = "🟢" if (r.get("proj_tag") or "") in ("agrees", "lean agrees") else "🔴" if "disagrees" in (r.get("proj_tag") or "") else "–"

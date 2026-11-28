@@ -1042,10 +1042,10 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
             "Every screener row you pasted while its game was under way, graded from the final box score at the pasted price (flat 1u, never staked). " +
             "Record " + LPS.w + "-" + LPS.l + "-" + LPS.p + ", " + (LPS.units > 0 ? "+" : "") + LPS.units + "u flat; average CrazyNinja EV at paste " +
             (LPS.avg_ev == null ? "–" : (LPS.avg_ev > 0 ? "+" : "") + LPS.avg_ev + "%") + "; average CLV " + (LPS.avg_clv == null ? "–" : (LPS.avg_clv > 0 ? "+" : "") + LPS.avg_clv + "%") +
-            " (" + LPS.clv_n + " rows seen again in a later paste). Newest first; sort any column.",
+            " (" + LPS.clv_n + " rows seen again in a later paste). Highest +EV first; sort any column.",
             th([["Time", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["+EV"], ["Units"], ["Books", "hide-sm"],
                 ["BP proj", "hide-sm"], ["HT exp", "hide-sm"], ["Live", "hide-sm"], ["Final"], ["Result"], ["CLV"]]),
-            LPS.rows.map(function (r) {
+            LPS.rows.slice().sort(function (a, b) { return (Number(b.ev) || -1e9) - (Number(a.ev) || -1e9); }).map(function (r) {
               var res = r.result ? '<span class="res ' + esc(r.result) + '">' + esc(r.result) + "</span>" : '<span class="res pend">·</span>';
               return '<tr><td class="l">' + esc(etTime(r.at)) + '</td><td class="l"><span class="player">' + esc(r.player) + '</span></td><td class="l"><span class="mk">' + esc(r.market) + "</span> " +
                 (r.side === "over" ? "o" : "u") + esc(r.line) + "</td><td>" + n2(r.odds) + "</td><td>" + pctx(r.ev) + "</td><td>" +
