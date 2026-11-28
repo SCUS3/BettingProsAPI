@@ -287,6 +287,12 @@ th button.sort:focus-visible { outline: 2px solid var(--accent-dim); outline-off
 .held-count { font: 600 11px/1 var(--body); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-dim); }
 .held-hint { font-size: 13px; color: var(--muted); flex-basis: 100%; padding-left: 26px; }
 .held-scroll { max-height: 340px; overflow: auto; border-top: 1px solid var(--line); }
+.tl-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 12px; }
+.tl-tabs button { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: .1em; padding: 8px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+.tl-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tl-tabs button .n { opacity: .6; margin-left: 4px; }
+.tl-body { max-height: 460px; overflow: auto; border-top: 1px solid var(--line); }
 .held-scroll th { position: sticky; top: 0; z-index: 1; }
 .held td.why { white-space: normal; min-width: 220px; color: var(--text); }
 
@@ -358,6 +364,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
 
   <div class="view" id="view-tonight" role="tabpanel" aria-labelledby="tab-tonight">
   <div id="tonight-bets"></div>
+  <div id="today-lists"></div>
   <section class="best" aria-labelledby="best-label">
     <div class="label" id="best-label">Strongest tonight: top 20 on gap, score and balanced</div>
     <div class="best-list" id="best"></div>
@@ -535,6 +542,50 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       (held.length ? heldSection(held) : "");
   }
 
+  // Tonight's lists: every record's props tonight (EV high to low), live +EV and 10%+ EV, one tab at a time
+  var TL_ORDER = ["triple", "two3", "rule", "ua", "bets", "scr", "allev", "ev10", "live", "near"];
+  var TL_DESC = {
+    triple: "+EV (CrazyNinja or Unabated), BettingPros agrees and DvP helps the side, all at once. Part of Tonight's bets (Sam 50+).",
+    two3: "Any two of the three Triple green checks. Research only (flat 1u, never bet).",
+    rule: "Your rule: a CrazyNinja screener prop with any +EV (4+ books, +500 or shorter, main line) where BettingPros agrees. Part of Tonight's bets (Sam 50+).",
+    ua: "Unabated market EV above 0 (3+ sources) where BettingPros agrees.",
+    bets: "BETs: Unabated EV +2% or more and CrazyNinja's worst case above 0. Part of Tonight's bets.",
+    scr: "CNO screener record: your pasted screener rows at +2% EV or more (fixed settings).",
+    allev: "Every pregame +EV prop from any source, once at its first sighting (research log).",
+    ev10: "Every prop seen at 10%+ EV tonight, pregame or live. Rare; usually stale or thin markets, so watch the closing line.",
+    live: "Every +EV row from your in-game pastes (latest paste of each prop). Display only, never staked.",
+    near: "Near misses to your rule: +EV but BettingPros disagrees or has no projection (flat 1u, research)."
+  };
+  var tlKey = "triple", tlPicked = false;
+  function renderTodayLists() {
+    var L = DATA.today_lists || [], by = {};
+    L.forEach(function (l) { by[l.key] = l; });
+    var keys = TL_ORDER.filter(function (k) { return by[k]; });
+    if (!keys.length) { document.getElementById("today-lists").innerHTML = ""; return; }
+    if (!by[tlKey] || (!tlPicked && !by[tlKey].rows.length)) tlKey = keys.filter(function (k) { return by[k].rows.length; })[0] || keys[0];
+    var dot = function (c) { return c === "g" ? '<span style="color:var(--good)">●</span> ' : c === "r" ? '<span style="color:var(--bad)">●</span> ' : ""; };
+    var l = by[tlKey], live = !!l.live;
+    var tabs = '<div class="tl-tabs" role="group" aria-label="Tonight\'s lists">' + keys.map(function (k) {
+      return '<button type="button" data-tl="' + k + '" aria-pressed="' + (k === tlKey) + '">' + esc(by[k].label) + '<span class="n">' + by[k].rows.length + "</span></button>";
+    }).join("") + "</div>";
+    var rows = l.rows.map(function (x, i) {
+      var res = x.result ? ' <span class="res ' + esc(x.result) + '">' + esc(x.result) + "</span>" : "";
+      return '<tr><td class="l">' + (i + 1) + '</td><td class="l"><span class="player">' + esc(x.player) + "</span>" + (x.live ? ' <span class="chip">live</span>' : "") + res +
+        '</td><td class="l"><span class="mk">' + esc(x.market) + "</span> " + (x.side === "over" ? "o" : "u") + x.line + "</td><td>" + odds(x.price) + "</td><td>" +
+        (x.ev == null ? "–" : '<span class="' + (x.ev > 0 ? "pos" : "neg") + '">' + (x.ev > 0 ? "+" : "") + (Math.round(x.ev * 1000) / 10).toFixed(1) + "%</span>") + "</td><td>" +
+        dot(x.bp) + (x.bp_proj == null ? '<span class="dim">–</span>' : Number(x.bp_proj).toFixed(1)) + "</td><td>" + dot(x.dvp_dot) + (x.dvp == null ? '<span class="dim">–</span>' : x.dvp) + "</td><td>" +
+        (live ? (x.live_now == null || x.live_now === "" ? "–" : esc(String(x.live_now))) + (x.clock ? ' <span class="dim">' + esc(x.clock) + "</span>" : "")
+              : (x.score == null ? '<span class="dim">–</span>' : Number(x.score).toFixed(0) + (x.tier ? " (" + esc(x.tier) + ")" : ""))) +
+        '</td><td class="hide-sm">' + esc(String(x.books || "")) + "</td></tr>";
+    }).join("");
+    document.getElementById("today-lists").innerHTML = board("Tonight's lists", TL_DESC[tlKey] || "",
+      th([["#", "l"], ["Player", "l"], ["Prop", "l"], ["FD"], ["EV"], ["BP proj"], ["DvP"], [live ? "Live" : "Sam"], ["Books", "hide-sm"]]),
+      rows || '<tr><td class="l dim" colspan="9">Nothing in this list tonight.</td></tr>').replace('<div class="board-head">', tabs + '<div class="board-head">');
+    var el = document.getElementById("today-lists");
+    var tbl = el.querySelector("table"); if (tbl) { var w = document.createElement("div"); w.className = "tl-body"; tbl.parentNode.insertBefore(w, tbl); w.appendChild(tbl); }
+    el.querySelectorAll("[data-tl]").forEach(function (b) { b.addEventListener("click", function () { tlKey = b.getAttribute("data-tl"); tlPicked = true; renderTodayLists(); }); });
+  }
+
   // Strongest tonight
   function renderBest() {
     var sets = ["gap", "score", "bal"].map(function (by) {
@@ -593,6 +644,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     pressed("cat", state.cat); pressed("rank", state.rank); pressed("limit", state.limit);
     dtdBox.checked = state.hideDtd;
     renderTonightBets();
+    try { renderTodayLists(); } catch (e) { console.error("Tonight's lists", e); }
     renderBest();
     var rows = ranked(state.cat, state.rank, state.limit);
     rows.forEach(function (r, i) { r._rk = i + 1; });
@@ -1185,7 +1237,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     updateJump();
   }
   var REC_CHIPS = "";
-  var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button>' +
+  var TONIGHT_CHIPS = '<button type="button" data-jump="tonight-bets">Tonight\'s bets</button><button type="button" data-jump="held-out">Held out</button><button type="button" data-jump="today-lists">Tonight\'s lists</button>' +
     '<button type="button" data-jump="best">Strongest tonight</button><button type="button" data-jump="props-board">Props board</button>' +
     '<button type="button" data-jump="sec-daily-learns" title="Opens the Record tab">Daily learns ↗</button>' +
     '<button type="button" data-go="footer">Disclaimer</button>';

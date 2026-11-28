@@ -63,7 +63,7 @@ def write_dashboard(rows, date, kelly_note=""):
                "disabled": sorted(DISABLED), "kelly_note": kelly_note, "bets": value_bets(date),
                "lean_markets": sorted(set(WANTED.values()) - REAL_PROJ_MARKETS - DISABLED),
                "bet_cap_note": (load_value(date).get("_meta") or {}).get("bet_cap_note"),
-               "tonight_bets": _tonight(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "learns": _learns(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
+               "tonight_bets": _tonight(date), "today_lists": _today_lists(date), "sam_weights": _sam_weights(), "live_pastes": _live_pastes(), "learns": _learns(), "record": bp_learn.record("v2"), "record_v1": bp_learn.record("v1"),
                "situations": _situations("v2"), "situations_v1": _situations("v1")}
     blob = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     with open(DASH_OUT, "w") as f:
@@ -78,6 +78,64 @@ def _learns():
         return [dict(d, text=LR.lines(d)) for d in LR.daily()]
     except Exception:  # noqa: BLE001
         return []
+
+
+TODAY_LISTS = [("triple", "Triple green", {"triple"}), ("two3", "2 of 3", {"two_of_three"}), ("rule", "Your rule", {"my_rule"}),
+               ("ua", "Unabated + BP", {"ua_agree"}), ("bets", "BETs", {"bet_agree", "bet_only"}), ("scr", "CNO screener", {"cno_scr"}),
+               ("allev", "All +EV", {"all_ev"}), ("near", "Near misses", {"near_miss"})]
+
+
+def _today_lists(date):
+    """Tonight's records as lists for the Tonight tab: each record's props for `date` (EV high to low), plus live +EV and
+    10%+ EV. BP and DvP dots are side-aware (projctx)."""
+    try:
+        from nbaprops.pricing import projctx as P
+        from nbaprops.rules import livepastes as LP
+    except Exception:  # noqa: BLE001
+        return []
+
+    def dots(r):
+        try:
+            t = P.context(date, r["player"], r["market"], r["side"], float(r["line"]))
+            bp = "g" if t["tag"] in ("agrees", "lean agrees") else "r" if t["tag"] in ("disagrees", "lean disagrees") else ""
+            d = P.dvp_of(date, r["player"], r["market"])
+            e = P.dvp_effect(r["side"], d)
+            return {"bp": bp, "bp_proj": t.get("proj"), "dvp": d, "dvp_dot": "g" if e == "helps" else "r" if e == "hurts" else ""}
+        except Exception:  # noqa: BLE001
+            return {"bp": "", "bp_proj": None, "dvp": None, "dvp_dot": ""}
+    ledger = [r for r in bp_learn._read(bp_learn.LEDGER) if r["date"] == date]
+    out = []
+    for key, label, strats in TODAY_LISTS:
+        rows, seen = [], set()
+        for r in sorted([r for r in ledger if r["strategy"] in strats], key=lambda r: -(bp_learn._num(r.get("entry_ev") or r.get("oa_ev")) or 0)):
+            k = (r["player"], r["market"], r["side"], r["line"])
+            if k in seen:
+                continue
+            seen.add(k)
+            rows.append(dict(dots(r), player=r["player"], market=r["market"], side=r["side"], line=bp_learn._num(r["line"]),
+                             price=bp_learn._num(r.get("entry_price") or r.get("odds")), ev=bp_learn._num(r.get("entry_ev") or r.get("oa_ev")),
+                             books=r.get("books") or r.get("sources") or "", stake=bp_learn._num(r.get("kelly_u")),
+                             score=bp_learn._num(r.get("score_entry")), tier=r.get("score_tier") or "", why=r.get("cap_note") or "",
+                             result=r.get("result") or ""))
+        out.append({"key": key, "label": label, "rows": rows})
+    hot = [x for l in out if l["key"] != "near" for x in l["rows"] if (x["ev"] or 0) >= 0.10]
+    live = {}
+    for r in sorted(LP.read(date), key=lambda r: r["at"]):
+        if (bp_learn._num(r.get("ev")) or 0) > 0:
+            live[(r["player"], r["market"], r["side"], r["line"])] = r
+    lrows = [dict(dots(r), player=r["player"], market=r["market"], side=r["side"], line=bp_learn._num(r["line"]), price=bp_learn._num(r.get("odds")),
+                  ev=(bp_learn._num(r.get("ev")) or 0) / 100, books=r.get("books") or "", live_now=r.get("live_now"), clock=r.get("clock") or "",
+                  result=r.get("result") or "") for r in live.values()]
+    lrows.sort(key=lambda x: -(x["ev"] or 0))
+    seen10, hot10 = set(), []
+    for x in sorted(hot + [dict(x, live=True) for x in lrows if x["ev"] >= 0.10], key=lambda x: -(x["ev"] or 0)):
+        k = (x["player"], x["market"], x["side"], x["line"])
+        if k not in seen10:
+            seen10.add(k)
+            hot10.append(x)
+    out.insert(0, {"key": "live", "label": "Live +EV", "rows": lrows, "live": True})
+    out.append({"key": "ev10", "label": "10%+ EV", "rows": hot10})
+    return out
 
 
 def _live_pastes():
