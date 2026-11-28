@@ -84,7 +84,16 @@ def _live_pastes():
     """Every live screener row you pasted (graded, with CLV vs. your next paste), for the Record tab."""
     try:
         from nbaprops.rules import livepastes as LP
-        return LP.summary()
+        from nbaprops.pricing import projctx as P
+        s = LP.summary()
+        for r in s.get("rows", []):                  # side-aware dots: BP projection vs. the line, DvP for the side
+            try:
+                t = P.context(r["date"], r["player"], r["market"], r["side"], float(r["line"]))["tag"]
+                r["bp_dot"] = "🟢" if t in ("agrees", "lean agrees") else "🔴" if t in ("disagrees", "lean disagrees") else ""
+                r["dvp_dot"] = P.dvp_dot(r["side"], P.dvp_of(r["date"], r["player"], r["market"]))
+            except Exception:  # noqa: BLE001
+                r["bp_dot"], r["dvp_dot"] = "", ""
+        return s
     except Exception:  # noqa: BLE001
         return {"rows": [], "n": 0}
 

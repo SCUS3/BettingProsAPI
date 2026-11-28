@@ -349,12 +349,15 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                   f"Every +EV row from your screener pastes while its game was under way: {len(live)} props, latest paste of each, "
                   "EV high to low. Display only (never staked); graded from the final box score in the Live pastes log.", ""]
         body = [[str(i), r["player"], r["market"], side_s(r["side"]), f"{float(r['line']):g}", odds_s(r.get("odds")),
-                 f"{_num(r.get('ev')):+.2f}%", str(r.get("books") or ""), str(r.get("bp_proj") or "–"),
+                 f"{_num(r.get('ev')):+.2f}%", str(r.get("books") or ""),
+                 (bp_dot({"player": r["player"], "market": r["market"], "rec_side": r["side"], "line": _num(r["line"])}) + " "
+                  + str(r.get("bp_proj") or "")).strip(),
+                 bp_projctx.dvp_dot(r["side"], bp_projctx.dvp_of(date, r["player"], r["market"])) or "–",
                  (str(r.get("live_now")) if r.get("live_now") not in (None, "") else "–") + (f" ({r['clock']})" if r.get("clock") else ""),
                  _LP.dt.datetime.fromisoformat(r["at"].replace("Z", "+00:00")).astimezone(_LP.dt.timezone(_LP.dt.timedelta(hours=-5))).strftime("%-I:%M %p")]
                 for i, r in enumerate(live, 1)]
         lines += md_table([("#", "r"), ("Player", "l"), ("Mkt", "l"), ("Side", "l"), ("Line", "r"), ("FD", "r"), ("EV ▼", "r"),
-                           ("Books", "r"), ("BP proj", "r"), ("Live at paste", "l"), ("Pasted (ET)", "r")], body) + [""]
+                           ("Books", "r"), ("BP proj", "r"), ("DvP", "r"), ("Live at paste", "l"), ("Pasted (ET)", "r")], body) + [""]
     try:
         from nbaprops.pricing import alts as _alts
         cand = sorted(json.load(open(_alts.candidates_path(date))).values(), key=lambda e: -e["ev"])
