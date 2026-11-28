@@ -1363,7 +1363,7 @@ def run_cno_paste(args):
         rows = S.log(mine, args.date, st, key=S.RULE_KEY)
         miss = S.log_near_misses(every, args.date)
         log_all_ev(args.date, [dict(p, src="CNO screener") for p in every if p["ev"] > 0])
-        print(f"Your rule (CNO +EV and BettingPros agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
+        print(f"Your rule (CNO +EV and the Projection Model agrees): {len(mine)} in this paste, {len(rows)} newly logged; "
               f"{len(S.rule_rows(args.date))} on today's list; {len(miss)} new near misses"
               + (" (" + "; ".join(f"{m['player']} {m['market']}: {m['cap_note']}" for m in miss) + ")" if miss else "") + ".")
         for r in rows:

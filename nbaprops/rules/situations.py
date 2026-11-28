@@ -85,7 +85,7 @@ DIMENSIONS = [
     ("EV at logging", lambda r: _bucket(_f(r.get("oa_ev")), [0, 0.01, 0.02, 0.04], ["EV < 0", "0-1%", "1-2%", "2-4%", "4%+"])),
     ("FanDuel odds", lambda r: _bucket(_f(r.get("odds")), [-150, -110, 111, 200], ["-150 or shorter", "-149 to -111", "-110 to +110", "+111 to +199", "+200 or longer"])),
     ("DvP", _dvp),
-    ("BettingPros gap", lambda r: _bucket(None if _f(r.get("bp_proj_raw")) is None or _f(r.get("line")) is None else
+    ("Projection Model gap", lambda r: _bucket(None if _f(r.get("bp_proj_raw")) is None or _f(r.get("line")) is None else
                                           abs(_f(r["bp_proj_raw"]) - _f(r["line"])), [0.5, 1.0, 2.0], ["< 0.5", "0.5-1", "1-2", "2+"])),
     ("Sources", lambda r: _bucket(_f(r.get("sources")), [4, 6], ["3", "4-5", "6+"])),
     ("Logged before tip", lambda r: _bucket(_minutes_before_tip(r), [30, 120], ["< 30 min", "30 min - 2 h", "2 h+"])),

@@ -409,7 +409,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   <div class="view" id="view-record" role="tabpanel" aria-labelledby="tab-record" hidden></div>
 
   <footer id="footer">
-    <div><b>Rules v2 (from Nov 24)</b>: <b>Your rule</b> = a CrazyNinja screener prop with any +EV where BettingPros agrees (marked <b>your rule</b>); <b>BET</b> = Unabated market EV +2% or more with CrazyNinja's worst case above 0. Only those market records carry stakes (¼K, exposure caps). The model columns below (Gap, old Score, Balanced, Learned) are research and carry no stake. <b>Gap</b>: projection minus line, as a % of the line. <b>Old score</b> (v1 formula, retired as your score): 40% edge + 35% EV + 25% matchup. <b>Balanced</b>: 40% old score + 25% form + 20% market value + 15% BettingPros rating.</div>
+    <div><b>Rules v2 (from Nov 24)</b>: <b>Your rule</b> = a CrazyNinja screener prop with any +EV where the Projection Model agrees (marked <b>your rule</b>); <b>BET</b> = Unabated market EV +2% or more with CrazyNinja's worst case above 0. Only those market records carry stakes (¼K, exposure caps). The model columns below (Gap, old Score, Balanced, Learned) are research and carry no stake. <b>Gap</b>: projection minus line, as a % of the line. <b>Old score</b> (v1 formula, retired as your score): 40% edge + 35% EV + 25% matchup. <b>Balanced</b>: 40% old score + 25% form + 20% market value + 15% Projection Model rating.</div>
     <div><b>Proj*</b>: placeholder projection (a whole number exactly 0.5 off the line). It claims no edge, its EV uses FanDuel's no-vig price, and it ranks below every real projection unless the price alone is +EV. <b>DvP</b>: opponent defense vs. position, 1 = softest. <b>Form</b>: how often the recommended side hit this line recently. <b>Stake</b>: only BETs and the market records carry one (quarter-Kelly, 1u = 1% of bankroll). DvP and BP dots: 🟢 helps / agrees with the listed side, 🔴 hurts / disagrees. Tap a row for its breakdown.</div>
     <div class="disclaimer"><b>Data sources &amp; disclaimer.</b> ScuseBET builds its boards from <b>BettingPros</b> (player projections, lines and matchup ranks, through the BettingPros API and its public prop cheat sheet), <b>Unabated</b> and <b>CrazyNinja Odds</b> (market prices and devigging), <b>The Odds API</b> (backup prices), <b>ESPN</b> (box scores, game logs, live stats and schedules), <b>RotoWire</b> (lineups and injury status) and <b>Reddit</b> (community picks, research only). FanDuel lines are shown because that is the book these boards price against. ScuseBET is not affiliated with or endorsed by BettingPros, FanDuel, the NBA or any source above; their names and data belong to them. ScuseBET is a personal test project for entertainment only: its picks are simulations of a betting model tracked on paper, not betting recommendations, advice or tips. It is free and non-commercial (no ads, affiliate links or paid picks). Nothing here is a guarantee of results. Past results do not predict future ones. Bet only what you can afford to lose, follow the laws where you live, and if gambling stops being fun, call or text 1-800-GAMBLER.</div>
     <div><span class="brandline">ScuseBET</span> models: Sam score, Triple green, 2 of 3, Your rule and the market records. FanDuel-priced props only. Projections, not guarantees.</div>
@@ -428,7 +428,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   CATS = CATS.filter(function (c) { return (DATA.disabled || []).indexOf(c[0]) < 0; });   // categories left out of pulls
   var CAT_NAMES = { ALL: "All categories", PTS: "Points", REB: "Rebounds", AST: "Assists", "3PM": "Threes", "P+A": "Points + Assists", "P+R": "Points + Rebounds", PRA: "Points + Rebounds + Assists", "R+A": "Rebounds + Assists" };
   var RANKS = [["gap", "Gap"], ["learned", "Learned"], ["bal", "Balanced"], ["score", "Old score (v1)"]];
-  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by the old v1 score (edge, FanDuel EV, matchup): research only; your score in v2 is your rule (see the Your rule chips and the note's section 2).", bal: "Ranked by balanced score: your score checked against form, market value and BettingPros' rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
+  var RANK_NOTE = { gap: "Ranked by projection gap only.", score: "Ranked by the old v1 score (edge, FanDuel EV, matchup): research only; your score in v2 is your rule (see the Your rule chips and the note's section 2).", bal: "Ranked by balanced score: your score checked against form, market value and the Projection Model's rating.", learned: "Ranked by what the model has learned from graded slates, blended with balanced." };
   var LIMITS = [[10, "Top 10"], [25, "Top 25"]];
 
   var state = { cat: "ALL", rank: "bal", limit: 10, hideDtd: false, open: null };
@@ -546,16 +546,16 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   // Tonight's lists: every record's props tonight (EV high to low), live +EV and 10%+ EV, one tab at a time
   var TL_ORDER = ["triple", "two3", "rule", "ua", "bets", "scr", "allev", "ev10", "live", "near"];
   var TL_DESC = {
-    triple: "+EV (CrazyNinja or Unabated), BettingPros agrees and DvP helps the side, all at once. Part of Tonight's bets (Sam 50+).",
+    triple: "+EV (CrazyNinja or Unabated), the Projection Model agrees and DvP helps the side, all at once. Part of Tonight's bets (Sam 50+).",
     two3: "Any two of the three Triple green checks. Research only (flat 1u, never bet).",
-    rule: "Your rule: a CrazyNinja screener prop with any +EV (4+ books, +500 or shorter, main line) where BettingPros agrees. Part of Tonight's bets (Sam 50+).",
-    ua: "Unabated market EV above 0 (3+ sources) where BettingPros agrees.",
+    rule: "Your rule: a CrazyNinja screener prop with any +EV (4+ books, +500 or shorter, main line) where the Projection Model agrees. Part of Tonight's bets (Sam 50+).",
+    ua: "Unabated market EV above 0 (3+ sources) where the Projection Model agrees.",
     bets: "BETs: Unabated EV +2% or more and CrazyNinja's worst case above 0. Part of Tonight's bets.",
     scr: "CNO screener record: your pasted screener rows at +2% EV or more (fixed settings).",
     allev: "Every pregame +EV prop from any source, once at its first sighting (research log).",
     ev10: "Every prop seen at 10%+ EV tonight, pregame or live. Rare; usually stale or thin markets, so watch the closing line.",
     live: "Every +EV row from your in-game pastes (latest paste of each prop). Display only, never staked.",
-    near: "Near misses to your rule: +EV but BettingPros disagrees or has no projection (flat 1u, research)."
+    near: "Near misses to your rule: +EV but the Projection Model disagrees or has no projection (flat 1u, research)."
   };
   var tlKey = "triple", tlPicked = false;
   function renderTodayLists() {
@@ -677,11 +677,11 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         player: (r.decision === "BET" ? '<span class="chip bet" title="' + esc(r.bet_tag || "") + '">BET' + (r.bet_side && r.bet_side !== r.side ? " " + (r.bet_side === "over" ? "O" : "U") : "") + (r.bet_tag === "+EV only" ? " ·EV" : "") + "</span>" +
           (r.close_mkt_ev != null && r.close_mkt_ev < 0 ? '<span class="chip" title="Market EV fell below 0 at 6:30">EV&lt;0</span>' : "") : r.decision === "watch" ? '<span class="chip">watch</span>' : "") +
           '<span class="player">' + esc(r.player) + '</span><span class="team">' + esc(r.team || "") + "</span>" + (r.inj ? '<span class="chip">' + esc(r.inj) + "</span>" : "") +
-          (r.rule ? '<span class="chip bet" title="Your rule: CrazyNinja +EV and BettingPros agrees (' + esc(r.rule) + ')">your rule</span>' : "") +
+          (r.rule ? '<span class="chip bet" title="Your rule: CrazyNinja +EV and the Projection Model agrees (' + esc(r.rule) + ')">your rule</span>' : "") +
           (r.pick ? '<span class="chip pick" title="Model pick (' + esc(r.pick) + '): research, not a bet">model pick</span>' : ""),
         prop: '<span class="prop">' + (state.cat === "ALL" ? '<span class="mk">' + esc(r.market) + "</span>" : "") + sideTxt(r) + "</span>",
-        proj: r.lean ? '<span class="dim" title="BettingPros publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No BettingPros projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" :
-          (r.proj_cal != null && r.proj_cal !== r.proj ? '<span title="BettingPros raw projection → calibrated (actual ÷ projection on graded props)">' + num(r.proj) + ' <span class="dim">→</span> ' + num(r.proj_cal) + "</span>" : num(r.proj)),
+        proj: r.lean ? '<span class="dim" title="The Projection Model publishes a whole-number side lean for this market, not a projection">lean ' + (r.lean === "over" ? "O" : "U") + "</span>" : r.noproj ? '<span class="dim" title="No Projection Model projection: ranked on form, matchup and market value">–</span>' : r.ph ? '<span class="dim" title="Placeholder: whole number exactly 0.5 off the line">' + num(r.proj) + "*</span>" :
+          (r.proj_cal != null && r.proj_cal !== r.proj ? '<span title="Projection Model raw projection → calibrated (actual ÷ projection on graded props)">' + num(r.proj) + ' <span class="dim">→</span> ' + num(r.proj_cal) + "</span>" : num(r.proj)),
         gap: '<span class="' + (r.gap > 0 ? "pos" : r.gap < 0 ? "neg" : "") + '">' + gapTxt(r.gap) + "</span>",
         odds: odds(r.odds),
         dvp: r.dvp == null ? "" : (function () {          // side-aware: helps = soft for an over, hard for an under
@@ -720,8 +720,8 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     if (r.rw) f.push("Rotowire <b>" + esc(r.rw) + "</b>");
     if (r.tm_out) f.push("Teammates out <b>" + esc(r.tm_out_names || r.tm_out) + "</b>");
     if (r.tm_dtd) f.push("Teammates DTD <b>" + r.tm_dtd + "</b>");
-    if (r.lean) f.push("<b>BP lean: " + esc(r.lean) + "</b>. BettingPros publishes whole-number projections for this market, so it's a side lean, not a projection: ranked on form, matchup and market value; no edge, projection EV or Kelly");
-    if (r.noproj) f.push("<b>No BettingPros projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
+    if (r.lean) f.push("<b>BP lean: " + esc(r.lean) + "</b>. The Projection Model publishes whole-number projections for this market, so it's a side lean, not a projection: ranked on form, matchup and market value; no edge, projection EV or Kelly");
+    if (r.noproj) f.push("<b>No Projection Model projection</b>: ranked on form, matchup and market value only. No edge, EV or Kelly, and never a logged pick");
     if (r.decision === "BET") f.push("<b>BET " + esc(r.bet_side) + "</b> (" + esc(r.bet_tag) + "): market EV " + (r.bet_ev > 0 ? "+" : "") + Math.round(r.bet_ev * 1000) / 10 + "%, stake " + num(r.bet_kelly) + "u ¼K" +
       (r.close_clv != null ? "; 6:30 CLV " + (r.close_clv > 0 ? "+" : "") + Math.round(r.close_clv * 1000) / 10 + "%, market EV now " + (r.close_mkt_ev > 0 ? "+" : "") + Math.round(r.close_mkt_ev * 1000) / 10 + "%" : ""));
     if (r.oa_ev != null) f.push("Market check (" + esc(r.fair_src || "OddsAPI") + ") <b>fair " + Math.round(r.oa_fair * 1000) / 10 + "%, EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "%</b>" + (r.oa_books ? " from " + r.oa_books + " books" : "") + "; our EV " + (r.ev == null ? "–" : (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%"));
@@ -744,7 +744,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
   // Copy for Claude: the full slate as compact text
   function line(r, i) {
     return (i + 1) + ". " + r.player + (r.team ? " (" + r.team + ")" : "") + " " + r.market + " " + sideTxt(r) + " " + odds(r.odds) +
-      (r.lean ? " | BP lean: " + r.lean + " | rank " + r.bal : r.noproj ? " | no BettingPros projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
+      (r.lean ? " | BP lean: " + r.lean + " | rank " + r.bal : r.noproj ? " | no projection | rank " + r.bal : " | gap " + gapTxt(r.gap) + " | score " + r.score + " | bal " + r.bal) +
       (r.note ? " | " + r.note : "") +
       (r.ev != null ? " | EV " + (r.ev > 0 ? "+" : "") + Math.round(r.ev * 1000) / 10 + "%" : "") +
       (r.oa_ev != null ? " | mkt EV " + (r.oa_ev > 0 ? "+" : "") + Math.round(r.oa_ev * 1000) / 10 + "% (" + (r.fair_src || "OddsAPI") + (r.oa_books ? ", " + r.oa_books + " books" : "") + ")" : "") +
@@ -758,7 +758,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       (R.dropped_after_tip ? "; " + R.dropped_after_tip + " picks logged after tip not counted" : "") + ")"];
     var grp = function (g) { return R.strategies.filter(function (x) { return x.group === g; }); };
     [["rule", "Your rule: CNO +EV + BP agrees (flat 1u | ¼K units):"], ["ua", "Unabated +EV & BP agrees (flat 1u | ¼K units):"], ["bet", "BETs: Unabated market +EV (flat 1u | ¼K units):"], ["cno", "CrazyNinja +EV (flat 1u | ¼K units):"],
-     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ev10", "10%+ EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "BettingPros Projection Model (research; flat 1u):"],
+     ["screener", "CNO screener (flat 1u | ¼K units):"], ["tonight", "Tonight's bets (what you bet; flat 1u | ¼K at capped stakes):"], ["sam", "Sam score splits (flat 1u | ¼K units):"], ["triple", "Triple green (flat 1u | ¼K units):"], ["two3", "2 of 3 (research, flat 1u):"], ["allev", "All +EV (any source; flat 1u | ¼K units):"], ["ev10", "10%+ EV (any source; flat 1u | ¼K units):"], ["reddit", "Reddit picks (flat 1u | ¼K for proven + market +EV):"], ["ext", "Outside picks (flat 1u):"], ["alt", "Alt ladder (flat 1u | ¼K units):"], ["half", "Halftime live (experimental; flat 1u | ¼K units):"], ["model", "Projection Model (research; flat 1u):"],
      ["sim", "Sims (research, separate):"]].forEach(function (G) {
       var rs = grp(G[0]).concat(G[0] === "model" && R.combined ? [R.combined] : []);
       var hasHalf = G[0] === "half" && R.half && ((R.half.flags || {}).n || R.half.oddsapi);
@@ -819,7 +819,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     return out;
   }
   function slateText() {
-    var out = ["NBA props " + DATA.date + " (FanDuel lines). Rules v2: your rule = CrazyNinja +EV and BettingPros agrees; BET = Unabated EV +2% and CrazyNinja worst case > 0; stakes ¼K on those only. Model lists (gap, old score, balanced) are research, no stake. DvP 1 = softest.", ""];
+    var out = ["NBA props " + DATA.date + " (FanDuel lines). Rules v2: your rule = CrazyNinja +EV and the Projection Model agrees; BET = Unabated EV +2% and CrazyNinja worst case > 0; stakes ¼K on those only. Model lists (gap, old score, balanced) are research, no stake. DvP 1 = softest.", ""];
     out = out.concat(recordText());
     var bets = DATA.bets || [], watch = ROWS.filter(function (r) { return r.decision === "watch"; });
     function p1(v) { return v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%"; }
@@ -849,7 +849,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     CATS.slice(1).forEach(function (c) {
       if (LEAN.indexOf(c[0]) >= 0) {
         var lr = ranked(c[0], "bal", 10); if (!lr.length) return;
-        out.push(c[0] + ": top 10 ranked on form, matchup and market value (BettingPros only publishes a side lean here)");
+        out.push(c[0] + ": top 10 ranked on form, matchup and market value (The Projection Model only publishes a side lean here)");
         lr.forEach(function (r, i) { out.push(line(r, i)); }); out.push(""); return;
       }
       [["gap", "projection gap"], ["score", "score"]].forEach(function (x) {
@@ -911,20 +911,20 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "Time": "When you pasted the row, Eastern time.",
     "Why": "The rule that kept this prop off tonight's bets. Sam score under 50 = tracked on paper, not bet. Edge looks too good = over 10% EV without 5+ books and a fresh price, often a stale line. Both sides +EV = the over and under both looked good, so neither is bet until re-checked.",
     "DvP": "How the opponent's defense ranks against this player's position, from 1 (softest) to 30 (toughest). 🟢 = it helps this bet (soft defense for an over, tough for an under), 🔴 = it hurts, no dot = middle of the pack (11-20).",
-    "Proj Model": "The projection model's number for the player before the game (BettingPros' projection), and how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
-    "BP proj": "BettingPros' projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
+    "Proj Model": "The projection model's number for the player before the game (The Projection Model's projection), and how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
+    "BP proj": "The Projection Model's projection for the player before the game, and in brackets how far it is from the line. 🟢 = the projection is on this bet's side, 🔴 = the other side.",
     "FD": "FanDuel's price for this bet. +150 pays 1.5u profit on 1u; -150 risks 1.5u to win 1u.",
     "Stake": "How much to bet in units (1u = 1% of your bankroll): quarter-Kelly on the market's fair odds, capped at 1.5u per player, 3.5u per game and 8u per night.",
     "Entry EV": "Market EV when the play was first logged (frozen), split 0-2%, 2-4%, 4%+.",
     "Brier": "Accuracy of the win probabilities (lower is better): ours vs. FanDuel's no-vig price."
   };
   var SW = DATA.sam_weights || {now: {}, hand: {}};
-  var PART_KEYS = {"Market edge": "edge", "Market quality": "quality", "BettingPros": "bp", "DvP": "dvp", "Line movement": "move",
+  var PART_KEYS = {"Market edge": "edge", "Market quality": "quality", "Projection Model": "bp", "BettingPros": "bp", "DvP": "dvp", "Line movement": "move",
                    "Role": "role", "Form": "form", "Consensus": "consensus"};
   var PART_WHAT = {
     edge: "how much the price beats the market's fair price when the bet was logged. A 6% edge or more earns all of it.",
     quality: "how solid the market price is: 8+ books pricing it, an exchange in the mix, CrazyNinja's most cautious check still positive, and Unabated and CrazyNinja both seeing value.",
-    bp: "BettingPros' projection landing on your side of the line. For threes and points+rebounds it grows the further past the line the projection is; for other markets it is a flat amount when BettingPros leans your way.",
+    bp: "The Projection Model's projection landing on your side of the line. For threes and points+rebounds it grows the further past the line the projection is; for other markets it is a flat amount when the Projection Model leans your way.",
     dvp: "the opponent's defense against that position helping your side: a soft defense for an over, a tough one for an under.",
     move: "the line or price moving toward your side since it was first seen (all of it), not moving (half) or moving against you (none).",
     role: "the player being a projected starter, and for overs, a regular teammate being ruled out (more minutes and shots).",
@@ -932,7 +932,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     consensus: "the bet showing up in 2 or more of your CrazyNinja screener pastes, and a proven Reddit poster making the same pick."
   };
   function samIntro() {
-    return "The Sam score is ScuseBET's 0 to 100 rating for each bet that qualifies. It adds up 8 parts (market edge, market quality, BettingPros, DvP, line movement, role, form, consensus) and takes points off for long odds, an injury tag or an edge that looks too good to be true.";
+    return "The Sam score is ScuseBET's 0 to 100 rating for each bet that qualifies. It adds up 8 parts (market edge, market quality, Projection Model, DvP, line movement, role, form, consensus) and takes points off for long odds, an injury tag or an edge that looks too good to be true.";
   }
   function partTip(label) {
     var k = PART_KEYS[label], now = (SW.now || {})[k], hand = (SW.hand || {})[k];
@@ -991,10 +991,10 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     });
     rows.forEach(function (r) { body.appendChild(r); });
   });
-  function projDot(r) {                 // BettingPros projection vs. the play's side (display only)
+  function projDot(r) {                 // Projection Model projection vs. the play's side (display only)
     var t = r.proj_tag || "";
-    if (/agrees$/.test(t) && !/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "agrees") + '" style="color:var(--good)">●</span>';
-    if (/disagrees$/.test(t)) return ' <span title="BettingPros ' + esc(r.proj_note || "disagrees") + '" style="color:var(--bad)">●</span>';
+    if (/agrees$/.test(t) && !/disagrees$/.test(t)) return ' <span title="Projection Model ' + esc(r.proj_note || "agrees") + '" style="color:var(--good)">●</span>';
+    if (/disagrees$/.test(t)) return ' <span title="Projection Model ' + esc(r.proj_note || "disagrees") + '" style="color:var(--bad)">●</span>';
     return "";
   }
   function pickRow(r) {
@@ -1050,10 +1050,10 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     var GROUPS = [
       ["tonight", "Tonight's bets", "The betting list: BETs + alt BETs + your rule, each prop once at its largest ¼K stake, capped 1.5u per player and 3.5u per game across the list. ¼K units are at the capped stakes; flat = 1u per prop.", true],
       ["sam", "Sam score splits", "Every staked prop once, by the Sam score frozen when it was logged: first the four tiers, then each part of the score as high (two-thirds of its points or more), mid or low. A part that predicts results wins more at high than at low. Small samples swing a lot; read the counts. Tap any ⓘ for a plain explanation of the Sam score, each part and how much it is worth right now.", true],
-      ["triple", "Triple green", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND BettingPros on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
-      ["two3", "2 of 3", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, BettingPros on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
-      ["rule", "Your rule", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +500 or shorter, main line) where BettingPros' projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
-      ["ua", "Unabated + BP", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where BettingPros agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
+      ["triple", "Triple green", "+EV (CrazyNinja screener EV > 0 or Unabated EV > 0 with 3+ sources) AND the Projection Model on the side AND DvP helping the side (1-10 for overs, 21-30 for unders), all at the same sighting. ¼K on the qualifying source's fair, BET caps. Split by source and entry EV; the Compare rows show whether DvP adds anything to your rule.", true],
+      ["two3", "2 of 3", "Research, flat 1u, never bet: any FanDuel side where at least two of the three Triple green checks hold (+EV from CrazyNinja or Unabated with 3+ sources, the Projection Model on the side, DvP helping the side). Split by which two held; a BP + DvP pair can be -EV.", true],
+      ["rule", "Your rule", "Props from your CrazyNinja screener pastes with any +EV (4+ books, +500 or shorter, main line) where the Projection Model's projection or lean agrees. Logged once, the first time each qualifies, ¼K on CrazyNinja's fair probability. CLV vs. the closing fair price. Near misses (research, flat 1u) sit underneath.", true],
+      ["ua", "Unabated + BP", "Every FanDuel line Unabated prices with 3+ sources and market EV above 0 where the Projection Model agrees, logged once per day when it first qualifies; ¼K on the Unabated fair probability with the BET caps.", true],
       ["bet", "BETs", "Market EV +2% or more at FanDuel's line (median of devigged books and exchanges, 3+ sources) and CrazyNinja's worst-case EV above 0. Staked ¼K, capped 1.5u per player and 3.5u per game. CLV = EV of the bet at the closing fair price.", true],
       ["cno", "CNO +EV", "Every FanDuel line whose CrazyNinja worst-case EV (median across sources) is +2% or more, staked ¼K on CrazyNinja's fair probability. A play can also be an Unabated BET; the combined row counts it once.", true],
       ["screener", "CNO screener", "Plays pasted from CrazyNinja's own +EV screener (NBA player props at FanDuel), staked ¼K on their fair probability with the same caps. CLV vs. the closing fair price.", true],
@@ -1061,7 +1061,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
       ["allev", "All +EV", "Every +EV prop from Unabated, CrazyNinja pastes and the alt ladder, logged once per day at its first sighting (entry price and EV frozen); ¼K on the entry fair. A research log that shows how +EV holds up overall.", true],
       ["reddit", "Reddit picks", "Picks from r/sportsbook's daily NBA thread, per poster (research, flat 1u); 'Proven poster + market +EV' is the only staked Reddit record (¼K, BET caps).", true],
       ["ext", "Outside cards", "Picks pasted from outside sources (Reddit, X, RotoWire cards), one record per source, flat 1u, no stake; graded from ESPN box scores. Cards with no price are scored at -110.", true],
-      ["alt", "Alt ladder", "FanDuel alternate rungs vs. other sources at the same rung (3+ two-sided), market EV +4% or more, FanDuel price +300 or shorter, CrazyNinja worst case above 0, one rung per player, ¼K capped 0.5u. 'Market only' for PTS/REB/AST/P+A/PRA/R+A; 'market + projection' for 3PM/P+R (the BettingPros projection must agree at the rung). CLV at the rung's closing fair price.", true],
+      ["alt", "Alt ladder", "FanDuel alternate rungs vs. other sources at the same rung (3+ two-sided), market EV +4% or more, FanDuel price +300 or shorter, CrazyNinja worst case above 0, one rung per player, ¼K capped 0.5u. 'Market only' for PTS/REB/AST/P+A/PRA/R+A; 'market + projection' for 3PM/P+R (The Projection Model projection must agree at the rung). CLV at the rung's closing fair price.", true],
       ["half", "Halftime", "Live props at halftime from your paste: market EV +3% or more and CrazyNinja worst case above 0; ¼K capped 0.5u per bet, 1.5u per game; skips 3+ fouls, 20+ margin, injury exits. CLV = the same prop at the next paste. Never mixed into the pregame records.", true],
       ["model", "BP model (research)", "Top 5 of each model list. " + sNote, false],
       ["sim", "Sims", "Days you didn't pull, simmed from near-closing lines with that game removed from form. Never mixed into the records above.", false]];
@@ -1158,7 +1158,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
         s.w + "-" + s.l + "-" + s.p + "</td><td>" + pct(s.hit) + "</td><td>" + units(s.units) + "</td><td>" + pct(s.roi) + '</td><td class="hide-sm">' +
         (s.clv == null ? '<span class="dim">–</span>' : (s.clv > 0 ? "+" : "") + s.clv + "% EV") + '</td><td class="hide-sm">' + (s.p_value == null ? "–" : s.p_value) + "</td></tr>";
     }
-    var sitNote = "Each record's graded plays split by market, side, EV size, odds, DvP (side-aware), BettingPros gap, sources and time before tip. " +
+    var sitNote = "Each record's graded plays split by market, side, EV size, odds, DvP (side-aware), Projection Model gap, sources and time before tip. " +
       "⭐ candidate rule = " + (SIT.min_n || 100) + "+ plays, positive units, CLV above 0 and p < " + (SIT.p || 0.05) +
       " that it beats breakeven. Candidates are never switched on automatically: adopting one is a new rule version (RECORDS.md).";
     html += board("Candidate rules", sitNote, sitHead,
@@ -1288,7 +1288,7 @@ footer .brandline { font-family: var(--display); font-size: 16px; letter-spacing
     "DvP": "DvP (Defense vs. Position)", "CLV": "CLV (Closing line value)", "ROI": "ROI (Return on investment)",
     "FD": "FD (FanDuel price)", "W-L-P": "W-L-P (Wins-Losses-Pushes)", "¼K u": "¼K u (units at quarter-Kelly stakes)",
     "Kelly u": "Kelly u (units at quarter-Kelly stakes)", "Flat u": "Flat u (units at 1u per play)", "Units": "Units (profit at 1u per play)",
-    "BP proj": "BP proj (BettingPros projection)", "Proj Model": "Proj Model (projection model, from BettingPros)", "+EV": "+EV (expected value when pasted)", "Entry EV": "Entry EV (expected value when logged)",
+    "BP proj": "BP proj (Projection Model projection)", "Proj Model": "Proj Model (projection model)", "+EV": "+EV (expected value when pasted)", "Entry EV": "Entry EV (expected value when logged)",
     "p": "p (chance it's luck)", "Sam": "Sam (Sam score, ScuseBET's 0-100 rating)", "Tier": "Tier (Sam score band)",
     "HT exp": "HT exp (halftime expected final)", "Live": "Live (stat when you pasted)", "Time": "Time (when you pasted, Eastern)",
     "Why": "Why (why it wasn't bet)", "Brier": "Brier (probability accuracy)", "Final": "Final (final stat)",

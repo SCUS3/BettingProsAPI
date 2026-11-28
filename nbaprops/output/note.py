@@ -35,9 +35,9 @@ def md_table(cols: list[tuple[str, str]], rows: list[list[str]]) -> list[str]:
 
 # Numbered note sections, most tailored (fewest, strictest) first down to the broadest research list.
 # Matched by the heading text after "## N. "; each is renumbered 1..n in this order.
-SECTION_ORDER = ["Triple green", "2 of 3", "Top 10 by your score", "Unabated +EV & BettingPros agrees", "All +EV tonight",
+SECTION_ORDER = ["Triple green", "2 of 3", "Top 10 by your score", "Unabated +EV & the Projection Model agrees", "All +EV tonight",
                  "Near misses to your rule", "Ladder candidates", "Proven posters today", "Top 10 by projection gap"]
-SECTION_TITLES = {"Top 10 by your score": "Your rule: CNO +EV + BettingPros agrees"}
+SECTION_TITLES = {"Top 10 by your score": "Your rule: CNO +EV + Projection Model agrees"}
 
 
 def order_sections(lines: list[str]) -> list[str]:
@@ -126,15 +126,15 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     lines = [f"# ScuseBET · NBA props: {date}", "",
              "FanDuel-priced NBA player props. **Only Tonight's bets (the first list) are bets**; every other list is a paper "
              "record (no money). 1u = 1% of bankroll; ¼K = quarter-Kelly on the fair probability.", "",
-             "**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND BettingPros "
-             "agrees AND DvP helps the side (section 1). Your rule = CrazyNinja screener +EV AND BettingPros agrees (section 2). "
+             "**Rules v2 (from 2026-11-24):** Triple green = +EV (CrazyNinja screener or Unabated, 3+ sources) AND the Projection Model "
+             "agrees AND DvP helps the side (section 1). Your rule = CrazyNinja screener +EV AND the Projection Model agrees (section 2). "
              "BET = Unabated EV +2% at FanDuel's line (3+ sources) AND CrazyNinja worst case > 0. Alt BET = FanDuel alt rung, "
              "market EV +4%, 3+ two-sided sources, CrazyNinja > 0. Tonight's bets = BETs + alt BETs + your rule + Triple green, "
              "each prop once at its largest ¼K stake; held out: entry EV over 10% without 5+ sources and a price under 10 min "
              "old, and props +EV on both sides until re-priced from one snapshot; caps 1.5u per player, 3.5u per game, "
              "8u per night (scaled proportionally).", "",
-             "Columns: BP 🟢 = BettingPros' projection or lean is on the listed side, 🔴 = the other side, – = no projection. "
-             "BP proj = BettingPros' raw projection; Gap = projection - line. DvP 🟢 = the matchup helps the listed side "
+             "Columns: BP 🟢 = the Projection Model's projection or lean is on the listed side, 🔴 = the other side, – = no projection. "
+             "BP proj = the Projection Model's raw projection; Gap = projection - line. DvP 🟢 = the matchup helps the listed side "
              "(1-10 for an over, 21-30 for an under), 🔴 = it hurts, no dot = 11-20. Entry EV = EV at the price when the play "
              "was logged (frozen). ▼ = the column the list is ranked by.", ""]
     from nbaprops.rules import tonight as _tn
@@ -210,7 +210,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
                   "The Odds API only for shortlist plays Unabated can't price). BET = market EV +2% or more at FanDuel's line "
                   "with 3+ sources (Unabated) or 4+ books (The Odds API). Stake = quarter-Kelly (¼K) on the fair probability. "
                   + ((load_value(date).get("_meta") or {}).get("bet_cap_note") or "") + " "
-                  "Tag: '+EV + proj agrees' when BettingPros' projection is on the same side, else '+EV only'.", ""]
+                  "Tag: '+EV + proj agrees' when the Projection Model's projection is on the same side, else '+EV only'.", ""]
         lines += [f"- BET [{b['tag']}] {b['player']} {b['market']} {b['side']} {fmt(b['line'])} {fmt(b['price'])}: market EV "
                   f"{100 * b['ev']:+.1f}%, fair {b['fair']} ({b['src']}, {b['n']} sources{', exchange' if b['exchange'] else ''}); "
                   f"form {'-' if b['form'] is None else str(round(100 * b['form'])) + '%'}, DvP {'-' if b['dvp'] is None else fmt(b['dvp'])}; "
@@ -236,7 +236,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     _rr = [x for x in rec["strategies"] if x.get("key") == "my_rule"]
     lines += ["## 2. Top 10 by your score", "",
               "Your rule: on a CrazyNinja screener paste with any +EV (FanDuel, NBA player props, 4+ books, +500 or shorter, "
-              "main line) AND BettingPros' projection or lean agrees with the side. Built from today's pastes; EV and price "
+              "main line) AND the Projection Model's projection or lean agrees with the side. Built from today's pastes; EV and price "
               "are from the latest paste that listed the prop. Ranked by CrazyNinja EV. ¼K = the logged stake.", ""]
     if _rr and _rr[0]["w"] + _rr[0]["l"] + _rr[0]["p"]:
         x = _rr[0]
@@ -284,9 +284,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         pass
     ua3.sort(key=lambda e: -e["ev"])
     upd = max((e.get("at", "") for e in ua3), default="")
-    lines += ["## 3. Unabated +EV & BettingPros agrees", "",
+    lines += ["## 3. Unabated +EV & the Projection Model agrees", "",
               "Every FanDuel line Unabated prices (median of devigged books and exchanges at FanDuel's line, 3+ sources) with market "
-              "EV above 0, where BettingPros' projection or lean is on the same side. Ranked by market EV."
+              "EV above 0, where the Projection Model's projection or lean is on the same side. Ranked by market EV."
               + (f" Prices as of {bp_projctx._et(upd)}." if upd else ""), ""]
     if ua3:
         body = []
@@ -304,8 +304,8 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         lines += ["_None saved for this date (this record starts with the 11/24 slate; on 11/23 a scan after the last tip wiped the file, since fixed)._", ""]
     miss = bp_cno_screener.near_miss_rows(date)
     lines += ["## 4. Near misses to your rule", "",
-              "From today's CrazyNinja pastes: CNO EV between -1% and 0% with BettingPros agreeing (EV just short), or CNO EV "
-              "above 0 with BettingPros disagreeing or no BettingPros projection. Logged once as research (flat 1u, no stake) "
+              "From today's CrazyNinja pastes: CNO EV between -1% and 0% with the Projection Model agreeing (EV just short), or CNO EV "
+              "above 0 with the Projection Model disagreeing or no projection. Logged once as research (flat 1u, no stake) "
               "next to your rule, so the record shows whether skipping them was right.", ""]
     if miss:
         body = []
@@ -365,7 +365,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         cand = []
     lines += ["## 6. Ladder candidates", "",
               "Alt rungs that came close to the alt-ladder rules: market EV +2% or more with 3+ two-sided sources and FanDuel "
-              "+300 or shorter, but under the +4% bar, or CrazyNinja's worst case at or below 0, or (3PM/P+R) BettingPros "
+              "+300 or shorter, but under the +4% bar, or CrazyNinja's worst case at or below 0, or (3PM/P+R) the Projection Model "
               "disagreeing at the rung. Display only.", ""]
     if cand:
         body = [[str(i), e["player"], e["market"], side_s(e["side"]), f"{float(e['line']):g}", "" if e.get("main") is None else f"{e['main']:g}",
@@ -402,7 +402,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     _tgr = next((x for x in rec["strategies"] if x.get("key") == "cmp_triple"), None)
     lines += ["## 8. Triple green", "",
               "All three at the same sighting: +EV (CrazyNinja screener EV > 0, or Unabated market EV > 0 with 3+ sources), "
-              "BettingPros agrees (🟢) and DvP helps the side (🟢: 1-10 for an over, 21-30 for an under). No DvP or no "
+              "The Projection Model agrees (🟢) and DvP helps the side (🟢: 1-10 for an over, 21-30 for an under). No DvP or no "
               "projection = no. ¼K on the fair of the source that qualified it (higher EV if both), BET caps. Logged once at "
               "its first qualifying sighting; part of Tonight's bets.", ""]
     if _tgr and _tgr["w"] + _tgr["l"] + _tgr["p"]:
@@ -426,9 +426,9 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
     _o = {"all 3": 0, "EV+BP": 1, "EV+DvP": 2, "BP+DvP": 3}
     _t23.sort(key=lambda r: (_o.get(r.get("fair_src"), 9), -(_num(r.get("entry_ev") or r.get("oa_ev")) or -9)))
     _t23r = next((x for x in rec["strategies"] if x.get("key") == "two3_all"), None)
-    lines += ["## 9. 2 of 3: +EV / BettingPros / DvP", "",
+    lines += ["## 9. 2 of 3: +EV / Projection Model / DvP", "",
               "Any FanDuel side where at least two of the three Triple green checks hold: +EV (CrazyNinja screener, or Unabated "
-              "with 3+ sources), BettingPros agrees, DvP helps the side. Research only (flat 1u, never bet: a BP + DvP pair "
+              "with 3+ sources), the Projection Model agrees, DvP helps the side. Research only (flat 1u, never bet: a BP + DvP pair "
               "can be -EV). Logged once at its first qualifying sighting; ranked all 3 > EV+BP > EV+DvP > BP+DvP, then EV.", ""]
     if _t23:
         body = []
@@ -446,12 +446,12 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
         lines += ["_None yet (checked on every CrazyNinja paste, board run and watch scan from 11/24)._", ""]
     diffs = [r for r in fd if r.get("line_note")]
     if diffs:
-        lines += ["## FanDuel line differs from BettingPros' line", "",
-                  "Gap, side, EV and Kelly use FanDuel's line; BettingPros' win chance and rating are dropped for these.", ""]
+        lines += ["## FanDuel line differs from the Projection Model's line", "",
+                  "Gap, side, EV and Kelly use FanDuel's line; the Projection Model's win chance and rating are dropped for these.", ""]
         lines += [f"- {r['player']} {r['market']} {r['rec_side']}: {r['line_note']}" for r in ranked(diffs, lambda r: r["balanced"])[:15]]
         lines.append("")
     lines += ["---", "", "# Each category", "", "3PM and P+R: top 10 by projection gap. PTS, REB, AST, P+A "
-              "and PRA: BettingPros publishes whole-number side leans, so those are ranked on form, matchup and market value.", ""]
+              "and PRA: The Projection Model publishes whole-number side leans, so those are ranked on form, matchup and market value.", ""]
     for tag, name in CATEGORY_ORDER:
         if tag in DISABLED:
             continue
@@ -462,7 +462,7 @@ def write_top_by_market(rows: list[dict], date: str, n: int = 10, kelly_note: st
             if not lean:
                 lines += ["_No FanDuel-priced props found._", ""]
                 continue
-            lines += [f"BettingPros publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
+            lines += [f"The Projection Model publishes a whole-number side lean for {tag}, not a projection: ranked on form, matchup "
                       f"and market value. No edge, projection EV or Kelly; value here comes from the market check.", ""]
             lines += md_table(lean_cols, [lean_row_cells(i, r) for i, r in enumerate(ranked(lean, lambda r: r["balanced"])[:n], 1)])
             lines.append("")

@@ -883,7 +883,7 @@ def triple_rows(graded):
 SAM_RECORDS = [("BETs", BET_KEYS), ("Alt BETs", ALT_KEYS), ("Your rule", {"my_rule"}), ("Triple green", {"triple"}),
                ("Unabated +EV & BP agrees", {"ua_agree"}), ("CrazyNinja +EV", {"cno"}), ("CNO screener", {"cno_scr", "cno_scr_sub"}),
                ("Proven poster + market +EV", {"proven_ev"}), ("HALF BETs", {"half"})]
-SAM_PART_LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "BettingPros", "dvp": "DvP", "move": "Line movement",
+SAM_PART_LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "Projection Model", "dvp": "DvP", "move": "Line movement",
                    "role": "Role", "form": "Form", "consensus": "Consensus", "threes": "3PM market"}
 
 

@@ -33,6 +33,6 @@ def test_note_sections_ordered_most_tailored_first():
     src = ["# t", "## Record", "x", "## 1. Top 10 by projection gap", "g", "## 2. Top 10 by your score", "r",
            "## 8. Triple green", "t", "## Points (PTS)", "p"]
     out = order_sections(src)
-    assert [ln for ln in out if ln.startswith("## ")] == ["## Record", "## 1. Triple green", "## 2. Your rule: CNO +EV + BettingPros agrees",
+    assert [ln for ln in out if ln.startswith("## ")] == ["## Record", "## 1. Triple green", "## 2. Your rule: CNO +EV + Projection Model agrees",
                                                          "## 3. Top 10 by projection gap", "## Points (PTS)"]
     assert out[out.index("## 1. Triple green") + 1] == "t"

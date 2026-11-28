@@ -15,7 +15,7 @@ from nbaprops.rules import ledger as L
 
 HIST = os.path.join(L.HERE, "sam_weights_history.json")
 NOTES = os.path.join(L.HERE, "model_notes.json")
-LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "BettingPros", "dvp": "DvP", "move": "Line movement",
+LABELS = {"edge": "Market edge", "quality": "Market quality", "bp": "Projection Model", "dvp": "DvP", "move": "Line movement",
           "role": "Role", "form": "Form", "consensus": "Consensus", "threes": "3PM market"}
 
 
